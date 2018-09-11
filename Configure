@@ -405,7 +405,6 @@ my @disablables = (
     "tests",
     "threads",
     "tls",
-    "tls13downgrade",
     "ts",
     "ubsan",
     "ui-console",
@@ -449,7 +448,6 @@ our %disabled = ( # "what"         => "comment"
 		  "ssl3"                => "default",
 		  "ssl3-method"         => "default",
                   "ubsan"		=> "default",
-		  "tls13downgrade"      => "default",
 		  "unit-test"           => "default",
 		  "weak-ssl-ciphers"    => "default",
 		  "zlib"                => "default",
@@ -1012,9 +1010,18 @@ if (scalar(@seed_sources) == 0) {
     print "Using os-specific seed configuration\n";
     push @seed_sources, 'os';
 }
-die "Cannot seed with none and anything else"
-    if scalar(grep { $_ eq 'none' } @seed_sources) > 0
-        && scalar(@seed_sources) > 1;
+if (scalar(grep { $_ eq 'none' } @seed_sources) > 0) {
+    die "Cannot seed with none and anything else" if scalar(@seed_sources) > 1;
+    warn <<_____ if scalar(@seed_sources) == 1;
+You have selected the --with-rand-seed=none option, which effectively disables
+automatic reseeding of the OpenSSL random generator. All operations depending
+on the random generator such as creating keys will not work unless the random
+generator is seeded manually by the application.
+
+Please read the 'Note on random number generation' section in the INSTALL
+instructions and the RAND_DRBG(7) manual page for more details.
+_____
+}
 push @{$config{openssl_other_defines}},
      map { (my $x = $_) =~ tr|[\-a-z]|[_A-Z]|; "OPENSSL_RAND_SEED_$x" }
 	@seed_sources;
@@ -1434,7 +1441,7 @@ if (!$disabled{makedepend}) {
     }
 }
 
-if (!$disabled{asm}) {
+if (!$disabled{asm} && !$predefined{__MACH__} && $^O ne 'VMS') {
     # probe for -Wa,--noexecstack option...
     if ($predefined{__clang__}) {
         # clang has builtin assembler, which doesn't recognize --help,
@@ -1442,7 +1449,7 @@ if (!$disabled{asm}) {
         # supported platforms even when it's meaningless. In other words
         # probe would fail, but probed option always accepted...
         push @{$config{cflags}}, "-Wa,--noexecstack", "-Qunused-arguments";
-    } elsif ($^O ne 'VMS') {
+    } else {
         my $cc = $config{CROSS_COMPILE}.$config{CC};
         open(PIPE, "$cc -Wa,--help -c -o null.$$.o -x assembler /dev/null 2>&1 |");
         while(<PIPE>) {

@@ -4396,8 +4396,6 @@ EVP_PKEY_meth_set_check                 4341	1_1_1	EXIST::FUNCTION:
 EVP_PKEY_meth_get_check                 4342	1_1_1	EXIST::FUNCTION:
 EVP_PKEY_meth_remove                    4343	1_1_1	EXIST::FUNCTION:
 OPENSSL_sk_reserve                      4344	1_1_1	EXIST::FUNCTION:
-CRYPTO_atomic_read                      4345	1_1_1	EXIST::FUNCTION:
-CRYPTO_atomic_write                     4346	1_1_1	EXIST::FUNCTION:
 EVP_PKEY_set1_engine                    4347	1_1_0g	EXIST::FUNCTION:ENGINE
 DH_new_by_nid                           4348	1_1_1	EXIST::FUNCTION:DH
 DH_get_nid                              4349	1_1_1	EXIST::FUNCTION:DH
@@ -4574,3 +4572,8 @@ EC_POINT_set_affine_coordinates         4525	1_1_1	EXIST::FUNCTION:EC
 EC_POINT_get_affine_coordinates         4526	1_1_1	EXIST::FUNCTION:EC
 EC_GROUP_set_curve                      4527	1_1_1	EXIST::FUNCTION:EC
 EC_GROUP_get_curve                      4528	1_1_1	EXIST::FUNCTION:EC
+OCSP_resp_get0_tbs_sigalg               4529	1_1_0j	EXIST::FUNCTION:OCSP
+OCSP_resp_get0_respdata                 4530	1_1_0j	EXIST::FUNCTION:OCSP
+EVP_MD_CTX_set_pkey_ctx                 4531	1_1_1	EXIST::FUNCTION:
+EVP_PKEY_meth_set_digest_custom         4532	1_1_1	EXIST::FUNCTION:
+EVP_PKEY_meth_get_digest_custom         4533	1_1_1	EXIST::FUNCTION:

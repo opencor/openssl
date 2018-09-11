@@ -4568,7 +4568,7 @@ int ssl_fill_hello_random(SSL *s, int server, unsigned char *result, size_t len,
     } else {
         ret = RAND_bytes(result, len);
     }
-#ifndef OPENSSL_NO_TLS13DOWNGRADE
+
     if (ret > 0) {
         if (!ossl_assert(sizeof(tls11downgrade) < len)
                 || !ossl_assert(sizeof(tls12downgrade) < len))
@@ -4580,7 +4580,7 @@ int ssl_fill_hello_random(SSL *s, int server, unsigned char *result, size_t len,
             memcpy(result + len - sizeof(tls11downgrade), tls11downgrade,
                    sizeof(tls11downgrade));
     }
-#endif
+
     return ret;
 }
 
@@ -4621,6 +4621,7 @@ int ssl_generate_master_secret(SSL *s, unsigned char *pms, size_t pmslen,
         if (!s->method->ssl3_enc->generate_master_secret(s,
                     s->session->master_key,pskpms, pskpmslen,
                     &s->session->master_key_length)) {
+            OPENSSL_clear_free(pskpms, pskpmslen);
             /* SSLfatal() already called */
             goto err;
         }

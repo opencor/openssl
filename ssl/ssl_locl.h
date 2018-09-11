@@ -1063,6 +1063,9 @@ struct ssl_ctx_st {
     /* Callback to determine if early_data is acceptable or not */
     SSL_allow_early_data_cb_fn allow_early_data_cb;
     void *allow_early_data_cb_data;
+
+    /* Do we advertise Post-handshake auth support? */
+    int pha_enabled;
 };
 
 struct ssl_st {
@@ -1071,8 +1074,6 @@ struct ssl_st {
      * DTLS1_VERSION)
      */
     int version;
-    /* TODO(TLS1.3): Remove this before release */
-    int version_draft;
     /* SSLv3 */
     const SSL_METHOD *method;
     /*
@@ -1393,7 +1394,7 @@ struct ssl_st {
     int key_update;
     /* Post-handshake authentication state */
     SSL_PHA_STATE post_handshake_auth;
-    int pha_forced;
+    int pha_enabled;
     uint8_t* pha_context;
     size_t pha_context_len;
     int certreqs_sent;
@@ -2383,7 +2384,7 @@ __owur int ssl_choose_server_version(SSL *s, CLIENTHELLO_MSG *hello,
 __owur int ssl_choose_client_version(SSL *s, int version,
                                      RAW_EXTENSION *extensions);
 __owur int ssl_get_min_max_version(const SSL *s, int *min_version,
-                                   int *max_version);
+                                   int *max_version, int *real_max);
 
 __owur long tls1_default_timeout(void);
 __owur int dtls1_do_write(SSL *s, int type);

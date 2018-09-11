@@ -1898,7 +1898,8 @@ int SSL_renegotiate_abbreviated(SSL *s);
 __owur int SSL_renegotiate_pending(SSL *s);
 int SSL_shutdown(SSL *s);
 __owur int SSL_verify_client_post_handshake(SSL *s);
-void SSL_force_post_handshake_auth(SSL *s);
+void SSL_CTX_set_post_handshake_auth(SSL_CTX *ctx, int val);
+void SSL_set_post_handshake_auth(SSL *s, int val);
 
 __owur const SSL_METHOD *SSL_CTX_get_ssl_method(SSL_CTX *ctx);
 __owur const SSL_METHOD *SSL_get_ssl_method(SSL *s);
@@ -1912,8 +1913,8 @@ void SSL_set0_CA_list(SSL *s, STACK_OF(X509_NAME) *name_list);
 void SSL_CTX_set0_CA_list(SSL_CTX *ctx, STACK_OF(X509_NAME) *name_list);
 __owur const STACK_OF(X509_NAME) *SSL_get0_CA_list(const SSL *s);
 __owur const STACK_OF(X509_NAME) *SSL_CTX_get0_CA_list(const SSL_CTX *ctx);
-__owur int SSL_add1_CA_list(SSL *ssl, const X509 *x);
-__owur int SSL_CTX_add1_CA_list(SSL_CTX *ctx, const X509 *x);
+__owur int SSL_add1_to_CA_list(SSL *ssl, const X509 *x);
+__owur int SSL_CTX_add1_to_CA_list(SSL_CTX *ctx, const X509 *x);
 __owur const STACK_OF(X509_NAME) *SSL_get0_peer_CA_list(const SSL *s);
 
 void SSL_set_client_CA_list(SSL *s, STACK_OF(X509_NAME) *name_list);

@@ -1,7 +1,7 @@
 /*
  * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
  *
- * Licensed under the OpenSSL license (the "License").  You may not use
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
@@ -181,7 +181,7 @@ static const unsigned int c1_923 = 0x07b126;    /* scale * 1.923 */
 static const unsigned int c4_690 = 0x12c28f;    /* scale * 4.690 */
 
 /*
- * Multiply two scale integers together and rescale the result.
+ * Multiply two scaled integers together and rescale the result.
  */
 static ossl_inline uint64_t mul2(uint64_t a, uint64_t b)
 {

@@ -2,7 +2,7 @@
  * Copyright 2004-2018 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2004, EdelKey Project. All Rights Reserved.
  *
- * Licensed under the OpenSSL license (the "License").  You may not use
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
@@ -187,7 +187,7 @@ void SRP_user_pwd_free(SRP_user_pwd *user_pwd)
 SRP_user_pwd *SRP_user_pwd_new(void)
 {
     SRP_user_pwd *ret;
-    
+
     if ((ret = OPENSSL_malloc(sizeof(*ret))) == NULL) {
         /* SRPerr(SRP_F_SRP_USER_PWD_NEW, ERR_R_MALLOC_FAILURE); */ /*ckerr_ignore*/
         return NULL;
@@ -525,7 +525,7 @@ int SRP_VBASE_add0_user(SRP_VBASE *vb, SRP_user_pwd *user_pwd)
     return 1;
 }
 
-# if OPENSSL_API_COMPAT < 0x10100000L
+# if !OPENSSL_API_1_1_0
 /*
  * DEPRECATED: use SRP_VBASE_get1_by_user instead.
  * This method ignores the configured seed and fails for an unknown user.
@@ -614,10 +614,14 @@ char *SRP_create_verifier(const char *user, const char *pass, char **salt,
         if ((len = t_fromb64(tmp, sizeof(tmp), N)) <= 0)
             goto err;
         N_bn_alloc = BN_bin2bn(tmp, len, NULL);
+        if (N_bn_alloc == NULL)
+            goto err;
         N_bn = N_bn_alloc;
         if ((len = t_fromb64(tmp, sizeof(tmp) ,g)) <= 0)
             goto err;
         g_bn_alloc = BN_bin2bn(tmp, len, NULL);
+        if (g_bn_alloc == NULL)
+            goto err;
         g_bn = g_bn_alloc;
         defgNid = "*";
     } else {
@@ -639,15 +643,19 @@ char *SRP_create_verifier(const char *user, const char *pass, char **salt,
             goto err;
         s = BN_bin2bn(tmp2, len, NULL);
     }
+    if (s == NULL)
+        goto err;
 
     if (!SRP_create_verifier_BN(user, pass, &s, &v, N_bn, g_bn))
         goto err;
 
-    BN_bn2bin(v, tmp);
+    if (BN_bn2bin(v, tmp) < 0)
+        goto err;
     vfsize = BN_num_bytes(v) * 2;
     if (((vf = OPENSSL_malloc(vfsize)) == NULL))
         goto err;
-    t_tob64(vf, tmp, BN_num_bytes(v));
+    if (!t_tob64(vf, tmp, BN_num_bytes(v)))
+        goto err;
 
     if (*salt == NULL) {
         char *tmp_salt;
@@ -655,7 +663,10 @@ char *SRP_create_verifier(const char *user, const char *pass, char **salt,
         if ((tmp_salt = OPENSSL_malloc(SRP_RANDOM_SALT_LEN * 2)) == NULL) {
             goto err;
         }
-        t_tob64(tmp_salt, tmp2, SRP_RANDOM_SALT_LEN);
+        if (!t_tob64(tmp_salt, tmp2, SRP_RANDOM_SALT_LEN)) {
+            OPENSSL_free(tmp_salt);
+            goto err;
+        }
         *salt = tmp_salt;
     }
 
@@ -702,11 +713,15 @@ int SRP_create_verifier_BN(const char *user, const char *pass, BIGNUM **salt,
             goto err;
 
         salttmp = BN_bin2bn(tmp2, SRP_RANDOM_SALT_LEN, NULL);
+        if (salttmp == NULL)
+            goto err;
     } else {
         salttmp = *salt;
     }
 
     x = SRP_Calc_x(salttmp, user, pass);
+    if (x == NULL)
+        goto err;
 
     *verifier = BN_new();
     if (*verifier == NULL)

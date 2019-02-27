@@ -22,6 +22,7 @@ CRYPTO_EX_dup                           datatype
 CRYPTO_EX_free                          datatype
 CRYPTO_EX_new                           datatype
 DTLS_timer_cb                           datatype
+EVP_KDF_CTX                             datatype
 EVP_MAC                                 datatype
 EVP_MAC_CTX                             datatype
 EVP_PKEY_gen_cb                         datatype
@@ -29,6 +30,7 @@ EVP_PKEY_METHOD                         datatype
 EVP_PKEY_ASN1_METHOD                    datatype
 GEN_SESSION_CB                          datatype
 OPENSSL_Applink                         external
+OPENSSL_CTX                             datatype
 NAMING_AUTHORITY                        datatype
 OSSL_STORE_CTX                          datatype
 OSSL_STORE_INFO                         datatype
@@ -90,6 +92,8 @@ custom_ext_free_cb                      datatype
 custom_ext_parse_cb                     datatype
 pem_password_cb                         datatype
 ssl_ct_validation_cb                    datatype
+ASYNC_callback_fn                       datatype
+SSL_async_callback_fn                   datatype
 #
 BIO_append_filename                     define
 BIO_destroy_bio_pair                    define
@@ -108,6 +112,7 @@ BIO_get_buffer_num_lines                define
 BIO_get_cipher_ctx                      define
 BIO_get_cipher_status                   define
 BIO_get_close                           define
+BIO_get_ktls_send                       define
 BIO_get_conn_address                    define
 BIO_get_conn_hostname                   define
 BIO_get_conn_port                       define
@@ -232,6 +237,8 @@ EVP_PKEY_CTX_set_dh_pad                 define
 EVP_PKEY_CTX_set_dh_rfc5114             define
 EVP_PKEY_CTX_set_dhx_rfc5114            define
 EVP_PKEY_CTX_set_dsa_paramgen_bits      define
+EVP_PKEY_CTX_set_dsa_paramgen_q_bits    define
+EVP_PKEY_CTX_set_dsa_paramgen_md        define
 EVP_PKEY_CTX_set_ec_param_enc           define
 EVP_PKEY_CTX_set_ec_paramgen_curve_nid  define
 EVP_PKEY_CTX_set_ecdh_cofactor_mode     define
@@ -282,7 +289,14 @@ EVP_rc5_32_12_16_cfb                    define
 EVP_seed_cfb                            define
 EVP_sm4_cfb                             define
 OBJ_cleanup                             define deprecated 1.1.0
-OPENSSL_VERSION_NUMBER                  define
+OPENSSL_VERSION_MAJOR                   define
+OPENSSL_VERSION_MINOR                   define
+OPENSSL_VERSION_NUMBER                  define deprecated 3.0.0
+OPENSSL_VERSION_PATCH                   define
+OPENSSL_VERSION_PRE_RELEASE             define
+OPENSSL_VERSION_BUILD_METADATA          define
+OPENSSL_VERSION_PRE_RELEASE_STR         define
+OPENSSL_VERSION_BUILD_METADATA_STR      define
 OPENSSL_VERSION_TEXT                    define
 OPENSSL_clear_free                      define
 OPENSSL_clear_realloc                   define
@@ -467,3 +481,7 @@ X509_STORE_set_verify_func              define
 EVP_PKEY_CTX_set1_id                    define
 EVP_PKEY_CTX_get1_id                    define
 EVP_PKEY_CTX_get1_id_len                define
+ASYNC_STATUS_EAGAIN                     define
+ASYNC_STATUS_OK                         define
+ASYNC_STATUS_ERR                        define
+ASYNC_STATUS_UNSUPPORTED                define

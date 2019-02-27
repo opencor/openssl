@@ -1,7 +1,7 @@
 /*
  * Copyright 2006-2018 The OpenSSL Project Authors. All Rights Reserved.
  *
- * Licensed under the OpenSSL license (the "License").  You may not use
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
@@ -248,6 +248,9 @@ static int pkey_sm2_ctrl_str(EVP_PKEY_CTX *ctx,
         else
             return -2;
         return EVP_PKEY_CTX_set_ec_param_enc(ctx, param_enc);
+    } else if (strcmp(type, "sm2_id") == 0) {
+        return pkey_sm2_ctrl(ctx, EVP_PKEY_CTRL_SET1_ID,
+                             (int)strlen(value), (void *)value);
     }
 
     return -2;

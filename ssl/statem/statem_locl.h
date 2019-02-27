@@ -1,7 +1,7 @@
 /*
  * Copyright 2015-2018 The OpenSSL Project Authors. All Rights Reserved.
  *
- * Licensed under the OpenSSL license (the "License").  You may not use
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
@@ -28,9 +28,6 @@
 #define CCS_MAX_LENGTH                  1
 /* Max should actually be 36 but we are generous */
 #define FINISHED_MAX_LENGTH             64
-
-/* The maximum number of incoming KeyUpdate messages we will accept */
-#define MAX_KEY_UPDATE_MESSAGES     32
 
 /* Dummy message type */
 #define SSL3_MT_DUMMY   -1

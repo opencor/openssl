@@ -48,6 +48,8 @@ static int WIN32_rename(const char *from, const char *to);
 # define rename(from,to) WIN32_rename((from),(to))
 #endif
 
+#define PASS_SOURCE_SIZE_MAX 4
+
 typedef struct {
     const char *name;
     unsigned long flag;
@@ -205,6 +207,7 @@ static char *app_get_pass(const char *arg, int keepbio)
     char *tmp, tpass[APP_PASS_LEN];
     int i;
 
+    /* PASS_SOURCE_SIZE_MAX = max number of chars before ':' in below strings */
     if (strncmp(arg, "pass:", 5) == 0)
         return OPENSSL_strdup(arg + 5);
     if (strncmp(arg, "env:", 4) == 0) {
@@ -253,7 +256,16 @@ static char *app_get_pass(const char *arg, int keepbio)
                 return NULL;
             }
         } else {
-            BIO_printf(bio_err, "Invalid password argument \"%s\"\n", arg);
+            /* argument syntax error; do not reveal too much about arg */
+            tmp = strchr(arg, ':');
+            if (tmp == NULL || tmp - arg > PASS_SOURCE_SIZE_MAX)
+                BIO_printf(bio_err,
+                           "Invalid password argument, missing ':' within the first %d chars\n",
+                           PASS_SOURCE_SIZE_MAX + 1);
+            else
+                BIO_printf(bio_err,
+                           "Invalid password argument, starting with \"%.*s\"\n",
+                           (int)(tmp - arg + 1), arg);
             return NULL;
         }
     }
@@ -1611,8 +1623,10 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
     if (n == NULL)
         return NULL;
     work = OPENSSL_strdup(cp);
-    if (work == NULL)
+    if (work == NULL) {
+        BIO_printf(bio_err, "%s: Error copying name input\n", opt_getprog());
         goto err;
+    }
 
     while (*cp) {
         char *bp = work;
@@ -1627,7 +1641,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
             *bp++ = *cp++;
         if (*cp == '\0') {
             BIO_printf(bio_err,
-                    "%s: Hit end of string before finding the equals.\n",
+                    "%s: Hit end of string before finding the '='\n",
                     opt_getprog());
             goto err;
         }
@@ -1643,8 +1657,8 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
             }
             if (*cp == '\\' && *++cp == '\0') {
                 BIO_printf(bio_err,
-                        "%s: escape character at end of string\n",
-                        opt_getprog());
+                           "%s: escape character at end of string\n",
+                           opt_getprog());
                 goto err;
             }
         }
@@ -1658,7 +1672,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         nid = OBJ_txt2nid(typestr);
         if (nid == NID_undef) {
             BIO_printf(bio_err, "%s: Skipping unknown attribute \"%s\"\n",
-                      opt_getprog(), typestr);
+                       opt_getprog(), typestr);
             continue;
         }
         if (*valstr == '\0') {
@@ -1669,8 +1683,11 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         }
         if (!X509_NAME_add_entry_by_NID(n, nid, chtype,
                                         valstr, strlen((char *)valstr),
-                                        -1, ismulti ? -1 : 0))
+                                        -1, ismulti ? -1 : 0)) {
+            BIO_printf(bio_err, "%s: Error adding name attribute \"/%s=%s\"\n",
+                       opt_getprog(), typestr ,valstr);
             goto err;
+        }
     }
 
     OPENSSL_free(work);
@@ -2243,8 +2260,6 @@ BIO *dup_bio_in(int format)
                       BIO_NOCLOSE | (FMT_istext(format) ? BIO_FP_TEXT : 0));
 }
 
-static BIO_METHOD *prefix_method = NULL;
-
 BIO *dup_bio_out(int format)
 {
     BIO *b = BIO_new_fp(stdout,
@@ -2256,10 +2271,9 @@ BIO *dup_bio_out(int format)
         b = BIO_push(BIO_new(BIO_f_linebuffer()), b);
 #endif
 
-    if (FMT_istext(format) && (prefix = getenv("HARNESS_OSSL_PREFIX")) != NULL) {
-        if (prefix_method == NULL)
-            prefix_method = apps_bf_prefix();
-        b = BIO_push(BIO_new(prefix_method), b);
+    if (FMT_istext(format)
+        && (prefix = getenv("HARNESS_OSSL_PREFIX")) != NULL) {
+        b = BIO_push(BIO_new(apps_bf_prefix()), b);
         BIO_ctrl(b, PREFIX_CTRL_SET_PREFIX, 0, prefix);
     }
 
@@ -2277,8 +2291,13 @@ BIO *dup_bio_err(int format)
     return b;
 }
 
+/*
+ * Because the prefix method is created dynamically, we must also be able
+ * to destroy it.
+ */
 void destroy_prefix_method(void)
 {
+    BIO_METHOD *prefix_method = apps_bf_prefix();
     BIO_meth_free(prefix_method);
     prefix_method = NULL;
 }

@@ -11,6 +11,10 @@
 #ifndef HEADER_SSLERR_H
 # define HEADER_SSLERR_H
 
+# ifndef HEADER_SYMHACKS_H
+#  include <openssl/symhacks.h>
+# endif
+
 # ifdef  __cplusplus
 extern "C"
 # endif
@@ -43,7 +47,6 @@ int ERR_load_SSL_strings(void);
 # define SSL_F_DO_SSL3_WRITE                              104
 # define SSL_F_DTLS1_BUFFER_RECORD                        247
 # define SSL_F_DTLS1_CHECK_TIMEOUT_NUM                    318
-# define SSL_F_DTLS1_HEARTBEAT                            305
 # define SSL_F_DTLS1_HM_FRAGMENT_NEW                      623
 # define SSL_F_DTLS1_PREPROCESS_FRAGMENT                  288
 # define SSL_F_DTLS1_PROCESS_BUFFERED_RECORDS             424
@@ -214,6 +217,7 @@ int ERR_load_SSL_strings(void);
 # define SSL_F_SSL_RENEGOTIATE_ABBREVIATED                546
 # define SSL_F_SSL_SCAN_CLIENTHELLO_TLSEXT                320
 # define SSL_F_SSL_SCAN_SERVERHELLO_TLSEXT                321
+# define SSL_F_SSL_SENDFILE                               639
 # define SSL_F_SSL_SESSION_DUP                            348
 # define SSL_F_SSL_SESSION_NEW                            189
 # define SSL_F_SSL_SESSION_PRINT_FP                       190
@@ -716,8 +720,6 @@ int ERR_load_SSL_strings(void);
 # define SSL_R_TLSV1_CERTIFICATE_UNOBTAINABLE             1111
 # define SSL_R_TLSV1_UNRECOGNIZED_NAME                    1112
 # define SSL_R_TLSV1_UNSUPPORTED_EXTENSION                1110
-# define SSL_R_TLS_HEARTBEAT_PEER_DOESNT_ACCEPT           365
-# define SSL_R_TLS_HEARTBEAT_PENDING                      366
 # define SSL_R_TLS_ILLEGAL_EXPORTER_LABEL                 367
 # define SSL_R_TLS_INVALID_ECPOINTFORMAT_LIST             157
 # define SSL_R_TOO_MANY_KEY_UPDATES                       132

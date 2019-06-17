@@ -10,6 +10,7 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include "internal/evp_int.h"
+#include "evp_locl.h"
 
 /* MAC PKEY context structure */
 
@@ -71,18 +72,28 @@ static int pkey_mac_init(EVP_PKEY_CTX *ctx)
 
 static void pkey_mac_cleanup(EVP_PKEY_CTX *ctx);
 
-static int pkey_mac_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
+static int pkey_mac_copy(EVP_PKEY_CTX *dst, const EVP_PKEY_CTX *src)
 {
     MAC_PKEY_CTX *sctx, *dctx;
 
-    if (!pkey_mac_init(dst))
+    sctx = EVP_PKEY_CTX_get_data(src);
+    if (sctx->ctx->data == NULL)
         return 0;
 
-    sctx = EVP_PKEY_CTX_get_data(src);
-    dctx = EVP_PKEY_CTX_get_data(dst);
+    dctx = OPENSSL_zalloc(sizeof(*dctx));
+    if (dctx == NULL) {
+        EVPerr(EVP_F_PKEY_MAC_COPY, ERR_R_MALLOC_FAILURE);
+        return 0;
+    }
 
-    if (!EVP_MAC_CTX_copy(dctx->ctx, sctx->ctx))
+    EVP_PKEY_CTX_set_data(dst, dctx);
+    dst->keygen_info_count = 0;
+
+    dctx->ctx = EVP_MAC_CTX_dup(sctx->ctx);
+    if (dctx->ctx == NULL)
         goto err;
+
+    dctx->type = sctx->type;
 
     switch (dctx->type) {
     case MAC_TYPE_RAW:
@@ -100,7 +111,7 @@ static int pkey_mac_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src)
     }
     return 1;
  err:
-    pkey_mac_cleanup (dst);
+    pkey_mac_cleanup(dst);
     return 0;
 }
 
@@ -141,14 +152,10 @@ static int pkey_mac_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         break;
     case MAC_TYPE_MAC:
         {
-            EVP_MAC_CTX *cmkey = EVP_MAC_CTX_new_id(nid);
+            EVP_MAC_CTX *cmkey = EVP_MAC_CTX_dup(hctx->ctx);
 
             if (cmkey == NULL)
                 return 0;
-            if (!EVP_MAC_CTX_copy(cmkey, hctx->ctx)) {
-                EVP_MAC_CTX_free(cmkey);
-                return 0;
-            }
             EVP_PKEY_assign(pkey, nid, cmkey);
         }
         break;
@@ -231,9 +238,9 @@ static int pkey_mac_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
                 int rv;
 
                 if ((rv = EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_ENGINE,
-                                       ctx->engine)) < 0
+                                       ctx->engine)) <= 0
                     || (rv = EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_CIPHER,
-                                          p2)) < 0
+                                          p2)) <= 0
                     || !(rv = EVP_MAC_init(hctx->ctx)))
                     return rv;
             }
@@ -249,13 +256,18 @@ static int pkey_mac_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
         case MAC_TYPE_RAW:
             hctx->raw_data.md = p2;
             break;
-        case MAC_TYPE_MAC:
-            if (ctx->pkey != NULL
-                && !EVP_MAC_CTX_copy(hctx->ctx,
-                                     (EVP_MAC_CTX *)ctx->pkey->pkey.ptr))
-                return 0;
-            if (!EVP_MAC_init(hctx->ctx))
-                return 0;
+        case MAC_TYPE_MAC: {
+                EVP_MAC_CTX *new_mac_ctx;
+
+                if (ctx->pkey == NULL)
+                    return 0;
+                new_mac_ctx = EVP_MAC_CTX_dup((EVP_MAC_CTX *)ctx->pkey
+                                              ->pkey.ptr);
+                if (new_mac_ctx == NULL)
+                    return 0;
+                EVP_MAC_CTX_free(hctx->ctx);
+                hctx->ctx = new_mac_ctx;
+            }
             break;
         default:
             /* This should be dead code */
@@ -275,7 +287,7 @@ static int pkey_mac_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
                 return 0;
             break;
         case MAC_TYPE_MAC:
-            if (!EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_KEY, p2, p1))
+            if (EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_KEY, p2, p1) <= 0)
                 return 0;
             break;
         default:
@@ -296,11 +308,11 @@ static int pkey_mac_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
                     (ASN1_OCTET_STRING *)ctx->pkey->pkey.ptr;
 
                 if ((rv = EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_ENGINE,
-                                       ctx->engine)) < 0
+                                       ctx->engine)) <= 0
                     || (rv = EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_MD,
-                                          hctx->raw_data.md)) < 0
+                                          hctx->raw_data.md)) <= 0
                     || (rv = EVP_MAC_ctrl(hctx->ctx, EVP_MAC_CTRL_SET_KEY,
-                                          key->data, key->length)) < 0)
+                                          key->data, key->length)) <= 0)
                     return rv;
             }
             break;

@@ -12,7 +12,9 @@
 #include "internal/cryptlib.h"
 #include "bn_lcl.h"
 #include <openssl/rand.h>
+#include <openssl/rand_drbg.h>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 typedef enum bnrand_flag_e {
     NORMAL, TESTING, PRIVATE
@@ -43,7 +45,16 @@ static int bnrand(BNRAND_FLAG flag, BIGNUM *rnd, int bits, int top, int bottom)
     }
 
     /* make a random number and set the top and bottom bits */
+    /*
+     * TODO(3.0): Temporarily disable RAND code in the FIPS module until we
+     * have made it available there.
+     */
+#if defined(FIPS_MODE)
+    BNerr(BN_F_BNRAND, ERR_R_INTERNAL_ERROR);
+    goto err;
+#else
     b = flag == NORMAL ? RAND_bytes(buf, bytes) : RAND_priv_bytes(buf, bytes);
+#endif
     if (b <= 0)
         goto err;
 
@@ -55,8 +66,14 @@ static int bnrand(BNRAND_FLAG flag, BIGNUM *rnd, int bits, int top, int bottom)
         unsigned char c;
 
         for (i = 0; i < bytes; i++) {
+    /*
+     * TODO(3.0): Temporarily disable RAND code in the FIPS module until we
+     * have made it available there.
+     */
+#if !defined(FIPS_MODE)
             if (RAND_bytes(&c, 1) <= 0)
                 goto err;
+#endif
             if (c >= 128 && i > 0)
                 buf[i] = buf[i - 1];
             else if (c < 42)
@@ -206,7 +223,7 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
                           const BIGNUM *priv, const unsigned char *message,
                           size_t message_len, BN_CTX *ctx)
 {
-    SHA512_CTX sha;
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
     /*
      * We use 512 bits of random data per iteration to ensure that we have at
      * least |range| bits of randomness.
@@ -217,8 +234,22 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
     /* We generate |range|+8 bytes of random output. */
     const unsigned num_k_bytes = BN_num_bytes(range) + 8;
     unsigned char private_bytes[96];
-    unsigned char *k_bytes;
+    unsigned char *k_bytes = NULL;
     int ret = 0;
+    EVP_MD *md = NULL;
+    OPENSSL_CTX *libctx = (ctx != NULL) ? bn_get_lib_ctx(ctx) : NULL;
+    /*
+     * TODO(3.0): Temporarily disable RAND code in the FIPS module until we
+     * have made it available there.
+     */
+#ifdef FIPS_MODE
+    RAND_DRBG *privdrbg = NULL;
+#else
+    RAND_DRBG *privdrbg = OPENSSL_CTX_get0_private_drbg(libctx);
+#endif
+
+    if (mdctx == NULL || privdrbg == NULL)
+        goto err;
 
     k_bytes = OPENSSL_malloc(num_k_bytes);
     if (k_bytes == NULL)
@@ -238,15 +269,29 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
     memcpy(private_bytes, priv->d, todo);
     memset(private_bytes + todo, 0, sizeof(private_bytes) - todo);
 
+    md = EVP_MD_fetch(libctx, "SHA512", NULL);
+    if (md == NULL) {
+        BNerr(BN_F_BN_GENERATE_DSA_NONCE, BN_R_NO_SUITABLE_DIGEST);
+        goto err;
+    }
     for (done = 0; done < num_k_bytes;) {
-        if (RAND_priv_bytes(random_bytes, sizeof(random_bytes)) != 1)
+        /*
+         * TODO(3.0): Temporarily disable RAND code in the FIPS module until we
+         * have made it available there.
+         */
+#if !defined(FIPS_MODE)
+        if (!RAND_DRBG_bytes(privdrbg, random_bytes, sizeof(random_bytes)))
             goto err;
-        SHA512_Init(&sha);
-        SHA512_Update(&sha, &done, sizeof(done));
-        SHA512_Update(&sha, private_bytes, sizeof(private_bytes));
-        SHA512_Update(&sha, message, message_len);
-        SHA512_Update(&sha, random_bytes, sizeof(random_bytes));
-        SHA512_Final(digest, &sha);
+#endif
+
+        if (!EVP_DigestInit_ex(mdctx, md, NULL)
+                || !EVP_DigestUpdate(mdctx, &done, sizeof(done))
+                || !EVP_DigestUpdate(mdctx, private_bytes,
+                                     sizeof(private_bytes))
+                || !EVP_DigestUpdate(mdctx, message, message_len)
+                || !EVP_DigestUpdate(mdctx, random_bytes, sizeof(random_bytes))
+                || !EVP_DigestFinal_ex(mdctx, digest, NULL))
+            goto err;
 
         todo = num_k_bytes - done;
         if (todo > SHA512_DIGEST_LENGTH)
@@ -262,6 +307,8 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
     ret = 1;
 
  err:
+    EVP_MD_CTX_free(mdctx);
+    EVP_MD_meth_free(md);
     OPENSSL_free(k_bytes);
     OPENSSL_cleanse(private_bytes, sizeof(private_bytes));
     return ret;

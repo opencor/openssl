@@ -23,6 +23,7 @@
   * NOTES.WIN (any supported Windows)
   * NOTES.DJGPP (DOS platform with DJGPP)
   * NOTES.ANDROID (obviously Android [NDK])
+  * NOTES.VALGRIND (testing with Valgrind)
 
  Notational conventions in this document
  ---------------------------------------
@@ -296,9 +297,25 @@
                    Typically OpenSSL will automatically load a system config
                    file which configures default ssl options.
 
+  enable-buildtest-c++
+                   While testing, generate C++ buildtest files that
+                   simply check that the public OpenSSL header files
+                   are usable standalone with C++.
+
+                   Enabling this option demands extra care.  For any
+                   compiler flag given directly as configuration
+                   option, you must ensure that it's valid for both
+                   the C and the C++ compiler.  If not, the C++ build
+                   test will most likely break.  As an alternative,
+                   you can use the language specific variables, CFLAGS
+                   and CXXFLAGS.
+
   no-capieng
                    Don't build the CAPI engine. This option will be forced if
                    on a platform that does not support CAPI.
+
+  no-cmp
+                   Don't build support for CMP features
 
   no-cms
                    Don't build support for CMS features
@@ -339,9 +356,6 @@
                    Build the /dev/crypto engine.  It is automatically selected
                    on BSD implementations, in which case it can be disabled with
                    no-devcryptoeng.
-
-  no-dso
-                   Don't build support for loading Dynamic Shared Objects.
 
   no-dynamic-engine
                    Don't build the dynamically loaded engines. This only has an
@@ -384,6 +398,9 @@
                    Don't compile in filename and line number information (e.g.
                    for errors and memory allocation).
 
+  no-fips
+                   Don't compile the FIPS module
+
   enable-fuzz-libfuzzer, enable-fuzz-afl
                    Build with support for fuzzing using either libfuzzer or AFL.
                    These are developer options only. They may not work on all
@@ -396,11 +413,16 @@
                    available if the GOST algorithms are also available through
                    loading an externally supplied engine.
 
-  no-hw-padlock
-                   Don't build the padlock engine.
+  no-legacy
+                   Don't build the legacy provider. Disabling this also disables
+                   the legacy algorithms: MD2 (already disabled by default).
 
   no-makedepend
                    Don't generate dependencies.
+
+  no-module
+                   Don't build any dynamically loadable engines.  This also
+                   implies 'no-dynamic-engine'.
 
   no-multiblock
                    Don't build support for writing multiple records in one
@@ -412,6 +434,11 @@
 
   no-ocsp
                    Don't build support for OCSP.
+
+  no-padlockeng
+  no-hw-padlock
+                   Don't build the padlock engine.
+                   ('no-hw-padlock' is deprecated and should not be used)
 
   no-pic
                    Don't build with support for Position Independent Code.
@@ -508,6 +535,10 @@
                    require additional system-dependent options! See "Note on
                    multi-threading" below.
 
+  enable-trace
+                   Build with support for the integrated tracing api. See manual pages
+                   OSSL_trace_set_channel(3) and OSSL_trace_enabled(3) for details.
+
   no-ts
                    Don't build Time Stamping Authority support.
 
@@ -526,6 +557,9 @@
   enable-unit-test
                    Enable additional unit test APIs. This should not typically
                    be used in production deployments.
+
+  no-uplink
+                   Don't build support for UPLINK interface.
 
   enable-weak-ssl-ciphers
                    Build support for SSL/TLS ciphers that are considered "weak"
@@ -673,6 +707,11 @@
 
                         CC=gcc CROSS_COMPILE=x86_64-w64-mingw32- \
                         ./config -DCOOKIE
+
+                   If CC is set, it is advisable to also set CXX to ensure
+                   both C and C++ compilers are in the same "family".  This
+                   becomes relevant with 'enable-external-tests' and
+                   'enable-buildtest-c++'.
 
   reconf
   reconfigure
@@ -1166,6 +1205,11 @@
  Example: All tests in test groups 80 to 99 except for tests in group 90:
 
  $ make TESTS='[89]? -90'
+
+To stochastically verify that the algorithm that produces uniformly distributed
+random numbers is operating correctly (with a false positive rate of 0.01%):
+
+ $ ./util/shlib_wrap.sh test/bntest -stochastic
 
  Note on multi-threading
  -----------------------

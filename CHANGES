@@ -9,6 +9,107 @@
 
  Changes between 1.1.1 and 3.0.0 [xx XXX xxxx]
 
+  *) Use SHA256 as the default digest for TS query in the ts app.
+     [Tomas Mraz]
+
+  *) Change PBKDF2 to conform to SP800-132 instead of the older PKCS5 RFC2898.
+     This checks that the salt length is at least 128 bits, the derived key
+     length is at least 112 bits, and that the iteration count is at least 1000.
+     For backwards compatibility these checks are disabled by default in the
+     default provider, but are enabled by default in the fips provider.
+     To enable or disable these checks use the control
+     EVP_KDF_CTRL_SET_PBKDF2_PKCS5_MODE.
+     [Shane Lontis]
+
+  *) Default cipher lists/suites are now avaialble via a function, the
+     #defines are deprecated.
+     [Todd Short]
+
+  *) Add target VC-WIN32-UWP, VC-WIN64A-UWP, VC-WIN32-ARM-UWP and
+     VC-WIN64-ARM-UWP in Windows OneCore target for making building libraries
+     for Windows Store apps easier. Also, the "no-uplink" option has been added.
+     [Kenji Mouri]
+
+  *) Join the directories crypto/x509 and crypto/x509v3
+     [Richard Levitte]
+
+  *) Change the default RSA, DSA and DH size to 2048 bit instead of 1024.
+     This changes the size when using the genpkey app when no size is given. It
+     fixes an omission in earlier changes that changed all RSA, DSA and DH
+     generation apps to use 2048 bits by default.
+     [Kurt Roeckx]
+
+  *) Added command 'openssl kdf' that uses the EVP_KDF API.
+     [Shane Lontis]
+
+  *) Added command 'openssl mac' that uses the EVP_MAC API.
+     [Shane Lontis]
+
+  *) Added OPENSSL_info() to get diverse built-in OpenSSL data, such
+     as default directories.  Also added the command 'openssl info'
+     for scripting purposes.
+     [Richard Levitte]
+
+  *) The functions AES_ige_encrypt() and AES_bi_ige_encrypt() have been
+     deprecated. These undocumented functions were never integrated into the EVP
+     layer and implement the AES Infinite Garble Extension (IGE) mode and AES
+     Bi-directional IGE mode. These modes were never formally standardised and
+     usage of these functions is believed to be very small. In particular
+     AES_bi_ige_encrypt() has a known bug. It accepts 2 AES keys, but only one
+     is ever used. The security implications are believed to be minimal, but
+     this issue was never fixed for backwards compatibility reasons. New code
+     should not use these modes.
+     [Matt Caswell]
+
+  *) Add prediction resistance to the DRBG reseeding process.
+     [Paul Dale]
+
+  *) Limit the number of blocks in a data unit for AES-XTS to 2^20 as
+     mandated by IEEE Std 1619-2018.
+     [Paul Dale]
+
+  *) Added newline escaping functionality to a filename when using openssl dgst.
+     This output format is to replicate the output format found in the '*sum'
+     checksum programs. This aims to preserve backward compatibility.
+     [Matt Eaton, Richard Levitte, and Paul Dale]
+
+  *) Removed the heartbeat message in DTLS feature, as it has very
+     little usage and doesn't seem to fulfill a valuable purpose.
+     The configuration option is now deprecated.
+     [Richard Levitte]
+
+  *) Changed the output of 'openssl {digestname} < file' to display the
+     digest name in its output.
+     [Richard Levitte]
+
+  *) Added a new generic trace API which provides support for enabling
+     instrumentation through trace output. This feature is mainly intended
+     as an aid for developers and is disabled by default. To utilize it,
+     OpenSSL needs to be configured with the `enable-trace` option.
+
+     If the tracing API is enabled, the application can activate trace output
+     by registering BIOs as trace channels for a number of tracing and debugging
+     categories.
+
+     The 'openssl' application has been expanded to enable any of the types
+     available via environment variables defined by the user, and serves as
+     one possible example on how to use this functionality.
+     [Richard Levitte & Matthias St. Pierre]
+
+  *) Added build tests for C++.  These are generated files that only do one
+     thing, to include one public OpenSSL head file each.  This tests that
+     the public header files can be usefully included in a C++ application.
+
+     This test isn't enabled by default.  It can be enabled with the option
+     'enable-buildtest-c++'.
+     [Richard Levitte]
+
+  *) Add Single Step KDF (EVP_KDF_SS) to EVP_KDF.
+     [Shane Lontis]
+
+  *) Add KMAC to EVP_MAC.
+     [Shane Lontis]
+
   *) Added property based algorithm implementation selection framework to
      the core.
      [Paul Dale]

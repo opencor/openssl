@@ -888,8 +888,7 @@ __owur static int ecp_nistz256_mult_precompute(EC_GROUP *group, BN_CTX *ctx)
     ret = 1;
 
  err:
-    if (ctx != NULL)
-        BN_CTX_end(ctx);
+    BN_CTX_end(ctx);
     BN_CTX_free(new_ctx);
 
     EC_nistz256_pre_comp_free(pre_comp);
@@ -1468,7 +1467,7 @@ void ecp_nistz256_ord_mul_mont(BN_ULONG res[P256_LIMBS],
                                const BN_ULONG b[P256_LIMBS]);
 void ecp_nistz256_ord_sqr_mont(BN_ULONG res[P256_LIMBS],
                                const BN_ULONG a[P256_LIMBS],
-                               int rep);
+                               BN_ULONG rep);
 
 static int ecp_nistz256_inv_mod_ord(const EC_GROUP *group, BIGNUM *r,
                                     const BIGNUM *x, BN_CTX *ctx)

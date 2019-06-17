@@ -1200,6 +1200,11 @@
 #define NID_sm3WithRSAEncryption                1144
 #define OBJ_sm3WithRSAEncryption                OBJ_sm_scheme,504L
 
+#define SN_SM2_with_SM3         "SM2-SM3"
+#define LN_SM2_with_SM3         "SM2-with-SM3"
+#define NID_SM2_with_SM3                1204
+#define OBJ_SM2_with_SM3                OBJ_sm_scheme,501L
+
 #define LN_hmacWithSHA224               "hmacWithSHA224"
 #define NID_hmacWithSHA224              798
 #define OBJ_hmacWithSHA224              OBJ_rsadsi,2L,8L
@@ -4301,7 +4306,7 @@
 
 #define SN_id_tc26_wrap_gostr3412_2015_kuznyechik_kexp15                "id-tc26-wrap-gostr3412-2015-kuznyechik-kexp15"
 #define NID_id_tc26_wrap_gostr3412_2015_kuznyechik_kexp15               1183
-#define OBJ_id_tc26_wrap_gostr3412_2015_kuznyechik_kexp15               OBJ_id_tc26_wrap_gostr3412_2015_magma,1L
+#define OBJ_id_tc26_wrap_gostr3412_2015_kuznyechik_kexp15               OBJ_id_tc26_wrap_gostr3412_2015_kuznyechik,1L
 
 #define SN_id_tc26_constants            "id-tc26-constants"
 #define NID_id_tc26_constants           994
@@ -4990,6 +4995,18 @@
 #define SN_hkdf         "HKDF"
 #define LN_hkdf         "hkdf"
 #define NID_hkdf                1036
+
+#define SN_sshkdf               "SSHKDF"
+#define LN_sshkdf               "sshkdf"
+#define NID_sshkdf              1203
+
+#define SN_sskdf                "SSKDF"
+#define LN_sskdf                "sskdf"
+#define NID_sskdf               1205
+
+#define SN_x963kdf              "X963KDF"
+#define LN_x963kdf              "x963kdf"
+#define NID_x963kdf             1206
 
 #define SN_id_pkinit            "id-pkinit"
 #define NID_id_pkinit           1031

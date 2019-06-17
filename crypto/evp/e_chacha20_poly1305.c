@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2019 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -20,7 +20,7 @@
 
 typedef struct {
     union {
-        double align;   /* this ensures even sizeof(EVP_CHACHA_KEY)%8==0 */
+        OSSL_UNION_ALIGN;  /* this ensures even sizeof(EVP_CHACHA_KEY)%8==0 */
         unsigned int d[CHACHA_KEY_SIZE / 4];
     } key;
     unsigned int  counter[CHACHA_CTR_SIZE / 4];
@@ -29,6 +29,8 @@ typedef struct {
 } EVP_CHACHA_KEY;
 
 #define data(ctx)   ((EVP_CHACHA_KEY *)(ctx)->cipher_data)
+
+#define CHACHA20_POLY1305_MAX_IVLEN     12
 
 static int chacha_init_key(EVP_CIPHER_CTX *ctx,
                            const unsigned char user_key[CHACHA_KEY_SIZE],
@@ -533,7 +535,7 @@ static int chacha20_poly1305_ctrl(EVP_CIPHER_CTX *ctx, int type, int arg,
         return 1;
 
     case EVP_CTRL_AEAD_SET_IVLEN:
-        if (arg <= 0 || arg > CHACHA_CTR_SIZE)
+        if (arg <= 0 || arg > CHACHA20_POLY1305_MAX_IVLEN)
             return 0;
         actx->nonce_len = arg;
         return 1;

@@ -133,6 +133,12 @@ struct gcm128_context {
 #endif
 };
 
+/*
+ * The maximum permitted number of cipher blocks per data unit in XTS mode.
+ * Reference IEEE Std 1619-2018.
+ */
+#define XTS_MAX_BLOCKS_PER_DATA_UNIT            (1<<20)
+
 struct xts128_context {
     void *key1, *key2;
     block128_f block1, block2;
@@ -207,7 +213,6 @@ struct siv128_context {
     SIV_BLOCK tag;
     EVP_CIPHER_CTX *cipher_ctx;
     EVP_MAC_CTX *mac_ctx_init;
-    EVP_MAC_CTX *mac_ctx;
     int final_ret;
     int crypto_ok;
 };

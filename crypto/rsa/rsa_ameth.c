@@ -447,7 +447,7 @@ static int rsa_sig_print(BIO *bp, const X509_ALGOR *sigalg,
         RSA_PSS_PARAMS_free(pss);
         if (!rv)
             return 0;
-    } else if (!sig && BIO_puts(bp, "\n") <= 0) {
+    } else if (BIO_puts(bp, "\n") <= 0) {
         return 0;
     }
     if (sig)
@@ -583,10 +583,12 @@ static RSA_PSS_PARAMS *rsa_ctx_to_pss(EVP_PKEY_CTX *pkctx)
         return NULL;
     if (saltlen == -1) {
         saltlen = EVP_MD_size(sigmd);
-    } else if (saltlen == -2) {
+    } else if (saltlen == -2 || saltlen == -3) {
         saltlen = EVP_PKEY_size(pk) - EVP_MD_size(sigmd) - 2;
         if ((EVP_PKEY_bits(pk) & 0x7) == 1)
             saltlen--;
+        if (saltlen < 0)
+            return NULL;
     }
 
     return rsa_pss_params_create(sigmd, mgf1md, saltlen);

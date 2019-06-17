@@ -33,7 +33,15 @@
 # define MASTER_RESEED_TIME_INTERVAL             (60*60)   /* 1 hour */
 # define SLAVE_RESEED_TIME_INTERVAL              (7*60)    /* 7 minutes */
 
-
+/*
+ * The number of bytes that constitutes an atomic lump of entropy with respect
+ * to the FIPS 140-2 section 4.9.2 Conditional Tests.  The size is somewhat
+ * arbitrary, the smaller the value, the less entropy is consumed on first
+ * read but the higher the probability of the test failing by accident.
+ *
+ * The value is in bytes.
+ */
+#define CRNGT_BUFSIZ    16
 
 /*
  * Maximum input size for the DRBG (entropy, nonce, personalization string)
@@ -44,7 +52,8 @@
  */
 # define DRBG_MAX_LENGTH                         INT32_MAX
 
-
+/* The default nonce */
+# define DRBG_DEFAULT_PERS_STRING                "OpenSSL NIST SP 800-90A DRBG"
 
 /*
  * Maximum allocation size for RANDOM_POOL buffers
@@ -183,6 +192,8 @@ struct rand_pool_st {
  */
 struct rand_drbg_st {
     CRYPTO_RWLOCK *lock;
+    /* The library context this DRBG is associated with, if any */
+    OPENSSL_CTX *libctx;
     RAND_DRBG *parent;
     int secure; /* 1: allocated on the secure heap, 0: otherwise */
     int type; /* the nid of the underlying algorithm */
@@ -320,5 +331,15 @@ int rand_drbg_enable_locking(RAND_DRBG *drbg);
 int drbg_ctr_init(RAND_DRBG *drbg);
 int drbg_hash_init(RAND_DRBG *drbg);
 int drbg_hmac_init(RAND_DRBG *drbg);
+
+/*
+ * Entropy call back for the FIPS 140-2 section 4.9.2 Conditional Tests.
+ * These need to be exposed for the unit tests.
+ */
+int rand_crngt_get_entropy_cb(OPENSSL_CTX *ctx, unsigned char *buf,
+                              unsigned char *md, unsigned int *md_size);
+extern int (*crngt_get_entropy)(OPENSSL_CTX *ctx, unsigned char *buf,
+                                unsigned char *md,
+                                unsigned int *md_size);
 
 #endif

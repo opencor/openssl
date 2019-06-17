@@ -17,21 +17,20 @@
 #include "rand_lcl.h"
 #include "e_os.h"
 
-#ifndef OPENSSL_NO_ENGINE
+#ifndef FIPS_MODE
+# ifndef OPENSSL_NO_ENGINE
 /* non-NULL if default_RAND_meth is ENGINE-provided */
 static ENGINE *funct_ref;
 static CRYPTO_RWLOCK *rand_engine_lock;
-#endif
+# endif
 static CRYPTO_RWLOCK *rand_meth_lock;
 static const RAND_METHOD *default_RAND_meth;
 static CRYPTO_ONCE rand_init = CRYPTO_ONCE_STATIC_INIT;
 
-int rand_fork_count;
-
-static CRYPTO_RWLOCK *rand_nonce_lock;
-static int rand_nonce_count;
-
 static int rand_inited = 0;
+#endif /* FIPS_MODE */
+
+int rand_fork_count;
 
 #ifdef OPENSSL_RAND_SEED_RDTSC
 /*
@@ -137,7 +136,7 @@ size_t rand_drbg_get_entropy(RAND_DRBG *drbg,
     size_t entropy_available = 0;
     RAND_POOL *pool;
 
-    if (drbg->parent && drbg->strength > drbg->parent->strength) {
+    if (drbg->parent != NULL && drbg->strength > drbg->parent->strength) {
         /*
          * We currently don't support the algorithm from NIST SP 800-90C
          * 10.1.2 to use a weaker DRBG as source
@@ -155,7 +154,7 @@ size_t rand_drbg_get_entropy(RAND_DRBG *drbg,
             return 0;
     }
 
-    if (drbg->parent) {
+    if (drbg->parent != NULL) {
         size_t bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
         unsigned char *buffer = rand_pool_add_begin(pool, bytes_needed);
 
@@ -183,17 +182,6 @@ size_t rand_drbg_get_entropy(RAND_DRBG *drbg,
         }
 
     } else {
-        if (prediction_resistance) {
-            /*
-             * We don't have any entropy sources that comply with the NIST
-             * standard to provide prediction resistance (see NIST SP 800-90C,
-             * Section 5.4).
-             */
-            RANDerr(RAND_F_RAND_DRBG_GET_ENTROPY,
-                    RAND_R_PREDICTION_RESISTANCE_NOT_SUPPORTED);
-            goto err;
-        }
-
         /* Get entropy by polling system entropy sources. */
         entropy_available = rand_pool_acquire_entropy(pool);
     }
@@ -203,7 +191,6 @@ size_t rand_drbg_get_entropy(RAND_DRBG *drbg,
         *pout = rand_pool_detach(pool);
     }
 
- err:
     if (drbg->seed_pool == NULL)
         rand_pool_free(pool);
     return ret;
@@ -218,55 +205,6 @@ void rand_drbg_cleanup_entropy(RAND_DRBG *drbg,
 {
     if (drbg->seed_pool == NULL)
         OPENSSL_secure_clear_free(out, outlen);
-}
-
-
-/*
- * Implements the get_nonce() callback (see RAND_DRBG_set_callbacks())
- *
- */
-size_t rand_drbg_get_nonce(RAND_DRBG *drbg,
-                           unsigned char **pout,
-                           int entropy, size_t min_len, size_t max_len)
-{
-    size_t ret = 0;
-    RAND_POOL *pool;
-
-    struct {
-        void * instance;
-        int count;
-    } data = { 0 };
-
-    pool = rand_pool_new(0, min_len, max_len);
-    if (pool == NULL)
-        return 0;
-
-    if (rand_pool_add_nonce_data(pool) == 0)
-        goto err;
-
-    data.instance = drbg;
-    CRYPTO_atomic_add(&rand_nonce_count, 1, &data.count, rand_nonce_lock);
-
-    if (rand_pool_add(pool, (unsigned char *)&data, sizeof(data), 0) == 0)
-        goto err;
-
-    ret   = rand_pool_length(pool);
-    *pout = rand_pool_detach(pool);
-
- err:
-    rand_pool_free(pool);
-
-    return ret;
-}
-
-/*
- * Implements the cleanup_nonce() callback (see RAND_DRBG_set_callbacks())
- *
- */
-void rand_drbg_cleanup_nonce(RAND_DRBG *drbg,
-                             unsigned char *out, size_t outlen)
-{
-    OPENSSL_secure_clear_free(out, outlen);
 }
 
 /*
@@ -303,39 +241,32 @@ void rand_fork(void)
     rand_fork_count++;
 }
 
+#ifndef FIPS_MODE
 DEFINE_RUN_ONCE_STATIC(do_rand_init)
 {
-#ifndef OPENSSL_NO_ENGINE
+# ifndef OPENSSL_NO_ENGINE
     rand_engine_lock = CRYPTO_THREAD_lock_new();
     if (rand_engine_lock == NULL)
         return 0;
-#endif
+# endif
 
     rand_meth_lock = CRYPTO_THREAD_lock_new();
     if (rand_meth_lock == NULL)
-        goto err1;
-
-    rand_nonce_lock = CRYPTO_THREAD_lock_new();
-    if (rand_nonce_lock == NULL)
-        goto err2;
+        goto err;
 
     if (!rand_pool_init())
-        goto err3;
+        goto err;
 
     rand_inited = 1;
     return 1;
 
-err3:
-    CRYPTO_THREAD_lock_free(rand_nonce_lock);
-    rand_nonce_lock = NULL;
-err2:
+ err:
     CRYPTO_THREAD_lock_free(rand_meth_lock);
     rand_meth_lock = NULL;
-err1:
-#ifndef OPENSSL_NO_ENGINE
+# ifndef OPENSSL_NO_ENGINE
     CRYPTO_THREAD_lock_free(rand_engine_lock);
     rand_engine_lock = NULL;
-#endif
+# endif
     return 0;
 }
 
@@ -350,17 +281,16 @@ void rand_cleanup_int(void)
         meth->cleanup();
     RAND_set_rand_method(NULL);
     rand_pool_cleanup();
-#ifndef OPENSSL_NO_ENGINE
+# ifndef OPENSSL_NO_ENGINE
     CRYPTO_THREAD_lock_free(rand_engine_lock);
     rand_engine_lock = NULL;
-#endif
+# endif
     CRYPTO_THREAD_lock_free(rand_meth_lock);
     rand_meth_lock = NULL;
-    CRYPTO_THREAD_lock_free(rand_nonce_lock);
-    rand_nonce_lock = NULL;
     rand_inited = 0;
 }
 
+/* TODO(3.0): Do we need to handle this somehow in the FIPS module? */
 /*
  * RAND_close_seed_files() ensures that any seed file decriptors are
  * closed after use.
@@ -382,8 +312,6 @@ int RAND_poll(void)
 {
     int ret = 0;
 
-    RAND_POOL *pool = NULL;
-
     const RAND_METHOD *meth = RAND_get_rand_method();
 
     if (meth == RAND_OpenSSL()) {
@@ -400,9 +328,11 @@ int RAND_poll(void)
         return ret;
 
     } else {
+        RAND_POOL *pool = NULL;
+
         /* fill random pool and seed the current legacy RNG */
         pool = rand_pool_new(RAND_DRBG_STRENGTH,
-                             RAND_DRBG_STRENGTH / 8,
+                             (RAND_DRBG_STRENGTH + 7) / 8,
                              RAND_POOL_MAX_LENGTH);
         if (pool == NULL)
             return 0;
@@ -417,12 +347,14 @@ int RAND_poll(void)
             goto err;
 
         ret = 1;
+
+     err:
+        rand_pool_free(pool);
     }
 
-err:
-    rand_pool_free(pool);
     return ret;
 }
+#endif /* FIPS_MODE */
 
 /*
  * Allocate memory and initialize a new random pool
@@ -689,7 +621,7 @@ unsigned char *rand_pool_add_begin(RAND_POOL *pool, size_t len)
 
     if (pool->buffer == NULL) {
         RANDerr(RAND_F_RAND_POOL_ADD_BEGIN, ERR_R_INTERNAL_ERROR);
-        return 0;
+        return NULL;
     }
 
     return pool->buffer + pool->len;
@@ -719,23 +651,28 @@ int rand_pool_add_end(RAND_POOL *pool, size_t len, size_t entropy)
     return 1;
 }
 
+#ifndef FIPS_MODE
 int RAND_set_rand_method(const RAND_METHOD *meth)
 {
     if (!RUN_ONCE(&rand_init, do_rand_init))
         return 0;
 
     CRYPTO_THREAD_write_lock(rand_meth_lock);
-#ifndef OPENSSL_NO_ENGINE
+# ifndef OPENSSL_NO_ENGINE
     ENGINE_finish(funct_ref);
     funct_ref = NULL;
-#endif
+# endif
     default_RAND_meth = meth;
     CRYPTO_THREAD_unlock(rand_meth_lock);
     return 1;
 }
+#endif
 
 const RAND_METHOD *RAND_get_rand_method(void)
 {
+#ifdef FIPS_MODE
+    return NULL;
+#else
     const RAND_METHOD *tmp_meth = NULL;
 
     if (!RUN_ONCE(&rand_init, do_rand_init))
@@ -743,7 +680,7 @@ const RAND_METHOD *RAND_get_rand_method(void)
 
     CRYPTO_THREAD_write_lock(rand_meth_lock);
     if (default_RAND_meth == NULL) {
-#ifndef OPENSSL_NO_ENGINE
+# ifndef OPENSSL_NO_ENGINE
         ENGINE *e;
 
         /* If we have an engine that can do RAND, use it. */
@@ -755,16 +692,17 @@ const RAND_METHOD *RAND_get_rand_method(void)
             ENGINE_finish(e);
             default_RAND_meth = &rand_meth;
         }
-#else
+# else
         default_RAND_meth = &rand_meth;
-#endif
+# endif
     }
     tmp_meth = default_RAND_meth;
     CRYPTO_THREAD_unlock(rand_meth_lock);
     return tmp_meth;
+#endif
 }
 
-#ifndef OPENSSL_NO_ENGINE
+#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODE)
 int RAND_set_rand_engine(ENGINE *engine)
 {
     const RAND_METHOD *tmp_meth = NULL;
@@ -813,9 +751,9 @@ void RAND_add(const void *buf, int num, double randomness)
  */
 int RAND_priv_bytes(unsigned char *buf, int num)
 {
-    const RAND_METHOD *meth = RAND_get_rand_method();
     RAND_DRBG *drbg;
     int ret;
+    const RAND_METHOD *meth = RAND_get_rand_method();
 
     if (meth != RAND_OpenSSL())
         return RAND_bytes(buf, num);
@@ -838,7 +776,7 @@ int RAND_bytes(unsigned char *buf, int num)
     return -1;
 }
 
-#if !OPENSSL_API_1_1_0
+#if !OPENSSL_API_1_1_0 && !defined(FIPS_MODE)
 int RAND_pseudo_bytes(unsigned char *buf, int num)
 {
     const RAND_METHOD *meth = RAND_get_rand_method();

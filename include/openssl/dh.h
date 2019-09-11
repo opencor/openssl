@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -65,7 +65,7 @@ extern "C" {
 DECLARE_ASN1_ITEM(DHparams)
 
 # define DH_GENERATOR_2          2
-/* #define DH_GENERATOR_3       3 */
+# define DH_GENERATOR_3          3
 # define DH_GENERATOR_5          5
 
 /* DH_check error codes */
@@ -76,6 +76,8 @@ DECLARE_ASN1_ITEM(DHparams)
 # define DH_CHECK_Q_NOT_PRIME            0x10
 # define DH_CHECK_INVALID_Q_VALUE        0x20
 # define DH_CHECK_INVALID_J_VALUE        0x40
+# define DH_MODULUS_TOO_SMALL            0x80
+# define DH_MODULUS_TOO_LARGE            0x100
 
 /* DH_check_pub_key error codes */
 # define DH_CHECK_PUBKEY_TOO_SMALL       0x01
@@ -253,9 +255,7 @@ int DH_meth_set_generate_params(DH_METHOD *dhm,
                         EVP_PKEY_OP_PARAMGEN | EVP_PKEY_OP_KEYGEN, \
                         EVP_PKEY_CTRL_DH_NID, nid, NULL)
 
-# define EVP_PKEY_CTX_set_dh_pad(ctx, pad) \
-        EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DH, EVP_PKEY_OP_DERIVE, \
-                          EVP_PKEY_CTRL_DH_PAD, pad, NULL)
+int EVP_PKEY_CTX_set_dh_pad(EVP_PKEY_CTX *ctx, int pad);
 
 # define EVP_PKEY_CTX_set_dh_kdf_type(ctx, kdf) \
         EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DHX, \

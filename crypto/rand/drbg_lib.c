@@ -158,6 +158,14 @@ static void *drbg_ossl_ctx_new(OPENSSL_CTX *libctx)
     if (dgbl == NULL)
         return NULL;
 
+#ifndef FIPS_MODE
+    /*
+     * We need to ensure that base libcrypto thread handling has been
+     * initialised.
+     */
+     OPENSSL_init_crypto(0, NULL);
+#endif
+
     if (!CRYPTO_THREAD_init_local(&dgbl->private_drbg, NULL))
         goto err1;
 
@@ -182,6 +190,9 @@ static void *drbg_ossl_ctx_new(OPENSSL_CTX *libctx)
 static void drbg_ossl_ctx_free(void *vdgbl)
 {
     DRBG_GLOBAL *dgbl = vdgbl;
+
+    if (dgbl == NULL)
+        return;
 
     RAND_DRBG_free(dgbl->master_drbg);
     CRYPTO_THREAD_cleanup_local(&dgbl->private_drbg);
@@ -222,6 +233,9 @@ static void drbg_nonce_ossl_ctx_free(void *vdngbl)
 {
     DRBG_NONCE_GLOBAL *dngbl = vdngbl;
 
+    if (dngbl == NULL)
+        return;
+
     CRYPTO_THREAD_lock_free(dngbl->rand_nonce_lock);
 
     OPENSSL_free(dngbl);
@@ -257,7 +271,7 @@ size_t rand_drbg_get_nonce(RAND_DRBG *drbg,
         return 0;
 
     memset(&data, 0, sizeof(data));
-    pool = rand_pool_new(0, min_len, max_len);
+    pool = rand_pool_new(0, 0, min_len, max_len);
     if (pool == NULL)
         return 0;
 
@@ -287,7 +301,7 @@ size_t rand_drbg_get_nonce(RAND_DRBG *drbg,
 void rand_drbg_cleanup_nonce(RAND_DRBG *drbg,
                              unsigned char *out, size_t outlen)
 {
-    OPENSSL_secure_clear_free(out, outlen);
+    OPENSSL_clear_free(out, outlen);
 }
 
 /*
@@ -401,7 +415,7 @@ static RAND_DRBG *rand_drbg_new(OPENSSL_CTX *ctx,
 
     drbg->libctx = ctx;
     drbg->secure = secure && CRYPTO_secure_allocated(drbg);
-    drbg->fork_count = rand_fork_count;
+    drbg->fork_id = openssl_get_fork_id();
     drbg->parent = parent;
 
     if (parent == NULL) {
@@ -538,7 +552,7 @@ int RAND_DRBG_instantiate(RAND_DRBG *drbg,
     /*
      * NIST SP800-90Ar1 section 9.1 says you can combine getting the entropy
      * and nonce in 1 call by increasing the entropy with 50% and increasing
-     * the minimum length to accomadate the length of the nonce.
+     * the minimum length to accommodate the length of the nonce.
      * We do this in case a nonce is require and get_nonce is NULL.
      */
     if (drbg->min_noncelen > 0 && drbg->get_nonce == NULL) {
@@ -815,6 +829,7 @@ int RAND_DRBG_generate(RAND_DRBG *drbg, unsigned char *out, size_t outlen,
                        int prediction_resistance,
                        const unsigned char *adin, size_t adinlen)
 {
+    int fork_id;
     int reseed_required = 0;
 
     if (drbg->state != DRBG_READY) {
@@ -840,8 +855,10 @@ int RAND_DRBG_generate(RAND_DRBG *drbg, unsigned char *out, size_t outlen,
         return 0;
     }
 
-    if (drbg->fork_count != rand_fork_count) {
-        drbg->fork_count = rand_fork_count;
+    fork_id = openssl_get_fork_id();
+
+    if (drbg->fork_id != fork_id) {
+        drbg->fork_id = fork_id;
         reseed_required = 1;
     }
 
@@ -901,7 +918,7 @@ int RAND_DRBG_bytes(RAND_DRBG *drbg, unsigned char *out, size_t outlen)
     if (drbg->adin_pool == NULL) {
         if (drbg->type == 0)
             goto err;
-        drbg->adin_pool = rand_pool_new(0, 0, drbg->max_adinlen);
+        drbg->adin_pool = rand_pool_new(0, 0, 0, drbg->max_adinlen);
         if (drbg->adin_pool == NULL)
             goto err;
     }
@@ -1137,10 +1154,9 @@ err:
     return NULL;
 }
 
-void drbg_delete_thread_state(void)
+static void drbg_delete_thread_state(void *arg)
 {
-    /* TODO(3.0): Other PRs will pass the ctx as a param to this function */
-    OPENSSL_CTX *ctx = NULL;
+    OPENSSL_CTX *ctx = arg;
     DRBG_GLOBAL *dgbl = drbg_get_global(ctx);
     RAND_DRBG *drbg;
 
@@ -1332,7 +1348,8 @@ RAND_DRBG *OPENSSL_CTX_get0_public_drbg(OPENSSL_CTX *ctx)
 
     drbg = CRYPTO_THREAD_get_local(&dgbl->public_drbg);
     if (drbg == NULL) {
-        if (!ossl_init_thread_start(OPENSSL_INIT_THREAD_RAND))
+        ctx = openssl_ctx_get_concrete(ctx);
+        if (!ossl_init_thread_start(NULL, ctx, drbg_delete_thread_state))
             return NULL;
         drbg = drbg_setup(ctx, dgbl->master_drbg, RAND_DRBG_TYPE_PUBLIC);
         CRYPTO_THREAD_set_local(&dgbl->public_drbg, drbg);
@@ -1359,7 +1376,8 @@ RAND_DRBG *OPENSSL_CTX_get0_private_drbg(OPENSSL_CTX *ctx)
 
     drbg = CRYPTO_THREAD_get_local(&dgbl->private_drbg);
     if (drbg == NULL) {
-        if (!ossl_init_thread_start(OPENSSL_INIT_THREAD_RAND))
+        ctx = openssl_ctx_get_concrete(ctx);
+        if (!ossl_init_thread_start(NULL, ctx, drbg_delete_thread_state))
             return NULL;
         drbg = drbg_setup(ctx, dgbl->master_drbg, RAND_DRBG_TYPE_PRIVATE);
         CRYPTO_THREAD_set_local(&dgbl->private_drbg, drbg);

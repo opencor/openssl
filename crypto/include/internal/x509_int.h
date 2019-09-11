@@ -71,6 +71,9 @@ struct X509_req_st {
     ASN1_BIT_STRING *signature; /* signature */
     CRYPTO_REF_COUNT references;
     CRYPTO_RWLOCK *lock;
+# ifndef OPENSSL_NO_SM2
+    ASN1_OCTET_STRING *sm2_id;
+# endif
 };
 
 struct X509_crl_info_st {
@@ -194,7 +197,7 @@ struct x509_st {
  * kept and passed around.
  */
 struct x509_store_ctx_st {      /* X509_STORE_CTX */
-    X509_STORE *ctx;
+    X509_STORE *store;
     /* The following are set by the caller */
     /* The cert to check */
     X509 *cert;

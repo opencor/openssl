@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -295,7 +295,7 @@ struct bn_gencb_st {
                  (b) >  23 ? 3 : 1)
 
 /*
- * BN_mod_exp_mont_conttime is based on the assumption that the L1 data cache
+ * BN_mod_exp_mont_consttime is based on the assumption that the L1 data cache
  * line width of the target processor is at least the following value.
  */
 # define MOD_EXP_CTIME_MIN_CACHE_LINE_WIDTH      ( 64 )
@@ -654,9 +654,6 @@ BIGNUM *int_bn_mod_inverse(BIGNUM *in,
                            const BIGNUM *a, const BIGNUM *n, BN_CTX *ctx,
                            int *noinv);
 
-int bn_probable_prime_dh(BIGNUM *rnd, int bits,
-                         const BIGNUM *add, const BIGNUM *rem, BN_CTX *ctx);
-
 static ossl_inline BIGNUM *bn_expand(BIGNUM *a, int bits)
 {
     if (bits > (INT_MAX - BN_BITS2 + 1))
@@ -667,7 +664,5 @@ static ossl_inline BIGNUM *bn_expand(BIGNUM *a, int bits)
 
     return bn_expand2((a),(bits+BN_BITS2-1)/BN_BITS2);
 }
-
-OPENSSL_CTX *bn_get_lib_ctx(BN_CTX *ctx);
 
 #endif

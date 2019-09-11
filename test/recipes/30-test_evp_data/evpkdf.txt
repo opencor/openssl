@@ -254,51 +254,51 @@ Output = 2c91117204d745f3500d636a62f64f0ab3bae548aa53d423b0d1f27ebba6f5e5673a081
 
 Title = id-scrypt tests (from draft-josefsson-id-scrypt-kdf-03 and others)
 
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.pass = pass:
 Ctrl.salt = salt:
-Ctrl.N = N:16
+Ctrl.N = n:16
 Ctrl.r = r:1
 Ctrl.p = p:1
 Output = 77d6576238657b203b19ca42c18a0497f16b4844e3074ae8dfdffa3fede21442fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906
 
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.pass = pass:password
 Ctrl.salt = salt:NaCl
-Ctrl.N = N:1024
+Ctrl.N = n:1024
 Ctrl.r = r:8
 Ctrl.p = p:16
 Output = fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640
 
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.hexpass = hexpass:70617373776f7264
 Ctrl.salt = salt:NaCl
-Ctrl.N = N:1024
+Ctrl.N = n:1024
 Ctrl.r = r:8
 Ctrl.p = p:16
 Output = fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640
 
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.pass = pass:password
 Ctrl.hexsalt = hexsalt:4e61436c
-Ctrl.N = N:1024
+Ctrl.N = n:1024
 Ctrl.r = r:8
 Ctrl.p = p:16
 Output = fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640
 
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.pass = pass:pleaseletmein
 Ctrl.salt = salt:SodiumChloride
-Ctrl.N = N:16384
+Ctrl.N = n:16384
 Ctrl.r = r:8
 Ctrl.p = p:1
 Output = 7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f6545da1f2d5432955613f0fcf62d49705242a9af9e61e85dc0d651e40dfcf017b45575887
 
 # Out of memory
-KDF = scrypt
+KDF = id-scrypt
 Ctrl.pass = pass:pleaseletmein
 Ctrl.salt = salt:SodiumChloride
-Ctrl.N = N:1048576
+Ctrl.N = n:1048576
 Ctrl.r = r:8
 Ctrl.p = p:1
 Result = INTERNAL_ERROR
@@ -452,7 +452,7 @@ Title = SSHKDF tests (from NIST CAVS 14.1 test vectors)
 # The first one uses md instead of digest to test alias works
 
 KDF = SSHKDF
-Ctrl.md = md:SHA1
+Ctrl.digest = digest:SHA1
 Ctrl.hexkey = hexkey:0000008055bae931c07fd824bf10add1902b6fbc7c665347383498a686929ff5a25f8e40cb6645ea814fb1a5e0a11f852f86255641e5ed986e83a78bc8269480eac0b0dfd770cab92e7a28dd87ff452466d6ae867cead63b366b1c286e6c4811a9f14c27aea14c5171d49b78c06e3735d36e6a3be321dd5fc82308f34ee1cb17fba94a59
 Ctrl.hexxcghash = hexxcghash:a4ebd45934f56792b5112dcd75a1075fdc889245
 Ctrl.hexsession_id = hexsession_id:a4ebd45934f56792b5112dcd75a1075fdc889245
@@ -6488,3 +6488,18 @@ Ctrl.digest = digest:SHA512
 Ctrl.hexsecret = hexsecret:0037cd001a0ad87f35ddf58ab355d6144ba2ed0749a7435dab548ba0bfbe723c047e2396b4eef99653412a92c8db74bb5c03063f2eb0525ae87356750ae3676faa86
 Ctrl.hexinfo = hexinfo:eb17da8851c41c7ac6710b1c49f324f8
 Output = 829a28b81f9e95b5f306604067499c07d5944ca034ed130d513951f7143e4e162bad8adb2833e53b8235c293cd2a809659ac7f7e392cba6a543660e5d95070c0c9e6a9cdc38123e22da61bb4cbb6ad6d1a58a069e934fc231bd9fe39a24afcbf322ccea385f0418f3b01c1edd6e7124593a1cefe3e48fcd95daaf72cfd973c59
+
+Title = X9.42 KDF tests (from RFC2631 test vectors)
+
+KDF = X942KDF
+Ctrl.digest = digest:SHA1
+Ctrl.hexsecret = hexsecret:000102030405060708090a0b0c0d0e0f10111213
+Ctrl.cekalg = cekalg:id-smime-alg-CMS3DESwrap
+Output = a09661392376f7044d9052a397883246b67f5f1ef63eb5fb
+
+KDF = X942KDF
+Ctrl.digest = digest:SHA1
+Ctrl.hexsecret = hexsecret:000102030405060708090a0b0c0d0e0f10111213
+Ctrl.cekalg = cekalg:id-smime-alg-CMSRC2wrap
+Ctrl.hexukm = hexukm:0123456789abcdeffedcba98765432010123456789abcdeffedcba98765432010123456789abcdeffedcba98765432010123456789abcdeffedcba9876543201
+Output = 48950c46e0530075403cce72889604e0

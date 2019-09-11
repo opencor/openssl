@@ -169,9 +169,19 @@ int tls_setup_handshake(SSL *s)
 static int get_cert_verify_tbs_data(SSL *s, unsigned char *tls13tbs,
                                     void **hdata, size_t *hdatalen)
 {
+#ifdef CHARSET_EBCDIC
+    static const char *servercontext = { 0x54, 0x4c, 0x53, 0x20, 0x31, 0x2e,
+     0x33, 0x2c, 0x20, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0x20, 0x43, 0x65,
+     0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x56, 0x65, 0x72,
+     0x69, 0x66, 0x79, 0x00 };
+    static const char *clientcontext = { 0x54, 0x4c, 0x53, 0x20, 0x31, 0x2e,
+     0x33, 0x2c, 0x20, 0x63, 0x6c, 0x69, 0x65, 0x6e, 0x74, 0x20, 0x43, 0x65,
+     0x72, 0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x56, 0x65, 0x72,
+     0x69, 0x66, 0x79, 0x00 };
+#else
     static const char *servercontext = "TLS 1.3, server CertificateVerify";
     static const char *clientcontext = "TLS 1.3, client CertificateVerify";
-
+#endif
     if (SSL_IS_TLS13(s)) {
         size_t hashlen;
 
@@ -2137,7 +2147,6 @@ int ssl_set_client_hello_version(SSL *s)
  * used. Returns 1 if the group is in the list (and allowed if |checkallow| is
  * 1) or 0 otherwise.
  */
-#ifndef OPENSSL_NO_EC
 int check_in_list(SSL *s, uint16_t group_id, const uint16_t *groups,
                   size_t num_groups, int checkallow)
 {
@@ -2151,14 +2160,13 @@ int check_in_list(SSL *s, uint16_t group_id, const uint16_t *groups,
 
         if (group_id == group
                 && (!checkallow
-                    || tls_curve_allowed(s, group, SSL_SECOP_CURVE_CHECK))) {
+                    || tls_group_allowed(s, group, SSL_SECOP_CURVE_CHECK))) {
             return 1;
         }
     }
 
     return 0;
 }
-#endif
 
 /* Replace ClientHello1 in the transcript hash with a synthetic message */
 int create_synthetic_message_hash(SSL *s, const unsigned char *hashval,

@@ -24,6 +24,7 @@ CRYPTO_EX_new                           datatype
 DTLS_timer_cb                           datatype
 EVP_KDF                                 datatype
 EVP_KDF_CTX                             datatype
+EVP_KEYMGMT                             datatype
 EVP_MAC                                 datatype
 EVP_MAC_CTX                             datatype
 EVP_PKEY_gen_cb                         datatype
@@ -194,12 +195,16 @@ ERR_GET_LIB                             define
 ERR_GET_REASON                          define
 ERR_PACK                                define
 ERR_free_strings                        define deprecated 1.1.0
+ERR_put_error                           define deprecated 3.0
 ERR_load_crypto_strings                 define deprecated 1.1.0
+ERR_raise                               define
+ERR_raise_data                          define
 EVP_DigestSignUpdate                    define
 EVP_DigestVerifyUpdate                  define
 EVP_KDF_name                            define
 EVP_MAC_name                            define
 EVP_MD_CTX_block_size                   define
+EVP_MD_CTX_name                         define
 EVP_MD_CTX_size                         define
 EVP_MD_CTX_type                         define
 EVP_OpenUpdate                          define
@@ -289,8 +294,6 @@ EVP_get_digestbynid                     define
 EVP_get_digestbyobj                     define
 EVP_get_macbynid                        define
 EVP_get_macbyobj                        define
-EVP_get_kdfbynid                        define
-EVP_get_kdfbyobj                        define
 EVP_idea_cfb                            define
 EVP_rc2_cfb                             define
 EVP_rc5_32_12_16_cfb                    define
@@ -311,8 +314,8 @@ OPENSSL_clear_realloc                   define
 OPENSSL_free                            define
 OPENSSL_malloc                          define
 OPENSSL_malloc_init                     define
-OPENSSL_mem_debug_pop                   define
-OPENSSL_mem_debug_push                  define
+OPENSSL_mem_debug_pop                   define deprecated 3.0.0
+OPENSSL_mem_debug_push                  define deprecated 3.0.0
 OPENSSL_memdup                          define
 OPENSSL_no_config                       define deprecated 1.1.0
 OPENSSL_realloc                         define
@@ -328,21 +331,19 @@ OpenSSL_add_all_algorithms              define deprecated 1.1.0
 OpenSSL_add_all_ciphers                 define deprecated 1.1.0
 OpenSSL_add_all_digests                 define deprecated 1.1.0
 OpenSSL_add_ssl_algorithms              define
+OSSL_PARAM_TYPE                         define
+OSSL_PARAM_octet_ptr                    define
+OSSL_PARAM_octet_string                 define
 OSSL_PARAM_utf8_ptr                     define
-OSSL_PARAM_SIZED_BN                     define
+OSSL_PARAM_BN                           define
 OSSL_PARAM_TYPE                         generic
 OSSL_PARAM_construct_TYPE               generic
 OSSL_PARAM_octet_string                 define
-OSSL_PARAM_SIZED_octet_ptr              define
 OSSL_PARAM_utf8_string                  define
 OSSL_PARAM_octet_ptr                    define
-OSSL_PARAM_SIZED_utf8_ptr               define
-OSSL_PARAM_SIZED_utf8_string            define
-OSSL_PARAM_SIZED_TYPE                   generic
 OSSL_PARAM_get_TYPE                     generic
 OSSL_PARAM_END                          define
 OSSL_PARAM_set_TYPE                     generic
-OSSL_PARAM_SIZED_octet_string           define
 PEM_FLAG_EAY_COMPATIBLE                 define
 PEM_FLAG_ONLY_B64                       define
 PEM_FLAG_SECURE                         define
@@ -447,6 +448,7 @@ SSL_get_secure_renegotiation_support    define
 SSL_get_server_tmp_key                  define
 SSL_get_shared_curve                    define
 SSL_get_shared_group                    define
+SSL_get_negotiated_group                define
 SSL_get_signature_nid                   define
 SSL_get_time                            define
 SSL_get_timeout                         define

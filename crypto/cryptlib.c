@@ -18,7 +18,7 @@
 
 extern unsigned int OPENSSL_ia32cap_P[4];
 
-# if defined(OPENSSL_CPUID_OBJ) && !defined(OPENSSL_NO_ASM) && !defined(I386_ONLY)
+# if defined(OPENSSL_CPUID_OBJ)
 
 /*
  * Purpose of these minimalistic and character-type-agnostic subroutines
@@ -84,7 +84,7 @@ static variant_char *ossl_strchr(const variant_char *str, char srch)
 
     while((c = *str)) {
         if (c == srch)
-	    return (variant_char *)str;
+            return (variant_char *)str;
         str++;
     }
 

@@ -7,11 +7,17 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * ECDH and ECDSA low level APIs are deprecated for public use, but still ok
+ * for internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <string.h>
 #include <openssl/ec.h>
 #include <openssl/engine.h>
 #include <openssl/err.h>
-#include "ec_lcl.h"
+#include "ec_local.h"
 
 
 static const EC_KEY_METHOD openssl_ec_key_method = {

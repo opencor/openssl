@@ -18,8 +18,10 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 push(@INC,"${dir}","${dir}../../perlasm");
 require "x86asm.pl";
 
-$output=pop;
-open STDOUT,">$output";
+# $output is the last argument if it looks like a file (it has an extension)
+$output = $#ARGV >= 0 && $ARGV[$#ARGV] =~ m|\.\w+$| ? pop : undef;
+
+$output and open STDOUT,">$output";
 
 &asm_init($ARGV[0]);
 
@@ -43,7 +45,7 @@ $X="esi";
 &md5_block("md5_block_asm_data_order");
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";
 
 sub Np
 	{

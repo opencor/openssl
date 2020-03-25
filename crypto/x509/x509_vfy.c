@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,7 +12,7 @@
 #include <errno.h>
 #include <limits.h>
 
-#include "internal/ctype.h"
+#include "crypto/ctype.h"
 #include "internal/cryptlib.h"
 #include <openssl/crypto.h>
 #include <openssl/buffer.h>
@@ -22,8 +22,8 @@
 #include <openssl/x509v3.h>
 #include <openssl/objects.h>
 #include "internal/dane.h"
-#include "internal/x509_int.h"
-#include "x509_lcl.h"
+#include "crypto/x509.h"
+#include "x509_local.h"
 
 /* CRL score values */
 
@@ -107,12 +107,8 @@ static int null_callback(int ok, X509_STORE_CTX *e)
 /* Return 1 is a certificate is self signed */
 static int cert_self_signed(X509 *x)
 {
-    /*
-     * FIXME: x509v3_cache_extensions() needs to detect more failures and not
-     * set EXFLAG_SET when that happens.  Especially, if the failures are
-     * parse errors, rather than memory pressure!
-     */
-    X509_check_purpose(x, -1, 0);
+    if (X509_check_purpose(x, -1, 0) != 1)
+        return 0;
     if (x->ex_flags & EXFLAG_SS)
         return 1;
     else
@@ -361,7 +357,8 @@ static int get_issuer_sk(X509 **issuer, X509_STORE_CTX *ctx, X509 *x)
         return 0;
 }
 
-static STACK_OF(X509) *lookup_certs_sk(X509_STORE_CTX *ctx, X509_NAME *nm)
+static STACK_OF(X509) *lookup_certs_sk(X509_STORE_CTX *ctx,
+                                       const X509_NAME *nm)
 {
     STACK_OF(X509) *sk = NULL;
     X509 *x;
@@ -1212,7 +1209,7 @@ static void crl_akid_check(X509_STORE_CTX *ctx, X509_CRL *crl,
                            X509 **pissuer, int *pcrl_score)
 {
     X509 *crl_issuer = NULL;
-    X509_NAME *cnm = X509_CRL_get_issuer(crl);
+    const X509_NAME *cnm = X509_CRL_get_issuer(crl);
     int cidx = ctx->error_depth;
     int i;
 
@@ -1388,7 +1385,7 @@ static int idp_check_dp(DIST_POINT_NAME *a, DIST_POINT_NAME *b)
 static int crldp_check_crlissuer(DIST_POINT *dp, X509_CRL *crl, int crl_score)
 {
     int i;
-    X509_NAME *nm = X509_CRL_get_issuer(crl);
+    const X509_NAME *nm = X509_CRL_get_issuer(crl);
     /* If no CRLissuer return is successful iff don't need a match */
     if (!dp->CRLissuer)
         return ! !(crl_score & CRL_SCORE_ISSUER_NAME);
@@ -1447,7 +1444,7 @@ static int get_crl_delta(X509_STORE_CTX *ctx,
     unsigned int reasons;
     X509_CRL *crl = NULL, *dcrl = NULL;
     STACK_OF(X509_CRL) *skcrl;
-    X509_NAME *nm = X509_get_issuer_name(x);
+    const X509_NAME *nm = X509_get_issuer_name(x);
 
     reasons = ctx->current_reasons;
     ok = get_crl_sk(ctx, &crl, &dcrl,
@@ -1851,6 +1848,31 @@ int X509_cmp_time(const ASN1_TIME *ctm, time_t *cmp_time)
     return ret;
 }
 
+/*
+ * Return 0 if time should not be checked or reference time is in range,
+ * or else 1 if it is past the end, or -1 if it is before the start
+ */
+int X509_cmp_timeframe(const X509_VERIFY_PARAM *vpm,
+                       const ASN1_TIME *start, const ASN1_TIME *end)
+{
+    time_t ref_time;
+    time_t *time = NULL;
+    unsigned long flags = vpm == NULL ? 0 : X509_VERIFY_PARAM_get_flags(vpm);
+
+    if ((flags & X509_V_FLAG_USE_CHECK_TIME) != 0) {
+        ref_time = X509_VERIFY_PARAM_get_time(vpm);
+        time = &ref_time;
+    } else if ((flags & X509_V_FLAG_NO_CHECK_TIME) != 0) {
+        return 0; /* this means ok */
+    } /* else reference time is the current time */
+
+    if (end != NULL && X509_cmp_time(end, time) < 0)
+        return 1;
+    if (start != NULL && X509_cmp_time(start, time) > 0)
+        return -1;
+    return 0;
+}
+
 ASN1_TIME *X509_gmtime_adj(ASN1_TIME *s, long adj)
 {
     return X509_time_adj(s, adj, NULL);
@@ -2027,12 +2049,12 @@ int X509_STORE_CTX_set_ex_data(X509_STORE_CTX *ctx, int idx, void *data)
     return CRYPTO_set_ex_data(&ctx->ex_data, idx, data);
 }
 
-void *X509_STORE_CTX_get_ex_data(X509_STORE_CTX *ctx, int idx)
+void *X509_STORE_CTX_get_ex_data(const X509_STORE_CTX *ctx, int idx)
 {
     return CRYPTO_get_ex_data(&ctx->ex_data, idx);
 }
 
-int X509_STORE_CTX_get_error(X509_STORE_CTX *ctx)
+int X509_STORE_CTX_get_error(const X509_STORE_CTX *ctx)
 {
     return ctx->error;
 }
@@ -2042,7 +2064,7 @@ void X509_STORE_CTX_set_error(X509_STORE_CTX *ctx, int err)
     ctx->error = err;
 }
 
-int X509_STORE_CTX_get_error_depth(X509_STORE_CTX *ctx)
+int X509_STORE_CTX_get_error_depth(const X509_STORE_CTX *ctx)
 {
     return ctx->error_depth;
 }
@@ -2052,7 +2074,7 @@ void X509_STORE_CTX_set_error_depth(X509_STORE_CTX *ctx, int depth)
     ctx->error_depth = depth;
 }
 
-X509 *X509_STORE_CTX_get_current_cert(X509_STORE_CTX *ctx)
+X509 *X509_STORE_CTX_get_current_cert(const X509_STORE_CTX *ctx)
 {
     return ctx->current_cert;
 }
@@ -2062,29 +2084,29 @@ void X509_STORE_CTX_set_current_cert(X509_STORE_CTX *ctx, X509 *x)
     ctx->current_cert = x;
 }
 
-STACK_OF(X509) *X509_STORE_CTX_get0_chain(X509_STORE_CTX *ctx)
+STACK_OF(X509) *X509_STORE_CTX_get0_chain(const X509_STORE_CTX *ctx)
 {
     return ctx->chain;
 }
 
-STACK_OF(X509) *X509_STORE_CTX_get1_chain(X509_STORE_CTX *ctx)
+STACK_OF(X509) *X509_STORE_CTX_get1_chain(const X509_STORE_CTX *ctx)
 {
     if (!ctx->chain)
         return NULL;
     return X509_chain_up_ref(ctx->chain);
 }
 
-X509 *X509_STORE_CTX_get0_current_issuer(X509_STORE_CTX *ctx)
+X509 *X509_STORE_CTX_get0_current_issuer(const X509_STORE_CTX *ctx)
 {
     return ctx->current_issuer;
 }
 
-X509_CRL *X509_STORE_CTX_get0_current_crl(X509_STORE_CTX *ctx)
+X509_CRL *X509_STORE_CTX_get0_current_crl(const X509_STORE_CTX *ctx)
 {
     return ctx->current_crl;
 }
 
-X509_STORE_CTX *X509_STORE_CTX_get0_parent_ctx(X509_STORE_CTX *ctx)
+X509_STORE_CTX *X509_STORE_CTX_get0_parent_ctx(const X509_STORE_CTX *ctx)
 {
     return ctx->parent;
 }
@@ -2134,10 +2156,10 @@ int X509_STORE_CTX_purpose_inherit(X509_STORE_CTX *ctx, int def_purpose,
 {
     int idx;
     /* If purpose not set use default */
-    if (!purpose)
+    if (purpose == 0)
         purpose = def_purpose;
     /* If we have a purpose then check it is valid */
-    if (purpose) {
+    if (purpose != 0) {
         X509_PURPOSE *ptmp;
         idx = X509_PURPOSE_get_by_id(purpose);
         if (idx == -1) {
@@ -2391,12 +2413,12 @@ void X509_STORE_CTX_set_time(X509_STORE_CTX *ctx, unsigned long flags,
     X509_VERIFY_PARAM_set_time(ctx->param, t);
 }
 
-X509 *X509_STORE_CTX_get0_cert(X509_STORE_CTX *ctx)
+X509 *X509_STORE_CTX_get0_cert(const X509_STORE_CTX *ctx)
 {
     return ctx->cert;
 }
 
-STACK_OF(X509) *X509_STORE_CTX_get0_untrusted(X509_STORE_CTX *ctx)
+STACK_OF(X509) *X509_STORE_CTX_get0_untrusted(const X509_STORE_CTX *ctx)
 {
     return ctx->untrusted;
 }
@@ -2418,7 +2440,7 @@ void X509_STORE_CTX_set_verify_cb(X509_STORE_CTX *ctx,
     ctx->verify_cb = verify_cb;
 }
 
-X509_STORE_CTX_verify_cb X509_STORE_CTX_get_verify_cb(X509_STORE_CTX *ctx)
+X509_STORE_CTX_verify_cb X509_STORE_CTX_get_verify_cb(const X509_STORE_CTX *ctx)
 {
     return ctx->verify_cb;
 }
@@ -2429,72 +2451,77 @@ void X509_STORE_CTX_set_verify(X509_STORE_CTX *ctx,
     ctx->verify = verify;
 }
 
-X509_STORE_CTX_verify_fn X509_STORE_CTX_get_verify(X509_STORE_CTX *ctx)
+X509_STORE_CTX_verify_fn X509_STORE_CTX_get_verify(const X509_STORE_CTX *ctx)
 {
     return ctx->verify;
 }
 
-X509_STORE_CTX_get_issuer_fn X509_STORE_CTX_get_get_issuer(X509_STORE_CTX *ctx)
+X509_STORE_CTX_get_issuer_fn X509_STORE_CTX_get_get_issuer(const X509_STORE_CTX *ctx)
 {
     return ctx->get_issuer;
 }
 
-X509_STORE_CTX_check_issued_fn X509_STORE_CTX_get_check_issued(X509_STORE_CTX *ctx)
+X509_STORE_CTX_check_issued_fn
+   X509_STORE_CTX_get_check_issued(const X509_STORE_CTX *ctx)
 {
     return ctx->check_issued;
 }
 
-X509_STORE_CTX_check_revocation_fn X509_STORE_CTX_get_check_revocation(X509_STORE_CTX *ctx)
+X509_STORE_CTX_check_revocation_fn
+    X509_STORE_CTX_get_check_revocation(const X509_STORE_CTX *ctx)
 {
     return ctx->check_revocation;
 }
 
-X509_STORE_CTX_get_crl_fn X509_STORE_CTX_get_get_crl(X509_STORE_CTX *ctx)
+X509_STORE_CTX_get_crl_fn X509_STORE_CTX_get_get_crl(const X509_STORE_CTX *ctx)
 {
     return ctx->get_crl;
 }
 
-X509_STORE_CTX_check_crl_fn X509_STORE_CTX_get_check_crl(X509_STORE_CTX *ctx)
+X509_STORE_CTX_check_crl_fn X509_STORE_CTX_get_check_crl(const X509_STORE_CTX *ctx)
 {
     return ctx->check_crl;
 }
 
-X509_STORE_CTX_cert_crl_fn X509_STORE_CTX_get_cert_crl(X509_STORE_CTX *ctx)
+X509_STORE_CTX_cert_crl_fn X509_STORE_CTX_get_cert_crl(const X509_STORE_CTX *ctx)
 {
     return ctx->cert_crl;
 }
 
-X509_STORE_CTX_check_policy_fn X509_STORE_CTX_get_check_policy(X509_STORE_CTX *ctx)
+X509_STORE_CTX_check_policy_fn
+    X509_STORE_CTX_get_check_policy(const X509_STORE_CTX *ctx)
 {
     return ctx->check_policy;
 }
 
-X509_STORE_CTX_lookup_certs_fn X509_STORE_CTX_get_lookup_certs(X509_STORE_CTX *ctx)
+X509_STORE_CTX_lookup_certs_fn
+    X509_STORE_CTX_get_lookup_certs(const X509_STORE_CTX *ctx)
 {
     return ctx->lookup_certs;
 }
 
-X509_STORE_CTX_lookup_crls_fn X509_STORE_CTX_get_lookup_crls(X509_STORE_CTX *ctx)
+X509_STORE_CTX_lookup_crls_fn
+    X509_STORE_CTX_get_lookup_crls(const X509_STORE_CTX *ctx)
 {
     return ctx->lookup_crls;
 }
 
-X509_STORE_CTX_cleanup_fn X509_STORE_CTX_get_cleanup(X509_STORE_CTX *ctx)
+X509_STORE_CTX_cleanup_fn X509_STORE_CTX_get_cleanup(const X509_STORE_CTX *ctx)
 {
     return ctx->cleanup;
 }
 
-X509_POLICY_TREE *X509_STORE_CTX_get0_policy_tree(X509_STORE_CTX *ctx)
+X509_POLICY_TREE *X509_STORE_CTX_get0_policy_tree(const X509_STORE_CTX *ctx)
 {
     return ctx->tree;
 }
 
-int X509_STORE_CTX_get_explicit_policy(X509_STORE_CTX *ctx)
+int X509_STORE_CTX_get_explicit_policy(const X509_STORE_CTX *ctx)
 {
     return ctx->explicit_policy;
 }
 
-int X509_STORE_CTX_get_num_untrusted(X509_STORE_CTX *ctx)
+int X509_STORE_CTX_get_num_untrusted(const X509_STORE_CTX *ctx)
 {
     return ctx->num_untrusted;
 }
@@ -2502,13 +2529,14 @@ int X509_STORE_CTX_get_num_untrusted(X509_STORE_CTX *ctx)
 int X509_STORE_CTX_set_default(X509_STORE_CTX *ctx, const char *name)
 {
     const X509_VERIFY_PARAM *param;
+
     param = X509_VERIFY_PARAM_lookup(name);
-    if (!param)
+    if (param == NULL)
         return 0;
     return X509_VERIFY_PARAM_inherit(ctx->param, param);
 }
 
-X509_VERIFY_PARAM *X509_STORE_CTX_get0_param(X509_STORE_CTX *ctx)
+X509_VERIFY_PARAM *X509_STORE_CTX_get0_param(const X509_STORE_CTX *ctx)
 {
     return ctx->param;
 }

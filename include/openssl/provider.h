@@ -7,14 +7,17 @@
  * https://www.openssl.org/source/license.html
  */
 
-#ifndef OSSL_PROVIDER_H
-# define OSSL_PROVIDER_H
+#ifndef OPENSSL_PROVIDER_H
+# define OPENSSL_PROVIDER_H
 
 # include <openssl/core.h>
 
 # ifdef __cplusplus
 extern "C" {
 # endif
+
+/* Set the default provider search path */
+int OSSL_PROVIDER_set_default_search_path(OPENSSL_CTX *, const char *path);
 
 /* Load and unload a provider */
 OSSL_PROVIDER *OSSL_PROVIDER_load(OPENSSL_CTX *, const char *name);

@@ -7,14 +7,20 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/asn1t.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/bn.h>
-#include "internal/evp_int.h"
-#include "dsa_locl.h"
+#include "crypto/evp.h"
+#include "dsa_local.h"
 
 /* DSA pkey context structure */
 
@@ -197,7 +203,7 @@ static int pkey_dsa_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     DSA *dsa = NULL;
     DSA_PKEY_CTX *dctx = ctx->data;
     BN_GENCB *pcb;
-    int ret;
+    int ret, res;
 
     if (ctx->pkey_gencb) {
         pcb = BN_GENCB_new();
@@ -211,8 +217,9 @@ static int pkey_dsa_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         BN_GENCB_free(pcb);
         return 0;
     }
-    ret = dsa_builtin_paramgen(dsa, dctx->nbits, dctx->qbits, dctx->pmd,
-                               NULL, 0, NULL, NULL, NULL, pcb);
+    ret = ffc_params_FIPS186_4_generate(NULL, &dsa->params, FFC_PARAM_TYPE_DSA,
+                                        dctx->nbits, dctx->qbits, dctx->pmd,
+                                        &res, pcb);
     BN_GENCB_free(pcb);
     if (ret)
         EVP_PKEY_assign_DSA(pkey, dsa);
@@ -239,7 +246,7 @@ static int pkey_dsa_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     return DSA_generate_key(pkey->pkey.dsa);
 }
 
-const EVP_PKEY_METHOD dsa_pkey_meth = {
+static const EVP_PKEY_METHOD dsa_pkey_meth = {
     EVP_PKEY_DSA,
     EVP_PKEY_FLAG_AUTOARGLEN,
     pkey_dsa_init,
@@ -271,3 +278,8 @@ const EVP_PKEY_METHOD dsa_pkey_meth = {
     pkey_dsa_ctrl,
     pkey_dsa_ctrl_str
 };
+
+const EVP_PKEY_METHOD *dsa_pkey_method(void)
+{
+    return &dsa_pkey_meth;
+}

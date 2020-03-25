@@ -13,7 +13,14 @@
  * only based on the code in this paper and is almost definitely not the same
  * as the MIT implementation.
  */
-#include "des_locl.h"
+
+/*
+ * DES low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
+#include "des_local.h"
 
 #define Q_B0(a) (((DES_LONG)(a)))
 #define Q_B1(a) (((DES_LONG)(a))<<8)

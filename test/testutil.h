@@ -7,8 +7,8 @@
  * https://www.openssl.org/source/license.html
  */
 
-#ifndef HEADER_TESTUTIL_H
-# define HEADER_TESTUTIL_H
+#ifndef OSSL_TESTUTIL_H
+# define OSSL_TESTUTIL_H
 
 #include <stdarg.h>
 
@@ -192,6 +192,12 @@ const OPTIONS *test_get_options(void) \
 char *test_get_argument(size_t n);
 /* Return the number of additional non optional command line arguments */
 size_t test_get_argument_count(void);
+
+/*
+ * Skip over common test options. Should be called before calling
+ * test_get_argument()
+ */
+int test_skip_common_options(void);
 
 /*
  * Internal helpers. Test programs shouldn't use these directly, but should
@@ -548,4 +554,4 @@ void test_random_seed(uint32_t sd);
 /* Create a file path from a directory and a filename */
 char *test_mk_file_path(const char *dir, const char *file);
 
-#endif                          /* HEADER_TESTUTIL_H */
+#endif                          /* OSSL_TESTUTIL_H */

@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use the deprecated RSA low level calls */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/opensslconf.h>
 #ifdef OPENSSL_NO_RSA
 NON_EMPTY_TRANSLATION_UNIT
@@ -38,23 +41,35 @@ typedef enum OPTION_choice {
     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
     OPT_3, OPT_F4, OPT_ENGINE,
     OPT_OUT, OPT_PASSOUT, OPT_CIPHER, OPT_PRIMES, OPT_VERBOSE,
-    OPT_R_ENUM
+    OPT_R_ENUM, OPT_PROV_ENUM
 } OPTION_CHOICE;
 
 const OPTIONS genrsa_options[] = {
+    {OPT_HELP_STR, 1, '-', "Usage: %s [options] numbits\n"},
+
+    OPT_SECTION("General"),
     {"help", OPT_HELP, '-', "Display this summary"},
-    {"3", OPT_3, '-', "Use 3 for the E value"},
-    {"F4", OPT_F4, '-', "Use F4 (0x10001) for the E value"},
-    {"f4", OPT_F4, '-', "Use F4 (0x10001) for the E value"},
-    {"out", OPT_OUT, '>', "Output the key to specified file"},
-    OPT_R_OPTIONS,
-    {"passout", OPT_PASSOUT, 's', "Output file pass phrase source"},
-    {"", OPT_CIPHER, '-', "Encrypt the output with any supported cipher"},
 # ifndef OPENSSL_NO_ENGINE
     {"engine", OPT_ENGINE, 's', "Use engine, possibly a hardware device"},
 # endif
+
+    OPT_SECTION("Input"),
+    {"3", OPT_3, '-', "Use 3 for the E value"},
+    {"F4", OPT_F4, '-', "Use F4 (0x10001) for the E value"},
+    {"f4", OPT_F4, '-', "Use F4 (0x10001) for the E value"},
+
+    OPT_SECTION("Output"),
+    {"out", OPT_OUT, '>', "Output the key to specified file"},
+    {"passout", OPT_PASSOUT, 's', "Output file pass phrase source"},
     {"primes", OPT_PRIMES, 'p', "Specify number of primes"},
     {"verbose", OPT_VERBOSE, '-', "Verbose output"},
+    {"", OPT_CIPHER, '-', "Encrypt the output with any supported cipher"},
+
+    OPT_R_OPTIONS,
+    OPT_PROV_OPTIONS,
+
+    OPT_PARAMETERS(),
+    {"numbits", 0, 0, "Size of key in bits"},
     {NULL}
 };
 
@@ -105,6 +120,10 @@ opthelp:
             break;
         case OPT_R_CASES:
             if (!opt_rand(o))
+                goto end;
+            break;
+        case OPT_PROV_CASES:
+            if (!opt_provider(o))
                 goto end;
             break;
         case OPT_PASSOUT:

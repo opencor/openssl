@@ -7,9 +7,15 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RC5 low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include <openssl/rc5.h>
-#include "rc5_locl.h"
+#include "rc5_local.h"
 
 void RC5_32_cbc_encrypt(const unsigned char *in, unsigned char *out,
                         long length, RC5_32_KEY *ks, unsigned char *iv,

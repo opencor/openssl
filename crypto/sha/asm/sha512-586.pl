@@ -59,8 +59,7 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 push(@INC,"${dir}","${dir}../../perlasm");
 require "x86asm.pl";
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0],$ARGV[$#ARGV] eq "386");
 
@@ -922,4 +921,4 @@ sub BODY_00_15_ssse3 {		# "phase-less" copy of BODY_00_15_sse2
 
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

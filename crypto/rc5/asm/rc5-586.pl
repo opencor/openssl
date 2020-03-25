@@ -12,8 +12,7 @@ push(@INC,"${dir}","${dir}../../perlasm");
 require "x86asm.pl";
 require "cbc.pl";
 
-$output = pop;
-open STDOUT,">$output";
+$output = pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0]);
 
@@ -32,7 +31,7 @@ $tmp4="edx";
 &cbc("RC5_32_cbc_encrypt","RC5_32_encrypt","RC5_32_decrypt",0,4,5,3,-1,-1);
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";
 
 sub RC5_32_encrypt
 	{

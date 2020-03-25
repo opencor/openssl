@@ -8,7 +8,7 @@
  */
 
 #include <stdio.h>
-#include "internal/err_int.h"
+#include "crypto/err.h"
 #include <openssl/asn1err.h>
 #include <openssl/bnerr.h>
 #include <openssl/ecerr.h>
@@ -30,6 +30,7 @@
 #include "internal/dso.h"
 #include <openssl/engineerr.h>
 #include <openssl/uierr.h>
+#include <openssl/httperr.h>
 #include <openssl/ocsperr.h>
 #include <openssl/err.h>
 #include <openssl/tserr.h>
@@ -41,7 +42,7 @@
 #include <openssl/storeerr.h>
 #include <openssl/esserr.h>
 #include "internal/propertyerr.h"
-#include "internal/providercommonerr.h"
+#include "prov/providercommonerr.h"
 
 int err_load_crypto_strings_int(void)
 {
@@ -85,6 +86,7 @@ int err_load_crypto_strings_int(void)
 # ifndef OPENSSL_NO_ENGINE
         ERR_load_ENGINE_strings() == 0 ||
 # endif
+        ERR_load_HTTP_strings() == 0 ||
 # ifndef OPENSSL_NO_OCSP
         ERR_load_OCSP_strings() == 0 ||
 # endif

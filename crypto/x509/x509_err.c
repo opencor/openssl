@@ -22,6 +22,8 @@ static const ERR_STRING_DATA X509_str_reasons[] = {
     {ERR_PACK(ERR_LIB_X509, 0, X509_R_CANT_CHECK_DH_KEY), "cant check dh key"},
     {ERR_PACK(ERR_LIB_X509, 0, X509_R_CERT_ALREADY_IN_HASH_TABLE),
     "cert already in hash table"},
+    {ERR_PACK(ERR_LIB_X509, 0, X509_R_CERTIFICATE_VERIFICATION_FAILED),
+    "certificate verification failed"},
     {ERR_PACK(ERR_LIB_X509, 0, X509_R_CRL_ALREADY_DELTA), "crl already delta"},
     {ERR_PACK(ERR_LIB_X509, 0, X509_R_CRL_VERIFY_FAILURE),
     "crl verify failure"},
@@ -77,7 +79,7 @@ static const ERR_STRING_DATA X509_str_reasons[] = {
 int ERR_load_X509_strings(void)
 {
 #ifndef OPENSSL_NO_ERR
-    if (ERR_func_error_string(X509_str_reasons[0].error) == NULL)
+    if (ERR_reason_error_string(X509_str_reasons[0].error) == NULL)
         ERR_load_strings_const(X509_str_reasons);
 #endif
     return 1;

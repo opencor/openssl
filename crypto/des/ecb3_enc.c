@@ -7,7 +7,13 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "des_locl.h"
+/*
+ * DES low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
+#include "des_local.h"
 
 void DES_ecb3_encrypt(const_DES_cblock *input, DES_cblock *output,
                       DES_key_schedule *ks1, DES_key_schedule *ks2,

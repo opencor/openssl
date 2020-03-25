@@ -7,10 +7,16 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * CMAC low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/evp.h>
-#include "internal/asn1_int.h"
+#include "crypto/asn1.h"
 
 /*
  * CMAC "ASN1" method. This is just here to indicate the maximum CMAC output

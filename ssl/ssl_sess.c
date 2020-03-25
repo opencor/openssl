@@ -13,8 +13,8 @@
 #include <openssl/engine.h>
 #include "internal/refcount.h"
 #include "internal/cryptlib.h"
-#include "ssl_locl.h"
-#include "statem/statem_locl.h"
+#include "ssl_local.h"
+#include "statem/statem_local.h"
 
 static void SSL_SESSION_list_remove(SSL_CTX *ctx, SSL_SESSION *s);
 static void SSL_SESSION_list_add(SSL_CTX *ctx, SSL_SESSION *s);
@@ -259,7 +259,7 @@ static int def_generate_session_id(SSL *ssl, unsigned char *id,
 {
     unsigned int retry = 0;
     do
-        if (RAND_bytes(id, *id_len) <= 0)
+        if (RAND_bytes_ex(ssl->ctx->libctx, id, *id_len) <= 0)
             return 0;
     while (SSL_has_matching_session_id(ssl, id, *id_len) &&
            (++retry < MAX_SESS_ID_ATTEMPTS)) ;

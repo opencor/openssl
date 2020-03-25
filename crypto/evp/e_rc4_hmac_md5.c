@@ -7,6 +7,13 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * MD5 and RC4 low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
+#include <internal/cryptlib.h>
 #include <openssl/opensslconf.h>
 
 #include <stdio.h>
@@ -19,7 +26,7 @@
 # include <openssl/objects.h>
 # include <openssl/rc4.h>
 # include <openssl/md5.h>
-# include "internal/evp_int.h"
+# include "crypto/evp.h"
 
 typedef struct {
     RC4_KEY ks;

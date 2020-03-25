@@ -34,8 +34,7 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 push(@INC,"${dir}","${dir}../../perlasm");
 require "sparcv9_modes.pl";
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 $code.=<<___;
 #include "sparc_arch.h"
@@ -624,4 +623,4 @@ ___
 
 &emit_assembler();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

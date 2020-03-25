@@ -7,7 +7,13 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "des_locl.h"
+/*
+ * DES low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
+#include "des_local.h"
 
 DES_LONG DES_cbc_cksum(const unsigned char *in, DES_cblock *output,
                        long length, DES_key_schedule *schedule,

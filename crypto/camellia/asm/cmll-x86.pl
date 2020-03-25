@@ -49,8 +49,7 @@ require "x86asm.pl";
 
 $OPENSSL=1;
 
-$output = pop;
-open STDOUT,">$output";
+$output = pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0],$ARGV[$#ARGV] eq "386");
 
@@ -1147,4 +1146,4 @@ my ($s0,$s1,$s2,$s3) = @T;
 
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

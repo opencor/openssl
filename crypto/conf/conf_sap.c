@@ -27,7 +27,7 @@
 
 static int openssl_configured = 0;
 
-#if !OPENSSL_API_1_1_0
+#ifndef OPENSSL_NO_DEPRECATED_1_1_0
 void OPENSSL_config(const char *appname)
 {
     OPENSSL_INIT_SETTINGS settings;
@@ -59,12 +59,6 @@ int openssl_config_int(const OPENSSL_INIT_SETTINGS *settings)
             filename, appname, flags);
 #endif
 
-    OPENSSL_load_builtin_modules();
-#ifndef OPENSSL_NO_ENGINE
-    /* Need to load ENGINEs */
-    ENGINE_load_builtin_engines();
-#endif
-    ERR_clear_error();
 #ifndef OPENSSL_SYS_UEFI
     ret = CONF_modules_load_file(filename, appname, flags);
 #endif

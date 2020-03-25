@@ -12,17 +12,17 @@
 #include "e_os.h"
 #include "internal/cryptlib.h"
 #include <stdio.h>
-#include "internal/ctype.h"
+#include "crypto/ctype.h"
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
 #include <openssl/x509v3.h>
-#include "internal/x509_int.h"
+#include "crypto/x509.h"
 #include <openssl/bn.h>
 #include "ext_dat.h"
 
 static char *strip_spaces(char *name);
 static int sk_strcmp(const char *const *a, const char *const *b);
-static STACK_OF(OPENSSL_STRING) *get_email(X509_NAME *name,
+static STACK_OF(OPENSSL_STRING) *get_email(const X509_NAME *name,
                                            GENERAL_NAMES *gens);
 static void str_free(OPENSSL_STRING str);
 static int append_ia5(STACK_OF(OPENSSL_STRING) **sk, const ASN1_IA5STRING *email);
@@ -380,14 +380,14 @@ static char *strip_spaces(char *name)
     p = name;
     while (*p && ossl_isspace(*p))
         p++;
-    if (!*p)
+    if (*p == '\0')
         return NULL;
     q = p + strlen(p) - 1;
     while ((q != p) && ossl_isspace(*q))
         q--;
     if (p != q)
         q[1] = 0;
-    if (!*p)
+    if (*p == '\0')
         return NULL;
     return p;
 }
@@ -397,7 +397,7 @@ static char *strip_spaces(char *name)
  * V2I name comparison function: returns zero if 'name' matches cmp or cmp.*
  */
 
-int name_cmp(const char *name, const char *cmp)
+int v3_name_cmp(const char *name, const char *cmp)
 {
     int len, ret;
     char c;
@@ -463,7 +463,7 @@ STACK_OF(OPENSSL_STRING) *X509_REQ_get1_email(X509_REQ *x)
     return ret;
 }
 
-static STACK_OF(OPENSSL_STRING) *get_email(X509_NAME *name,
+static STACK_OF(OPENSSL_STRING) *get_email(const X509_NAME *name,
                                            GENERAL_NAMES *gens)
 {
     STACK_OF(OPENSSL_STRING) *ret = NULL;
@@ -819,7 +819,7 @@ static int do_x509_check(X509 *x, const char *chk, size_t chklen,
                          unsigned int flags, int check_type, char **peername)
 {
     GENERAL_NAMES *gens = NULL;
-    X509_NAME *name = NULL;
+    const X509_NAME *name = NULL;
     int i;
     int cnid = NID_undef;
     int alt_type;
@@ -989,11 +989,12 @@ ASN1_OCTET_STRING *a2i_IPADDRESS_NC(const char *ipasc)
     unsigned char ipout[32];
     char *iptmp = NULL, *p;
     int iplen1, iplen2;
+
     p = strchr(ipasc, '/');
-    if (!p)
+    if (p == NULL)
         return NULL;
     iptmp = OPENSSL_strdup(ipasc);
-    if (!iptmp)
+    if (iptmp == NULL)
         return NULL;
     p = iptmp + (p - ipasc);
     *p++ = 0;

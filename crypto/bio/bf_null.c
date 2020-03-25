@@ -9,7 +9,7 @@
 
 #include <stdio.h>
 #include <errno.h>
-#include "bio_lcl.h"
+#include "bio_local.h"
 #include "internal/cryptlib.h"
 
 /*
@@ -95,16 +95,9 @@ static long nullf_ctrl(BIO *b, int cmd, long num, void *ptr)
 
 static long nullf_callback_ctrl(BIO *b, int cmd, BIO_info_cb *fp)
 {
-    long ret = 1;
-
     if (b->next_bio == NULL)
         return 0;
-    switch (cmd) {
-    default:
-        ret = BIO_callback_ctrl(b->next_bio, cmd, fp);
-        break;
-    }
-    return ret;
+    return BIO_callback_ctrl(b->next_bio, cmd, fp);
 }
 
 static int nullf_gets(BIO *bp, char *buf, int size)

@@ -2,7 +2,7 @@
 /.dir-locals.el
 
 # Top level excludes
-/Makefile.orig
+/Makefile
 /MINFO
 /TABLE
 /*.pc
@@ -13,11 +13,6 @@
 /tmp.*
 /configdata.pm
 
-# *all* Makefiles
-Makefile
-# ... except in demos
-!/demos/*/Makefile
-
 # Links under apps
 /apps/CA.pl
 /apps/tsget
@@ -26,9 +21,12 @@ Makefile
 
 # Auto generated headers
 /crypto/buildinf.h
-/crypto/include/internal/*_conf.h
-/openssl/include/opensslconf.h
-/util/domd
+/include/crypto/*_conf.h
+/include/openssl/configuration.h
+/include/openssl/opensslv.h
+
+# Auto generated doc files
+doc/man1/openssl-*.pod
 
 # error code files
 /crypto/err/openssl.txt.old
@@ -59,11 +57,15 @@ Makefile
 /test/versions
 /test/ossl_shim/ossl_shim
 /test/rsa_complex
+/test/confdump
+/test/bio_prefix_text
 # Other generated files in test/
-/test/provider_internal_test.conf
+/test/provider_internal_test.cnf
+/test/fipsinstall.cnf
+/providers/fipsinstall.cnf
 
 # Certain files that get created by tests on the fly
-/test/test-runs
+/test-runs
 /test/buildtest_*
 
 # Fuzz stuff.
@@ -78,7 +80,6 @@ Makefile
 
 # Misc auto generated files
 /doc/man7/openssl_user_macros.pod
-/include/openssl/opensslconf.h
 /tools/c_rehash
 /tools/c_rehash.pl
 /util/shlib_wrap.sh
@@ -86,6 +87,8 @@ Makefile
 /TAGS
 *.map
 *.ld
+/apps/progs.c
+/apps/progs.h
 
 # Windows (legacy)
 /tmp32
@@ -98,7 +101,6 @@ Makefile
 /out32dll.dbg
 /inc32
 /MINFO
-/ms/.rnd
 /ms/bcb.mak
 /ms/libeay32.def
 /ms/nt.mak
@@ -131,6 +133,10 @@ Makefile
 /test/fips_shatest.c
 /test/fips_test_suite.c
 /test/shatest.c
+
+# Generated docs directories
+/doc/html
+/doc/man
 
 ##### Generic patterns
 # Auto generated assembly language source files
@@ -180,6 +186,7 @@ Makefile.save
 *.bak
 cscope.*
 *.d
+*.d.tmp
 pod2htmd.tmp
 
 # Windows manifest files

@@ -7,6 +7,11 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * Low level APIs are deprecated for public use, but still ok for internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +26,7 @@
 
 #ifndef OPENSSL_NO_SM2
 
-# include "internal/sm2.h"
+# include "crypto/sm2.h"
 
 static RAND_METHOD fake_rand;
 static const RAND_METHOD *saved_rand;

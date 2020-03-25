@@ -10,7 +10,7 @@
 
 #include <stdio.h>
 #include <openssl/buffer.h>
-#include "ssl_locl.h"
+#include "ssl_local.h"
 
 #ifndef OPENSSL_NO_STDIO
 int SSL_SESSION_print_fp(FILE *fp, const SSL_SESSION *x)
@@ -117,7 +117,7 @@ int SSL_SESSION_print(BIO *bp, const SSL_SESSION *x)
     if (x->compress_meth != 0) {
         SSL_COMP *comp = NULL;
 
-        if (!ssl_cipher_get_evp(x, NULL, NULL, NULL, NULL, &comp, 0))
+        if (!ssl_cipher_get_evp(NULL, x, NULL, NULL, NULL, NULL, &comp, 0))
             goto err;
         if (comp == NULL) {
             if (BIO_printf(bp, "\n    Compression: %d", x->compress_meth) <= 0)

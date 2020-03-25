@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/bn.h>
@@ -14,7 +20,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
-#include "rsa_locl.h"
+#include "rsa_local.h"
 
 static const unsigned char zeroes[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -200,7 +206,7 @@ int RSA_padding_add_PKCS1_PSS_mgf1(RSA *rsa, unsigned char *EM,
                    ERR_R_MALLOC_FAILURE);
             goto err;
         }
-        if (RAND_bytes(salt, sLen) <= 0)
+        if (RAND_bytes_ex(rsa->libctx, salt, sLen) <= 0)
             goto err;
     }
     maskedDBLen = emLen - hLen - 1;

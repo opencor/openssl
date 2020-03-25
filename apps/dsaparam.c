@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/opensslconf.h>
 #ifdef OPENSSL_NO_DSA
 NON_EMPTY_TRANSLATION_UNIT
@@ -33,24 +36,36 @@ typedef enum OPTION_choice {
     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
     OPT_INFORM, OPT_OUTFORM, OPT_IN, OPT_OUT, OPT_TEXT, OPT_C,
     OPT_NOOUT, OPT_GENKEY, OPT_ENGINE, OPT_VERBOSE,
-    OPT_R_ENUM
+    OPT_R_ENUM, OPT_PROV_ENUM
 } OPTION_CHOICE;
 
 const OPTIONS dsaparam_options[] = {
+    {OPT_HELP_STR, 1, '-', "Usage: %s [options] [numbits]\n"},
+
+    OPT_SECTION("General"),
     {"help", OPT_HELP, '-', "Display this summary"},
-    {"inform", OPT_INFORM, 'F', "Input format - DER or PEM"},
-    {"in", OPT_IN, '<', "Input file"},
-    {"outform", OPT_OUTFORM, 'F', "Output format - DER or PEM"},
-    {"out", OPT_OUT, '>', "Output file"},
-    {"text", OPT_TEXT, '-', "Print as text"},
-    {"C", OPT_C, '-', "Output C code"},
-    {"noout", OPT_NOOUT, '-', "No output"},
-    {"genkey", OPT_GENKEY, '-', "Generate a DSA key"},
-    OPT_R_OPTIONS,
 # ifndef OPENSSL_NO_ENGINE
     {"engine", OPT_ENGINE, 's', "Use engine e, possibly a hardware device"},
 # endif
+
+    OPT_SECTION("Input"),
+    {"in", OPT_IN, '<', "Input file"},
+    {"inform", OPT_INFORM, 'F', "Input format - DER or PEM"},
+
+    OPT_SECTION("Output"),
+    {"out", OPT_OUT, '>', "Output file"},
+    {"outform", OPT_OUTFORM, 'F', "Output format - DER or PEM"},
+    {"text", OPT_TEXT, '-', "Print as text"},
+    {"C", OPT_C, '-', "Output C code"},
+    {"noout", OPT_NOOUT, '-', "No output"},
     {"verbose", OPT_VERBOSE, '-', "Verbose output"},
+    {"genkey", OPT_GENKEY, '-', "Generate a DSA key"},
+
+    OPT_R_OPTIONS,
+    OPT_PROV_OPTIONS,
+
+    OPT_PARAMETERS(),
+    {"numbits", 0, 0, "Number of bits if generating parameters (optional)"},
     {NULL}
 };
 
@@ -106,6 +121,10 @@ int dsaparam_main(int argc, char **argv)
             break;
         case OPT_R_CASES:
             if (!opt_rand(o))
+                goto end;
+            break;
+        case OPT_PROV_CASES:
+            if (!opt_provider(o))
                 goto end;
             break;
         case OPT_NOOUT:

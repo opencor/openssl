@@ -7,11 +7,17 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * HMAC low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/evp.h>
-#include "internal/asn1_int.h"
-#include "internal/evp_int.h"
+#include "crypto/asn1.h"
+#include "crypto/evp.h"
 
 /*
  * HMAC "ASN1" method. This is just here to indicate the maximum HMAC output

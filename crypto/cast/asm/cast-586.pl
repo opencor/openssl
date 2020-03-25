@@ -18,8 +18,7 @@ push(@INC,"${dir}","${dir}../../perlasm");
 require "x86asm.pl";
 require "cbc.pl";
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0],$ARGV[$#ARGV] eq "386");
 
@@ -46,7 +45,7 @@ $S4="CAST_S_table3";
 
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";
 
 sub CAST_encrypt {
     local($name,$enc)=@_;

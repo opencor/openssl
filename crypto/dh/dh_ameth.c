@@ -7,17 +7,25 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DH low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/x509.h>
 #include <openssl/asn1.h>
-#include "dh_locl.h"
+#include "dh_local.h"
 #include <openssl/bn.h>
-#include "internal/asn1_int.h"
-#include "internal/evp_int.h"
+#include "crypto/asn1.h"
+#include "crypto/dh.h"
+#include "crypto/evp.h"
 #include <openssl/cms.h>
 #include <openssl/core_names.h>
 #include "internal/param_build.h"
+#include "internal/ffc.h"
 
 /*
  * i2d/d2i like DH parameter functions which use the appropriate routine for
@@ -120,7 +128,7 @@ static int dh_pub_encode(X509_PUBKEY *pk, const EVP_PKEY *pkey)
     ptype = V_ASN1_SEQUENCE;
 
     pub_key = BN_to_ASN1_INTEGER(dh->pub_key, NULL);
-    if (!pub_key)
+    if (pub_key == NULL)
         goto err;
 
     penclen = i2d_ASN1_INTEGER(pub_key, &penc);
@@ -158,7 +166,6 @@ static int dh_priv_decode(EVP_PKEY *pkey, const PKCS8_PRIV_KEY_INFO *p8)
     const ASN1_STRING *pstr;
     const X509_ALGOR *palg;
     ASN1_INTEGER *privkey = NULL;
-
     DH *dh = NULL;
 
     if (!PKCS8_pkey_get0(NULL, &p, &pklen, &palg, p8))
@@ -225,7 +232,7 @@ static int dh_priv_encode(PKCS8_PRIV_KEY_INFO *p8, const EVP_PKEY *pkey)
     /* Get private key into integer */
     prkey = BN_to_ASN1_INTEGER(pkey->pkey.dh->priv_key, NULL);
 
-    if (!prkey) {
+    if (prkey == NULL) {
         DHerr(DH_F_DH_PRIV_ENCODE, DH_R_BN_ERROR);
         goto err;
     }
@@ -283,7 +290,7 @@ static int do_dh_print(BIO *bp, const DH *x, int indent, int ptype)
     else
         pub_key = NULL;
 
-    if (x->p == NULL || (ptype == 2 && priv_key == NULL)
+    if (x->params.p == NULL || (ptype == 2 && priv_key == NULL)
             || (ptype > 0 && pub_key == NULL)) {
         reason = ERR_R_PASSED_NULL_PARAMETER;
         goto err;
@@ -296,8 +303,8 @@ static int do_dh_print(BIO *bp, const DH *x, int indent, int ptype)
     else
         ktype = "DH Parameters";
 
-    BIO_indent(bp, indent, 128);
-    if (BIO_printf(bp, "%s: (%d bit)\n", ktype, BN_num_bits(x->p)) <= 0)
+    if (!BIO_indent(bp, indent, 128)
+            || BIO_printf(bp, "%s: (%d bit)\n", ktype, DH_bits(x)) <= 0)
         goto err;
     indent += 4;
 
@@ -306,37 +313,13 @@ static int do_dh_print(BIO *bp, const DH *x, int indent, int ptype)
     if (!ASN1_bn_print(bp, "public-key:", pub_key, NULL, indent))
         goto err;
 
-    if (!ASN1_bn_print(bp, "prime:", x->p, NULL, indent))
+    if (!ffc_params_print(bp, &x->params, indent))
         goto err;
-    if (!ASN1_bn_print(bp, "generator:", x->g, NULL, indent))
-        goto err;
-    if (x->q && !ASN1_bn_print(bp, "subgroup order:", x->q, NULL, indent))
-        goto err;
-    if (x->j && !ASN1_bn_print(bp, "subgroup factor:", x->j, NULL, indent))
-        goto err;
-    if (x->seed) {
-        int i;
-        BIO_indent(bp, indent, 128);
-        BIO_puts(bp, "seed:");
-        for (i = 0; i < x->seedlen; i++) {
-            if ((i % 15) == 0) {
-                if (BIO_puts(bp, "\n") <= 0
-                    || !BIO_indent(bp, indent + 4, 128))
-                    goto err;
-            }
-            if (BIO_printf(bp, "%02x%s", x->seed[i],
-                           ((i + 1) == x->seedlen) ? "" : ":") <= 0)
-                goto err;
-        }
-        if (BIO_write(bp, "\n", 1) <= 0)
-            return 0;
-    }
-    if (x->counter && !ASN1_bn_print(bp, "counter:", x->counter, NULL, indent))
-        goto err;
+
     if (x->length != 0) {
-        BIO_indent(bp, indent, 128);
-        if (BIO_printf(bp, "recommended-private-length: %d bits\n",
-                       (int)x->length) <= 0)
+        if (!BIO_indent(bp, indent, 128)
+                || BIO_printf(bp, "recommended-private-length: %d bits\n",
+                              (int)x->length) <= 0)
             goto err;
     }
 
@@ -354,7 +337,7 @@ static int int_dh_size(const EVP_PKEY *pkey)
 
 static int dh_bits(const EVP_PKEY *pkey)
 {
-    return BN_num_bits(pkey->pkey.dh->p);
+    return DH_bits(pkey->pkey.dh);
 }
 
 static int dh_security_bits(const EVP_PKEY *pkey)
@@ -364,59 +347,17 @@ static int dh_security_bits(const EVP_PKEY *pkey)
 
 static int dh_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b)
 {
-    if (BN_cmp(a->pkey.dh->p, b->pkey.dh->p) ||
-        BN_cmp(a->pkey.dh->g, b->pkey.dh->g))
-        return 0;
-    else if (a->ameth == &dhx_asn1_meth) {
-        if (BN_cmp(a->pkey.dh->q, b->pkey.dh->q))
-            return 0;
-    }
-    return 1;
-}
-
-static int int_dh_bn_cpy(BIGNUM **dst, const BIGNUM *src)
-{
-    BIGNUM *a;
-
-    /*
-     * If source is read only just copy the pointer, so
-     * we don't have to reallocate it.
-     */
-    if (src == NULL)
-        a = NULL;
-    else if (BN_get_flags(src, BN_FLG_STATIC_DATA)
-                && !BN_get_flags(src, BN_FLG_MALLOCED))
-        a = (BIGNUM *)src;
-    else if ((a = BN_dup(src)) == NULL)
-        return 0;
-    BN_clear_free(*dst);
-    *dst = a;
-    return 1;
+    return ffc_params_cmp(&a->pkey.dh->params, &a->pkey.dh->params,
+                          a->ameth != &dhx_asn1_meth);
 }
 
 static int int_dh_param_copy(DH *to, const DH *from, int is_x942)
 {
     if (is_x942 == -1)
-        is_x942 = ! !from->q;
-    if (!int_dh_bn_cpy(&to->p, from->p))
+        is_x942 = (from->params.q != NULL);
+    if (!ffc_params_copy(&to->params, &from->params))
         return 0;
-    if (!int_dh_bn_cpy(&to->g, from->g))
-        return 0;
-    if (is_x942) {
-        if (!int_dh_bn_cpy(&to->q, from->q))
-            return 0;
-        if (!int_dh_bn_cpy(&to->j, from->j))
-            return 0;
-        OPENSSL_free(to->seed);
-        to->seed = NULL;
-        to->seedlen = 0;
-        if (from->seed) {
-            to->seed = OPENSSL_memdup(from->seed, from->seedlen);
-            if (!to->seed)
-                return 0;
-            to->seedlen = from->seedlen;
-        }
-    } else
+    if (!is_x942)
         to->length = from->length;
     to->dirty_cnt++;
     return 1;
@@ -448,9 +389,9 @@ static int dh_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from)
 
 static int dh_missing_parameters(const EVP_PKEY *a)
 {
-    if (a->pkey.dh == NULL || a->pkey.dh->p == NULL || a->pkey.dh->g == NULL)
-        return 1;
-    return 0;
+    return a->pkey.dh == NULL
+        || a->pkey.dh->params.p == NULL
+        || a->pkey.dh->params.g == NULL;
 }
 
 static int dh_pub_cmp(const EVP_PKEY *a, const EVP_PKEY *b)
@@ -549,52 +490,77 @@ static size_t dh_pkey_dirty_cnt(const EVP_PKEY *pkey)
     return pkey->pkey.dh->dirty_cnt;
 }
 
-static void *dh_pkey_export_to(const EVP_PKEY *pk, EVP_KEYMGMT *keymgmt)
+static int dh_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
+                             EVP_KEYMGMT *to_keymgmt)
 {
-    DH *dh = pk->pkey.dh;
+    DH *dh = from->pkey.dh;
     OSSL_PARAM_BLD tmpl;
     const BIGNUM *p = DH_get0_p(dh), *g = DH_get0_g(dh), *q = DH_get0_q(dh);
     const BIGNUM *pub_key = DH_get0_pub_key(dh);
     const BIGNUM *priv_key = DH_get0_priv_key(dh);
     OSSL_PARAM *params;
-    void *provkey = NULL;
+    int selection = 0;
+    int rv;
+
+    /*
+     * If the DH method is foreign, then we can't be sure of anything, and
+     * can therefore not export or pretend to export.
+     */
+    if (dh_get_method(dh) != DH_OpenSSL())
+        return 0;
 
     if (p == NULL || g == NULL)
-        return NULL;
+        return 0;
 
     ossl_param_bld_init(&tmpl);
     if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_FFC_P, p)
         || !ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_FFC_G, g))
-        return NULL;
-
+        return 0;
     if (q != NULL) {
         if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_FFC_Q, q))
-            return NULL;
+            return 0;
     }
-
-    /*
-     * This may be used to pass domain parameters only without any key data -
-     * so "pub_key" is optional. We can never have a "priv_key" without a
-     * corresponding "pub_key" though.
-     */
+    selection |= OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS;
     if (pub_key != NULL) {
-        if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_DH_PUB_KEY, pub_key))
-            return NULL;
-
-        if (priv_key != NULL) {
-            if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_DH_PRIV_KEY,
-                                        priv_key))
-                return NULL;
-        }
+        if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_PUB_KEY, pub_key))
+            return 0;
+        selection |= OSSL_KEYMGMT_SELECT_PUBLIC_KEY;
+    }
+    if (priv_key != NULL) {
+        if (!ossl_param_bld_push_BN(&tmpl, OSSL_PKEY_PARAM_PRIV_KEY,
+                                    priv_key))
+            return 0;
+        selection |= OSSL_KEYMGMT_SELECT_PRIVATE_KEY;
     }
 
-    params = ossl_param_bld_to_param(&tmpl);
+    if ((params = ossl_param_bld_to_param(&tmpl)) == NULL)
+        return 0;
 
     /* We export, the provider imports */
-    provkey = evp_keymgmt_importkey(keymgmt, params);
+    rv = evp_keymgmt_import(to_keymgmt, to_keydata, selection, params);
 
     ossl_param_bld_free(params);
-    return provkey;
+
+    return rv;
+}
+
+static int dh_pkey_import_from(const OSSL_PARAM params[], void *key)
+{
+    EVP_PKEY *pkey = key;
+    DH *dh = DH_new();
+
+    if (dh == NULL) {
+        ERR_raise(ERR_LIB_DH, ERR_R_MALLOC_FAILURE);
+        return 0;
+    }
+
+    if (!ffc_fromdata(dh_get0_params(dh), params)
+        || !dh_key_fromdata(dh, params)
+        || !EVP_PKEY_assign_DH(pkey, dh)) {
+        DH_free(dh);
+        return 0;
+    }
+    return 1;
 }
 
 const EVP_PKEY_ASN1_METHOD dh_asn1_meth = {
@@ -639,6 +605,7 @@ const EVP_PKEY_ASN1_METHOD dh_asn1_meth = {
 
     dh_pkey_dirty_cnt,
     dh_pkey_export_to,
+    dh_pkey_import_from,
 };
 
 const EVP_PKEY_ASN1_METHOD dhx_asn1_meth = {
@@ -703,7 +670,7 @@ static int dh_cms_set_peerkey(EVP_PKEY_CTX *pctx,
         goto err;
 
     pk = EVP_PKEY_CTX_get0_pkey(pctx);
-    if (!pk)
+    if (pk == NULL)
         goto err;
     if (pk->type != EVP_PKEY_DHX)
         goto err;
@@ -712,7 +679,7 @@ static int dh_cms_set_peerkey(EVP_PKEY_CTX *pctx,
     /* We have parameters now set public key */
     plen = ASN1_STRING_length(pubkey);
     p = ASN1_STRING_get0_data(pubkey);
-    if (!p || !plen)
+    if (p == NULL || plen == 0)
         goto err;
 
     if ((public_key = d2i_ASN1_INTEGER(NULL, &p, plen)) == NULL) {
@@ -820,8 +787,10 @@ static int dh_cms_set_shared_info(EVP_PKEY_CTX *pctx, CMS_RecipientInfo *ri)
 static int dh_cms_decrypt(CMS_RecipientInfo *ri)
 {
     EVP_PKEY_CTX *pctx;
+
     pctx = CMS_RecipientInfo_get0_pkey_ctx(ri);
-    if (!pctx)
+
+    if (pctx == NULL)
         return 0;
     /* See if we need to set peer key */
     if (!EVP_PKEY_CTX_get0_peerkey(pctx)) {
@@ -862,8 +831,9 @@ static int dh_cms_encrypt(CMS_RecipientInfo *ri)
     int rv = 0;
     int kdf_type, wrap_nid;
     const EVP_MD *kdf_md;
+
     pctx = CMS_RecipientInfo_get0_pkey_ctx(ri);
-    if (!pctx)
+    if (pctx == NULL)
         return 0;
     /* Get ephemeral key */
     pkey = EVP_PKEY_CTX_get0_pkey(pctx);
@@ -874,7 +844,8 @@ static int dh_cms_encrypt(CMS_RecipientInfo *ri)
     /* Is everything uninitialised? */
     if (aoid == OBJ_nid2obj(NID_undef)) {
         ASN1_INTEGER *pubk = BN_to_ASN1_INTEGER(pkey->pkey.dh->pub_key, NULL);
-        if (!pubk)
+
+        if (pubk == NULL)
             goto err;
         /* Set the key */
 
@@ -960,7 +931,7 @@ static int dh_cms_encrypt(CMS_RecipientInfo *ri)
      */
     penc = NULL;
     penclen = i2d_X509_ALGOR(wrap_alg, &penc);
-    if (!penc || !penclen)
+    if (penc == NULL || penclen == 0)
         goto err;
     wrap_str = ASN1_STRING_new();
     if (wrap_str == NULL)
@@ -975,6 +946,7 @@ static int dh_cms_encrypt(CMS_RecipientInfo *ri)
  err:
     OPENSSL_free(penc);
     X509_ALGOR_free(wrap_alg);
+    OPENSSL_free(dukm);
     return rv;
 }
 

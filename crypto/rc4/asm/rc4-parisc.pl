@@ -27,9 +27,12 @@
 
 $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 
-$flavour = shift;
-$output = shift;
-open STDOUT,">$output";
+# $output is the last argument if it looks like a file (it has an extension)
+# $flavour is the first argument if it doesn't look like a file
+$output = $#ARGV >= 0 && $ARGV[$#ARGV] =~ m|\.\w+$| ? pop : undef;
+$flavour = $#ARGV >= 0 && $ARGV[0] !~ m|\.| ? shift : undef;
+
+$output and open STDOUT,">$output";
 
 if ($flavour =~ /64/) {
 	$LEVEL		="2.0W";
@@ -330,4 +333,4 @@ foreach(split("\n",$code)) {
 
 	print $_,"\n";
 }
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

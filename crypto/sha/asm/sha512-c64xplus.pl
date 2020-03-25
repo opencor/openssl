@@ -29,8 +29,7 @@
 # service routines are expected to preserve it and for own well-being
 # zero it upon entry.
 
-while (($output=shift) && ($output!~/\w[\w\-]*\.\w+$/)) {}
-open STDOUT,">$output";
+($output = pop) =~ m|\.\w+$| and open STDOUT,">$output";
 
 ($CTXA,$INP,$NUM) = ("A4","B4","A6");            # arguments
  $K512="A3";
@@ -435,4 +434,4 @@ K512:
 ___
 
 print $code;
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

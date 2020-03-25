@@ -7,12 +7,18 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * ECDSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <string.h>
 #include <openssl/err.h>
 #include <openssl/obj_mac.h>
 #include <openssl/rand.h>
-#include "internal/bn_int.h"
-#include "ec_lcl.h"
+#include "crypto/bn.h"
+#include "ec_local.h"
 
 int ossl_ecdsa_sign_setup(EC_KEY *eckey, BN_CTX *ctx_in, BIGNUM **kinvp,
                           BIGNUM **rp)
@@ -344,7 +350,7 @@ int ossl_ecdsa_verify(int type, const unsigned char *dgst, int dgst_len,
         goto err;
     ret = ECDSA_do_verify(dgst, dgst_len, s, eckey);
  err:
-    OPENSSL_clear_free(der, derlen);
+    OPENSSL_free(der);
     ECDSA_SIG_free(s);
     return ret;
 }

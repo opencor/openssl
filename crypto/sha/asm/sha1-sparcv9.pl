@@ -32,8 +32,7 @@
 # single-process result on 8-core processor, or ~9GBps per 2.85GHz
 # socket.
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 @X=("%o0","%o1","%o2","%o3","%o4","%o5","%g1","%o7");
 $rot1m="%g2";
@@ -431,4 +430,4 @@ foreach (split("\n",$code)) {
 	print $_,"\n";
 }
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

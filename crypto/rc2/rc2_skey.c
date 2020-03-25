@@ -7,8 +7,14 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RC2 low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/rc2.h>
-#include "rc2_locl.h"
+#include "rc2_local.h"
 
 static const unsigned char key_table[256] = {
     0xd9, 0x78, 0xf9, 0xc4, 0x19, 0xdd, 0xb5, 0xed, 0x28, 0xe9, 0xfd, 0x79,

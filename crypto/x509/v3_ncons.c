@@ -10,13 +10,13 @@
 #include "internal/cryptlib.h"
 #include "internal/numbers.h"
 #include <stdio.h>
-#include "internal/asn1_int.h"
+#include "crypto/asn1.h"
 #include <openssl/asn1t.h>
 #include <openssl/conf.h>
 #include <openssl/x509v3.h>
 #include <openssl/bn.h>
 
-#include "internal/x509_int.h"
+#include "crypto/x509.h"
 #include "ext_dat.h"
 
 static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
@@ -31,7 +31,7 @@ static int print_nc_ipadd(BIO *bp, ASN1_OCTET_STRING *ip);
 
 static int nc_match(GENERAL_NAME *gen, NAME_CONSTRAINTS *nc);
 static int nc_match_single(GENERAL_NAME *sub, GENERAL_NAME *gen);
-static int nc_dn(X509_NAME *sub, X509_NAME *nm);
+static int nc_dn(const X509_NAME *sub, const X509_NAME *nm);
 static int nc_dns(ASN1_IA5STRING *sub, ASN1_IA5STRING *dns);
 static int nc_email(ASN1_IA5STRING *sub, ASN1_IA5STRING *eml);
 static int nc_uri(ASN1_IA5STRING *uri, ASN1_IA5STRING *base);
@@ -400,7 +400,7 @@ static int cn2dnsid(ASN1_STRING *cn, unsigned char **dnsid, size_t *idlen)
 int NAME_CONSTRAINTS_check_CN(X509 *x, NAME_CONSTRAINTS *nc)
 {
     int r, i;
-    X509_NAME *nm = X509_get_subject_name(x);
+    const X509_NAME *nm = X509_get_subject_name(x);
     ASN1_STRING stmp;
     GENERAL_NAME gntmp;
 
@@ -543,7 +543,7 @@ static int nc_match_single(GENERAL_NAME *gen, GENERAL_NAME *base)
  * subset of the name.
  */
 
-static int nc_dn(X509_NAME *nm, X509_NAME *base)
+static int nc_dn(const X509_NAME *nm, const X509_NAME *base)
 {
     /* Ensure canonical encodings are up to date.  */
     if (nm->modified && i2d_X509_NAME(nm, NULL) < 0)
@@ -561,8 +561,9 @@ static int nc_dns(ASN1_IA5STRING *dns, ASN1_IA5STRING *base)
 {
     char *baseptr = (char *)base->data;
     char *dnsptr = (char *)dns->data;
+
     /* Empty matches everything */
-    if (!*baseptr)
+    if (*baseptr == '\0')
         return X509_V_OK;
     /*
      * Otherwise can add zero or more components on the left so compare RHS
@@ -628,8 +629,9 @@ static int nc_uri(ASN1_IA5STRING *uri, ASN1_IA5STRING *base)
     const char *hostptr = (char *)uri->data;
     const char *p = strchr(hostptr, ':');
     int hostlen;
+
     /* Check for foo:// and skip past it */
-    if (!p || (p[1] != '/') || (p[2] != '/'))
+    if (p == NULL || p[1] != '/' || p[2] != '/')
         return X509_V_ERR_UNSUPPORTED_NAME_SYNTAX;
     hostptr = p + 3;
 
@@ -639,10 +641,10 @@ static int nc_uri(ASN1_IA5STRING *uri, ASN1_IA5STRING *base)
 
     p = strchr(hostptr, ':');
     /* Otherwise look for trailing slash */
-    if (!p)
+    if (p == NULL)
         p = strchr(hostptr, '/');
 
-    if (!p)
+    if (p == NULL)
         hostlen = strlen(hostptr);
     else
         hostlen = p - hostptr;

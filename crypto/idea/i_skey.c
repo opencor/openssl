@@ -7,8 +7,15 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * IDEA low level APIs are deprecated for public use, but still ok for internal
+ * use where we're using them to implement the higher level EVP interface, as is
+ * the case here.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/idea.h>
-#include "idea_lcl.h"
+#include "idea_local.h"
 
 static IDEA_INT inverse(unsigned int xin);
 void IDEA_set_encrypt_key(const unsigned char *key, IDEA_KEY_SCHEDULE *ks)

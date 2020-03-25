@@ -20,8 +20,7 @@ require "desboth.pl";
 # format.
 #
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0]);
 
@@ -47,7 +46,7 @@ $small_footprint=1 if (grep(/\-DOPENSSL_SMALL_FOOTPRINT/,@ARGV));
 
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";
 
 sub DES_encrypt_internal()
 	{

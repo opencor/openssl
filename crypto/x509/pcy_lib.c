@@ -11,7 +11,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
-#include "pcy_int.h"
+#include "pcy_local.h"
 
 /* accessor functions */
 
@@ -69,7 +69,7 @@ int X509_policy_level_node_count(X509_POLICY_LEVEL *level)
     return n;
 }
 
-X509_POLICY_NODE *X509_policy_level_get0_node(X509_POLICY_LEVEL *level, int i)
+X509_POLICY_NODE *X509_policy_level_get0_node(const X509_POLICY_LEVEL *level, int i)
 {
     if (!level)
         return NULL;

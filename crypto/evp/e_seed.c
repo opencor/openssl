@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * SEED low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/opensslconf.h>
 #ifdef OPENSSL_NO_SEED
 NON_EMPTY_TRANSLATION_UNIT
@@ -16,7 +22,7 @@ NON_EMPTY_TRANSLATION_UNIT
 # include <string.h>
 # include <assert.h>
 # include <openssl/seed.h>
-# include "internal/evp_int.h"
+# include "crypto/evp.h"
 
 static int seed_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,
                          const unsigned char *iv, int enc);

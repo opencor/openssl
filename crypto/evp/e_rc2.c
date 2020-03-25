@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RC2 low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 
@@ -14,7 +20,7 @@
 
 # include <openssl/evp.h>
 # include <openssl/objects.h>
-# include "internal/evp_int.h"
+# include "crypto/evp.h"
 # include <openssl/rc2.h>
 
 static int rc2_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,

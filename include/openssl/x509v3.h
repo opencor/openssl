@@ -7,8 +7,14 @@
  * https://www.openssl.org/source/license.html
  */
 
-#ifndef HEADER_X509V3_H
-# define HEADER_X509V3_H
+#ifndef OPENSSL_X509V3_H
+# define OPENSSL_X509V3_H
+# pragma once
+
+# include <openssl/macros.h>
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  define HEADER_X509V3_H
+# endif
 
 # include <openssl/bio.h>
 # include <openssl/x509.h>
@@ -223,6 +229,13 @@ typedef struct SXNET_st {
     ASN1_INTEGER *version;
     STACK_OF(SXNETID) *ids;
 } SXNET;
+
+typedef struct ISSUER_SIGN_TOOL_st {
+    ASN1_UTF8STRING *signTool;
+    ASN1_UTF8STRING *cATool;
+    ASN1_UTF8STRING *signToolCert;
+    ASN1_UTF8STRING *cAToolCert;
+} ISSUER_SIGN_TOOL;
 
 typedef struct NOTICEREF_st {
     ASN1_STRING *organization;
@@ -452,6 +465,8 @@ DECLARE_ASN1_FUNCTIONS(BASIC_CONSTRAINTS)
 DECLARE_ASN1_FUNCTIONS(SXNET)
 DECLARE_ASN1_FUNCTIONS(SXNETID)
 
+DECLARE_ASN1_FUNCTIONS(ISSUER_SIGN_TOOL)
+
 int SXNET_add_id_asc(SXNET **psx, const char *zone, const char *user, int userlen);
 int SXNET_add_id_ulong(SXNET **psx, unsigned long lzone, const char *user,
                        int userlen);
@@ -524,7 +539,7 @@ DECLARE_ASN1_FUNCTIONS(DIST_POINT)
 DECLARE_ASN1_FUNCTIONS(DIST_POINT_NAME)
 DECLARE_ASN1_FUNCTIONS(ISSUING_DIST_POINT)
 
-int DIST_POINT_set_dpname(DIST_POINT_NAME *dpn, X509_NAME *iname);
+int DIST_POINT_set_dpname(DIST_POINT_NAME *dpn, const X509_NAME *iname);
 
 int NAME_CONSTRAINTS_check(X509 *x, NAME_CONSTRAINTS *nc);
 int NAME_CONSTRAINTS_check_CN(X509 *x, NAME_CONSTRAINTS *nc);
@@ -550,7 +565,7 @@ GENERAL_NAME *a2i_GENERAL_NAME(GENERAL_NAME *out,
                                X509V3_CTX *ctx, int gen_type,
                                const char *value, int is_nc);
 
-# ifdef HEADER_CONF_H
+# ifdef OPENSSL_CONF_H
 GENERAL_NAME *v2i_GENERAL_NAME(const X509V3_EXT_METHOD *method,
                                X509V3_CTX *ctx, CONF_VALUE *cnf);
 GENERAL_NAME *v2i_GENERAL_NAME_ex(GENERAL_NAME *out,
@@ -629,7 +644,7 @@ X509_EXTENSION *X509V3_EXT_i2d(int ext_nid, int crit, void *ext_struc);
 int X509V3_add1_i2d(STACK_OF(X509_EXTENSION) **x, int nid, void *value,
                     int crit, unsigned long flags);
 
-#if !OPENSSL_API_1_1_0
+#ifndef OPENSSL_NO_DEPRECATED_1_1_0
 /* The new declarations are in crypto.h, but the old ones were here. */
 # define hex_to_string OPENSSL_buf2hexstr
 # define string_to_hex OPENSSL_hexstr2buf

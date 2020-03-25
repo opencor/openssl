@@ -43,8 +43,7 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 push(@INC,"${dir}","${dir}../../perlasm");
 require "x86asm.pl";
 
-$output = pop;
-open STDOUT,">$output";
+$output = pop and open STDOUT,">$output";
 
 &asm_init($ARGV[0],$x86only = $ARGV[$#ARGV] eq "386");
 
@@ -322,4 +321,4 @@ if ($sse2) {
 
 &asm_finish();
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

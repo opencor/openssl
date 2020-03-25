@@ -53,8 +53,7 @@
 # saturates at ~15.5x single-process result on 8-core processor,
 # or ~20.5GBps per 2.85GHz socket.
 
-$output=pop;
-open STDOUT,">$output";
+$output=pop and open STDOUT,">$output";
 
 $frame="STACK_FRAME";
 $bias="STACK_BIAS";
@@ -578,4 +577,4 @@ foreach (split("\n",$code)) {
 	print $_,"\n";
 }
 
-close STDOUT;
+close STDOUT or die "error closing STDOUT: $!";

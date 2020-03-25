@@ -10,7 +10,8 @@
 #include <string.h>
 #include <openssl/e_os2.h>
 #include <openssl/evp.h>
-#include "curve448_lcl.h"
+#include "crypto/ecx.h"
+#include "curve448_local.h"
 #include "testutil.h"
 
 static unsigned int max = 1000;

@@ -76,7 +76,7 @@
 #include "internal/bio.h"
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include "internal/evp_int.h"
+#include "crypto/evp.h"
 
 static int ok_write(BIO *h, const char *buf, int num);
 static int ok_read(BIO *h, char *buf, int size);
@@ -406,7 +406,6 @@ static long ok_ctrl(BIO *b, int cmd, long num, void *ptr)
 
 static long ok_callback_ctrl(BIO *b, int cmd, BIO_info_cb *fp)
 {
-    long ret = 1;
     BIO *next;
 
     next = BIO_next(b);
@@ -414,13 +413,7 @@ static long ok_callback_ctrl(BIO *b, int cmd, BIO_info_cb *fp)
     if (next == NULL)
         return 0;
 
-    switch (cmd) {
-    default:
-        ret = BIO_callback_ctrl(next, cmd, fp);
-        break;
-    }
-
-    return ret;
+    return BIO_callback_ctrl(next, cmd, fp);
 }
 
 static void longswap(void *_ptr, size_t len)

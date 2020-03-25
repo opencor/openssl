@@ -7,14 +7,20 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * ECDH and ECDSA low level APIs are deprecated for public use, but still ok
+ * for internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/asn1t.h>
 #include <openssl/x509.h>
 #include <openssl/ec.h>
-#include "ec_lcl.h"
+#include "ec_local.h"
 #include <openssl/evp.h>
-#include "internal/evp_int.h"
+#include "crypto/evp.h"
 
 /* EC pkey context structure */
 
@@ -437,7 +443,7 @@ static int pkey_ec_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     return ret ? EC_KEY_generate_key(ec) : 0;
 }
 
-const EVP_PKEY_METHOD ec_pkey_meth = {
+static const EVP_PKEY_METHOD ec_pkey_meth = {
     EVP_PKEY_EC,
     0,
     pkey_ec_init,
@@ -475,3 +481,8 @@ const EVP_PKEY_METHOD ec_pkey_meth = {
     pkey_ec_ctrl,
     pkey_ec_ctrl_str
 };
+
+const EVP_PKEY_METHOD *ec_pkey_method(void)
+{
+    return &ec_pkey_meth;
+}

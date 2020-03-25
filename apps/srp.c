@@ -193,28 +193,39 @@ typedef enum OPTION_choice {
     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
     OPT_VERBOSE, OPT_CONFIG, OPT_NAME, OPT_SRPVFILE, OPT_ADD,
     OPT_DELETE, OPT_MODIFY, OPT_LIST, OPT_GN, OPT_USERINFO,
-    OPT_PASSIN, OPT_PASSOUT, OPT_ENGINE, OPT_R_ENUM
+    OPT_PASSIN, OPT_PASSOUT, OPT_ENGINE, OPT_R_ENUM, OPT_PROV_ENUM
 } OPTION_CHOICE;
 
 const OPTIONS srp_options[] = {
+    {OPT_HELP_STR, 1, '-', "Usage: %s [options] [user...]\n"},
+
+    OPT_SECTION("General"),
     {"help", OPT_HELP, '-', "Display this summary"},
     {"verbose", OPT_VERBOSE, '-', "Talk a lot while doing things"},
     {"config", OPT_CONFIG, '<', "A config file"},
     {"name", OPT_NAME, 's', "The particular srp definition to use"},
-    {"srpvfile", OPT_SRPVFILE, '<', "The srp verifier file name"},
+# ifndef OPENSSL_NO_ENGINE
+    {"engine", OPT_ENGINE, 's', "Use engine, possibly a hardware device"},
+# endif
+
+    OPT_SECTION("Action"),
     {"add", OPT_ADD, '-', "Add a user and srp verifier"},
-    {"modify", OPT_MODIFY, '-',
-     "Modify the srp verifier of an existing user"},
+    {"modify", OPT_MODIFY, '-', "Modify the srp verifier of an existing user"},
     {"delete", OPT_DELETE, '-', "Delete user from verifier file"},
     {"list", OPT_LIST, '-', "List users"},
+
+    OPT_SECTION("Configuration"),
+    {"srpvfile", OPT_SRPVFILE, '<', "The srp verifier file name"},
     {"gn", OPT_GN, 's', "Set g and N values to be used for new verifier"},
     {"userinfo", OPT_USERINFO, 's', "Additional info to be set for user"},
     {"passin", OPT_PASSIN, 's', "Input file pass phrase source"},
     {"passout", OPT_PASSOUT, 's', "Output file pass phrase source"},
+
     OPT_R_OPTIONS,
-# ifndef OPENSSL_NO_ENGINE
-    {"engine", OPT_ENGINE, 's', "Use engine, possibly a hardware device"},
-# endif
+    OPT_PROV_OPTIONS,
+
+    OPT_PARAMETERS(),
+    {"user", 0, 0, "Username(s) to process (optional)"},
     {NULL}
 };
 
@@ -285,6 +296,10 @@ int srp_main(int argc, char **argv)
             break;
         case OPT_R_CASES:
             if (!opt_rand(o))
+                goto end;
+            break;
+        case OPT_PROV_CASES:
+            if (!opt_provider(o))
                 goto end;
             break;
         }

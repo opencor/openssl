@@ -15,8 +15,15 @@
  * 1.1 added norm_expand_bits
  * 1.0 First working version
  */
+
+/*
+ * DES low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/crypto.h>
-#include "des_locl.h"
+#include "des_local.h"
 
 static const unsigned char odd_parity[256] = {
     1, 1, 2, 2, 4, 4, 7, 7, 8, 8, 11, 11, 13, 13, 14, 14,

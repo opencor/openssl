@@ -13,7 +13,7 @@
 #include <openssl/buffer.h>
 #include <openssl/ui.h>
 #include <openssl/err.h>
-#include "ui_locl.h"
+#include "ui_local.h"
 
 UI *UI_new(void)
 {
@@ -578,7 +578,7 @@ int UI_set_ex_data(UI *r, int idx, void *arg)
     return CRYPTO_set_ex_data(&r->ex_data, idx, arg);
 }
 
-void *UI_get_ex_data(UI *r, int idx)
+void *UI_get_ex_data(const UI *r, int idx)
 {
     return CRYPTO_get_ex_data(&r->ex_data, idx);
 }

@@ -37,8 +37,7 @@
 # optimal decrypt procedure]. Compared to GNU C generated code both
 # procedures are more than 60% faster:-)
 
-$output = pop;
-open STDOUT,">$output";
+$output = pop and open STDOUT,">$output";
 
 $frame="STACK_FRAME";
 $bias="STACK_BIAS";
@@ -1189,4 +1188,4 @@ ___
 $code =~ s/fmovs.*$//gm;
 
 print $code;
-close STDOUT;	# ensure flush
+close STDOUT or die "error closing STDOUT: $!";	# ensure flush

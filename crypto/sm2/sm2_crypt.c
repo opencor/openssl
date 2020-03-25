@@ -9,9 +9,15 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "internal/sm2.h"
-#include "internal/sm2err.h"
-#include "internal/ec_int.h" /* ecdh_KDF_X9_63() */
+/*
+ * ECDSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
+#include "crypto/sm2.h"
+#include "crypto/sm2err.h"
+#include "crypto/ec.h" /* ecdh_KDF_X9_63() */
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/bn.h>

@@ -7,8 +7,14 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <string.h>
-#include "rsa_locl.h"
+#include "rsa_local.h"
 #include <openssl/err.h>
 
 RSA_METHOD *RSA_meth_new(const char *name, int flags)

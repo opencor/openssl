@@ -7,10 +7,16 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DES low level APIs are deprecated for public use, but still ok for internal
+ * use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 
 #define DES_FCRYPT
-#include "des_locl.h"
+#include "des_local.h"
 #undef DES_FCRYPT
 
 #undef PERM_OP

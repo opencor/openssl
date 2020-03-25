@@ -13,7 +13,7 @@
 #include <openssl/evp.h>
 #include <openssl/asn1.h>
 #include <openssl/x509.h>
-#include "internal/x509_int.h"
+#include "crypto/x509.h"
 #include <openssl/objects.h>
 #include <openssl/buffer.h>
 
@@ -21,7 +21,7 @@ X509 *X509_REQ_to_X509(X509_REQ *r, int days, EVP_PKEY *pkey)
 {
     X509 *ret = NULL;
     X509_CINF *xi = NULL;
-    X509_NAME *xn;
+    const X509_NAME *xn;
     EVP_PKEY *pubkey = NULL;
 
     if ((ret = X509_new()) == NULL) {

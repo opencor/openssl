@@ -20,7 +20,7 @@
 #include <openssl/params.h>
 #include "crypto/bn.h"
 #include "crypto/ec.h"
-#include "internal/param_build.h"
+#include "openssl/param_build.h"
 #include "prov/implementations.h"
 #include "prov/providercommon.h"
 #include "prov/provider_ctx.h"
@@ -84,7 +84,7 @@ int domparams_to_params(const EC_KEY *ec, OSSL_PARAM_BLD *tmpl)
         if ((curve_name = ec_curve_nid2name(curve_nid)) == NULL)
             return 0;
 
-        if (!ossl_param_bld_push_utf8_string(tmpl, OSSL_PKEY_PARAM_EC_NAME,
+        if (!OSSL_PARAM_BLD_push_utf8_string(tmpl, OSSL_PKEY_PARAM_EC_NAME,
                                              curve_name, 0))
             return 0;
     }
@@ -109,25 +109,23 @@ int key_to_params(const EC_KEY *eckey, OSSL_PARAM_BLD *tmpl, int include_private
     size_t pub_key_len = 0;
     int ret = 0;
 
-    if (eckey == NULL)
+    if (eckey == NULL
+        || (ecg = EC_KEY_get0_group(eckey)) == NULL)
         return 0;
 
-    ecg = EC_KEY_get0_group(eckey);
     priv_key = EC_KEY_get0_private_key(eckey);
     pub_point = EC_KEY_get0_public_key(eckey);
 
-    /* group and public_key must be present, priv_key is optional */
-    if (ecg == NULL || pub_point == NULL)
-        return 0;
-    if ((pub_key_len = EC_POINT_point2buf(ecg, pub_point,
-                                          POINT_CONVERSION_COMPRESSED,
-                                          &pub_key, NULL)) == 0)
-        return 0;
-
-    if (!ossl_param_bld_push_octet_string(tmpl,
-                                          OSSL_PKEY_PARAM_PUB_KEY,
-                                          pub_key, pub_key_len))
-        goto err;
+    if (pub_point != NULL) {
+        /* convert pub_point to a octet string according to the SECG standard */
+        if ((pub_key_len = EC_POINT_point2buf(ecg, pub_point,
+                                              POINT_CONVERSION_COMPRESSED,
+                                              &pub_key, NULL)) == 0
+            || !OSSL_PARAM_BLD_push_octet_string(tmpl,
+                                                 OSSL_PKEY_PARAM_PUB_KEY,
+                                                 pub_key, pub_key_len))
+            goto err;
+    }
 
     if (priv_key != NULL && include_private) {
         size_t sz;
@@ -170,7 +168,7 @@ int key_to_params(const EC_KEY *eckey, OSSL_PARAM_BLD *tmpl, int include_private
         if (ecbits <= 0)
             goto err;
         sz = (ecbits + 7 ) / 8;
-        if (!ossl_param_bld_push_BN_pad(tmpl,
+        if (!OSSL_PARAM_BLD_push_BN_pad(tmpl,
                                         OSSL_PKEY_PARAM_PRIV_KEY,
                                         priv_key, sz))
             goto err;
@@ -193,7 +191,7 @@ int otherparams_to_params(const EC_KEY *ec, OSSL_PARAM_BLD *tmpl)
 
     ecdh_cofactor_mode =
         (EC_KEY_get_flags(ec) & EC_FLAG_COFACTOR_ECDH) ? 1 : 0;
-    if (!ossl_param_bld_push_int(tmpl,
+    if (!OSSL_PARAM_BLD_push_int(tmpl,
                 OSSL_PKEY_PARAM_USE_COFACTOR_ECDH,
                 ecdh_cofactor_mode))
         return 0;
@@ -314,7 +312,7 @@ int ec_export(void *keydata, int selection, OSSL_CALLBACK *param_cb,
               void *cbarg)
 {
     EC_KEY *ec = keydata;
-    OSSL_PARAM_BLD tmpl;
+    OSSL_PARAM_BLD *tmpl;
     OSSL_PARAM *params = NULL;
     int ok = 1;
 
@@ -343,25 +341,29 @@ int ec_export(void *keydata, int selection, OSSL_CALLBACK *param_cb,
             && (selection & OSSL_KEYMGMT_SELECT_KEYPAIR) == 0)
         return 0;
 
-    ossl_param_bld_init(&tmpl);
+    tmpl = OSSL_PARAM_BLD_new();
+    if (tmpl == NULL)
+        return 0;
 
     if ((selection & OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS) != 0)
-        ok = ok && domparams_to_params(ec, &tmpl);
+        ok = ok && domparams_to_params(ec, tmpl);
     if ((selection & OSSL_KEYMGMT_SELECT_KEYPAIR) != 0) {
         int include_private =
             selection & OSSL_KEYMGMT_SELECT_PRIVATE_KEY ? 1 : 0;
 
-        ok = ok && key_to_params(ec, &tmpl, include_private);
+        ok = ok && key_to_params(ec, tmpl, include_private);
     }
     if ((selection & OSSL_KEYMGMT_SELECT_OTHER_PARAMETERS) != 0)
-        ok = ok && otherparams_to_params(ec, &tmpl);
+        ok = ok && otherparams_to_params(ec, tmpl);
 
     if (!ok
-        || (params = ossl_param_bld_to_param(&tmpl)) == NULL)
-        return 0;
+        || (params = OSSL_PARAM_BLD_to_param(tmpl)) == NULL)
+        goto err;
 
     ok = param_cb(params, cbarg);
-    ossl_param_bld_free(params);
+    OSSL_PARAM_BLD_free_params(params);
+err:
+    OSSL_PARAM_BLD_free(tmpl);
     return ok;
 }
 

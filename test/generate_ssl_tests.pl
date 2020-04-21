@@ -127,6 +127,11 @@ sub print_templates {
 # Shamelessly copied from Configure.
 sub read_config {
     my $fname = shift;
+    my $provider = shift;
+    local $ssltests::fips_mode = $provider eq "fips";
+    local $ssltests::no_deflt_libctx =
+        $provider eq "default" || $provider eq "fips";
+
     open(INPUT, "< $fname") or die "Can't open input file '$fname'!\n";
     local $/ = undef;
     my $content = <INPUT>;
@@ -136,8 +141,9 @@ sub read_config {
 }
 
 my $input_file = shift;
+my $provider = shift;
 # Reads the tests into ssltests::tests.
-read_config($input_file);
+read_config($input_file, $provider);
 print_templates();
 
 1;

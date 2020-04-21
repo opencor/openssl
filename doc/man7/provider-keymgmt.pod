@@ -22,6 +22,8 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  int OP_keymgmt_gen_set_template(void *genctx, void *template);
  int OP_keymgmt_gen_set_params(void *genctx, const OSSL_PARAM params[]);
  const OSSL_PARAM *OP_keymgmt_gen_settable_params(void *provctx);
+ int OP_keymgmt_gen_get_params(void *genctx, const OSSL_PARAM params[]);
+ const OSSL_PARAM *OP_keymgmt_gen_gettable_params(void *provctx);
  void *OP_keymgmt_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg);
  void OP_keymgmt_gen_cleanup(void *genctx);
 
@@ -91,6 +93,8 @@ macros in L<openssl-core_numbers.h(7)>, as follows:
  OP_keymgmt_gen_set_template     OSSL_FUNC_KEYMGMT_GEN_SET_TEMPLATE
  OP_keymgmt_gen_set_params       OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS
  OP_keymgmt_gen_settable_params  OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS
+ OP_keymgmt_gen_get_params       OSSL_FUNC_KEYMGMT_GEN_GET_PARAMS
+ OP_keymgmt_gen_gettable_params  OSSL_FUNC_KEYMGMT_GEN_GETTABLE_PARAMS
  OP_keymgmt_gen                  OSSL_FUNC_KEYMGMT_GEN
  OP_keymgmt_gen_cleanup          OSSL_FUNC_KEYMGMT_GEN_CLEANUP
 
@@ -209,6 +213,7 @@ OP_keymgmt_free() should free the passed I<keydata>.
 
 OP_keymgmt_gen_init(), OP_keymgmt_gen_set_template(),
 OP_keymgmt_gen_set_params(), OP_keymgmt_gen_settable_params(),
+OP_keymgmt_gen_get_params(), OP_keymgmt_gen_gettable_params(),
 OP_keymgmt_gen() and OP_keymgmt_gen_cleanup() work together as a more
 elaborate context based key object constructor.
 
@@ -230,6 +235,13 @@ OP_keymgmt_gen_settable_params() should return a constant array of
 descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_gen_set_params() 
 can handle.
 
+OP_keymgmt_gen_get_params() should extract information data associated
+with the key object generation context I<genctx>.
+
+OP_keymgmt_gen_gettable_params() should return a constant array of
+descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_gen_get_params() 
+can handle.
+
 OP_keymgmt_gen() should perform the key object generation itself, and
 return the result.  The callback I<cb> should be called at regular
 intervals with indications on how the key object generation
@@ -246,7 +258,7 @@ present as well.
 =head2 Key Object Information Functions
 
 OP_keymgmt_get_params() should extract information data associated
-with the given I<keydata>, see L</Information Parameters>.
+with the given I<keydata>, see L</Common Information Parameters>.
 
 OP_keymgmt_gettable_params() should return a constant array of
 descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_get_params()
@@ -256,7 +268,7 @@ If OP_keymgmt_gettable_params() is present, OP_keymgmt_get_params()
 must also be present, and vice versa.
 
 OP_keymgmt_set_params() should update information data associated
-with the given I<keydata>, see L</Information Parameters>.
+with the given I<keydata>, see L</Common Information Parameters>.
 
 OP_keymgmt_settable_params() should return a constant array of
 descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_set_params()
@@ -316,121 +328,12 @@ from I<keydata_from> to I<keydata_to>.  It is assumed that the caller
 has ensured that I<keydata_to> and I<keydata_from> are both owned by
 the implementation of this function.
 
-=head2 Built-in RSA Import/Export Types
-
-The following Import/Export types are available for the built-in RSA algorithm:
-
-=over 4
-
-=item "n" (B<OSSL_PKEY_PARAM_RSA_N>) <unsigned integer>
-
-The RSA "n" value.
-
-=item "e" (B<OSSL_PKEY_PARAM_RSA_E>) <unsigned integer>
-
-The RSA "e" value.
-
-=item "d" (B<OSSL_PKEY_PARAM_RSA_D>) <unsigned integer>
-
-The RSA "d" value.
-
-=item "rsa-factor" (B<OSSL_PKEY_PARAM_RSA_FACTOR>) <unsigned integer>
-
-An RSA factor. In 2 prime RSA these are often known as "p" or "q". This value
-may be repeated up to 10 times in a single key.
-
-=item "rsa-exponent" (B<OSSL_PKEY_PARAM_RSA_EXPONENT>) <unsigned integer>
-
-An RSA CRT (Chinese Remainder Theorem) exponent. This value may be repeated up
-to 10 times in a single key.
-
-=item "rsa-coefficient" (B<OSSL_PKEY_PARAM_RSA_COEFFICIENT>) <unsigned integer>
-
-An RSA CRT (Chinese Remainder Theorem) coefficient. This value may be repeated
-up to 9 times in a single key.
-
-=back
-
-=head2 Built-in DSA and Diffie-Hellman Import/Export Types
-
-The following Import/Export types are available for the built-in DSA and
-Diffie-Hellman algorithms:
-
-=over 4
-
-=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <unsigned integer>
-
-The public key value.
-
-=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <unsigned integer>
-
-The private key value.
-
-=item "p" (B<OSSL_PKEY_PARAM_FFC_P>) <unsigned integer>
-
-A DSA or Diffie-Hellman "p" value.
-
-=item "q" (B<OSSL_PKEY_PARAM_FFC_Q>) <unsigned integer>
-
-A DSA or Diffie-Hellman "q" value.
-
-=item "g" (B<OSSL_PKEY_PARAM_FFC_G>) <unsigned integer>
-
-A DSA or Diffie-Hellman "g" value.
-
-=back
-
-=head2 Built-in X25519, X448, ED25519 and ED448 Import/Export Types
-
-The following Import/Export types are available for the built-in X25519, X448,
-ED25519 and X448 algorithms:
-
-=over 4
-
-=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <octet string>
-
-The public key value.
-
-=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <octet string>
-
-The private key value.
-
-=back
-
-=head2 Built-in EC Import/Export Types
-
-The following Import/Export types are available for the built-in EC algorithm:
-
-=over 4
-
-=item "curve-name" (B<OSSL_PKEY_PARAM_EC_NAME>) <utf8 string>
-
-The EC curve name.
-
-=item "use-cofactor-flag" (B<OSSL_PKEY_PARAM_USE_COFACTOR_ECDH>) <integer>
-
-Enable Cofactor DH (ECC CDH) if this value is 1, otherwise it uses normal EC DH
-if the value is zero. The cofactor variant multiplies the shared secret by the
-EC curve's cofactor (note for some curves the cofactor is 1).
-
-=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <octet string>
-
-The public key value in EC point format.
-
-=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <unsigned integer>
-
-The private key value.
-
-=back
-
-=head2 Information Parameters
+=head2 Common Information Parameters
 
 See L<OSSL_PARAM(3)> for further details on the parameters structure.
 
-Parameters currently recognised by built-in keymgmt algorithms
-are as follows.
-Not all parameters are relevant to, or are understood by all keymgmt
-algorithms:
+Common information parameters currently recognised by all built-in
+keymgmt algorithms are as follows:
 
 =over 4
 
@@ -457,21 +360,6 @@ dimensions handled in the rest of the same provider.
 
 The value should be the number of security bits of the given key.
 Bits of security is defined in SP800-57.
-
-=item "use-cofactor-flag" (B<OSSL_PKEY_PARAM_USE_COFACTOR_FLAG>,
-B<OSSL_PKEY_PARAM_USE_COFACTOR_ECDH>) <integer>
-
-The value should be either 1 or 0, to respectively enable or disable
-use of the cofactor in operations using this key.
-
-In the context of a key that can be used to perform an Elliptic Curve
-Diffie-Hellman key exchange, this parameter can be used to mark a requirement
-for using the Cofactor Diffie-Hellman (CDH) variant of the key exchange
-algorithm.
-
-See also L<provider-keyexch(7)> for the related
-B<OSSL_EXCHANGE_PARAM_EC_ECDH_COFACTOR_MODE> parameter that can be set on a
-per-operation basis.
 
 =back
 
@@ -500,7 +388,10 @@ always return a constant B<OSSL_PARAM> array.
 
 =head1 SEE ALSO
 
-L<provider(7)>
+L<provider(7)>,
+L<EVP_PKEY-X25519(7)>, L<EVP_PKEY-X448(7)>, L<EVP_PKEY-ED25519(7)>,
+L<EVP_PKEY-ED448(7)>, L<EVP_PKEY-EC(7)>, L<EVP_PKEY-RSA(7)>,
+L<EVP_PKEY-DSA(7)>, L<EVP_PKEY-DH(7)>
 
 =head1 HISTORY
 

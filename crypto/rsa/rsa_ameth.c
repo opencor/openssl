@@ -20,7 +20,7 @@
 #include <openssl/bn.h>
 #include <openssl/cms.h>
 #include <openssl/core_names.h>
-#include "openssl/param_build.h"
+#include <openssl/param_build.h>
 #include "crypto/asn1.h"
 #include "crypto/evp.h"
 #include "crypto/rsa.h"
@@ -1081,7 +1081,8 @@ static size_t rsa_pkey_dirty_cnt(const EVP_PKEY *pkey)
 DEFINE_SPECIAL_STACK_OF_CONST(BIGNUM_const, BIGNUM)
 
 static int rsa_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
-                              EVP_KEYMGMT *to_keymgmt)
+                              EVP_KEYMGMT *to_keymgmt, OPENSSL_CTX *libctx,
+                              const char *propq)
 {
     RSA *rsa = from->pkey.rsa;
     OSSL_PARAM_BLD *tmpl = OSSL_PARAM_BLD_new();
@@ -1142,27 +1143,24 @@ static int rsa_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
             goto err;
         selection |= OSSL_KEYMGMT_SELECT_PRIVATE_KEY;
 
-        for (i = 0; i < numprimes; i++) {
+        for (i = 0; i < numprimes  && rsa_mp_factor_names[i] != NULL; i++) {
             const BIGNUM *num = sk_BIGNUM_const_value(primes, i);
 
-            if (!OSSL_PARAM_BLD_push_BN(tmpl, OSSL_PKEY_PARAM_RSA_FACTOR,
-                                        num))
+            if (!OSSL_PARAM_BLD_push_BN(tmpl, rsa_mp_factor_names[i], num))
                 goto err;
         }
 
-        for (i = 0; i < numexps; i++) {
+        for (i = 0; i < numexps && rsa_mp_exp_names[i] != NULL; i++) {
             const BIGNUM *num = sk_BIGNUM_const_value(exps, i);
 
-            if (!OSSL_PARAM_BLD_push_BN(tmpl, OSSL_PKEY_PARAM_RSA_EXPONENT,
-                                        num))
+            if (!OSSL_PARAM_BLD_push_BN(tmpl, rsa_mp_exp_names[i], num))
                 goto err;
         }
 
-        for (i = 0; i < numcoeffs; i++) {
+        for (i = 0; i < numcoeffs && rsa_mp_coeff_names[i] != NULL; i++) {
             const BIGNUM *num = sk_BIGNUM_const_value(coeffs, i);
 
-            if (!OSSL_PARAM_BLD_push_BN(tmpl, OSSL_PKEY_PARAM_RSA_COEFFICIENT,
-                                        num))
+            if (!OSSL_PARAM_BLD_push_BN(tmpl, rsa_mp_coeff_names[i], num))
                 goto err;
         }
     }
@@ -1182,10 +1180,11 @@ static int rsa_pkey_export_to(const EVP_PKEY *from, void *to_keydata,
     return rv;
 }
 
-static int rsa_pkey_import_from(const OSSL_PARAM params[], void *key)
+static int rsa_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
 {
-    EVP_PKEY *pkey = key;
-    RSA *rsa = RSA_new();
+    EVP_PKEY_CTX *pctx = vpctx;
+    EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(pctx);
+    RSA *rsa = rsa_new_with_ctx(pctx->libctx);
 
     if (rsa == NULL) {
         ERR_raise(ERR_LIB_DH, ERR_R_MALLOC_FAILURE);

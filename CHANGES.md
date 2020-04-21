@@ -30,7 +30,7 @@ OpenSSL 3.0
    the various push functions and finally convert to a passable OSSL_PARAM
    array using OSSL_PARAM_BLD_to_param().
 
-   * Paul Dale *
+   *Paul Dale*
 
  * EVP_PKEY_get0_RSA(), EVP_PKEY_get0_DSA(), EVP_PKEY_get0_DH(), and
    EVP_PKEY_get0_EC_KEY() can now handle EVP_PKEYs with provider side
@@ -43,9 +43,9 @@ OpenSSL 3.0
 
    *Richard Levitte*
 
- * `ASN1_verify()`, `ASN1_digest()` and `ASN1_sign()` have been deprecated.
+ * ASN1_verify(), ASN1_digest() and ASN1_sign() have been deprecated.
    They are old functions that we don't use, and that you could disable with
-   the macro `NO_ASN1_OLD`.  This goes all the way back to OpenSSL 0.9.7.
+   the macro NO_ASN1_OLD.  This goes all the way back to OpenSSL 0.9.7.
 
    *Richard Levitte*
 
@@ -78,11 +78,6 @@ OpenSSL 3.0
    test recipes are created in the build tree for this purpose.
 
    *Richard Levitte*
-
- * The command line utilities ecparam and ec have been deprecated.  Instead
-   use the pkeyparam, pkey and genpkey programs.
-
-   *Paul Dale*
 
  * All of the low level RSA functions have been deprecated including:
 
@@ -138,25 +133,35 @@ OpenSSL 3.0
    *Kurt Roeckx*
 
  * The command line utilities dhparam, dsa, gendsa and dsaparam have been
-   deprecated.  Instead use the pkeyparam, pkey, genpkey and pkeyparam
-   programs respectively.
+   modified to use PKEY APIs.  These commands are now in maintenance mode
+   and no new features will be added to them.
+
+   *Paul Dale*
+
+ * The command line utility rsautl has been deprecated.
+   Instead use the pkeyutl program.
+
+   *Paul Dale*
+
+ * The command line utilities genrsa and rsa have been modified to use PKEY
+   APIs  These commands are now in maintenance mode and no new features will
+   be added to them.
 
    *Paul Dale*
 
  * All of the low level DH functions have been deprecated including:
 
-   DH_OpenSSL, DH_set_default_method, DH_get_default_method, DH_set_method,
-   DH_new_method, DH_bits, DH_size, DH_security_bits, DH_get_ex_new_index,
-   DH_set_ex_data, DH_get_ex_data, DH_generate_parameters_ex,
-   DH_check_params_ex, DH_check_ex, DH_check_pub_key_ex,
-   DH_check, DH_check_pub_key, DH_generate_key, DH_compute_key,
-   DH_compute_key_padded, DHparams_print_fp, DHparams_print, DH_get_nid,
-   DH_KDF_X9_42, DH_get0_engine, DH_get_length, DH_set_length, DH_meth_new,
+   DH_OpenSSL, DH_set_default_method, DH_get_default_method,
+   DH_set_method, DH_new_method, DH_bits, DH_size, DH_security_bits,
+   DH_get_ex_new_index, DH_set_ex_data, DH_get_ex_data,
+   DH_generate_parameters_ex, DH_check_params_ex, DH_check_ex,
+   DH_check_pub_key_ex, DH_check, DH_check_pub_key, DH_generate_key,
+   DH_compute_key, DH_compute_key_padded, DHparams_print_fp,
+   DHparams_print, DH_get_nid, DH_KDF_X9_42, DH_get0_engine, DH_meth_new,
    DH_meth_free, DH_meth_dup, DH_meth_get0_name, DH_meth_set1_name,
    DH_meth_get_flags, DH_meth_set_flags, DH_meth_get0_app_data,
-   DH_meth_set0_app_data, DH_meth_get_generate_key,
-   DH_meth_set_generate_key, DH_meth_get_compute_key,
-   DH_meth_set_compute_key, DH_meth_get_bn_mod_exp,
+   DH_meth_set0_app_data, DH_meth_get_generate_key, DH_meth_set_generate_key,
+   DH_meth_get_compute_key, DH_meth_set_compute_key, DH_meth_get_bn_mod_exp,
    DH_meth_set_bn_mod_exp, DH_meth_get_init, DH_meth_set_init,
    DH_meth_get_finish, DH_meth_set_finish, DH_meth_get_generate_params
    and DH_meth_set_generate_params.

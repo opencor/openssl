@@ -207,6 +207,9 @@ To avoid breaking other applications, install your copy of OpenSSL to a
 [different location](#installing-to-a-different-location) which is not in
 the global search path for system libraries.
 
+Finally, if you plan on using the FIPS module, you need to read the
+[Post-installation Notes](#post-installation-notes) further down.
+
 ### Unix / Linux / macOS ###
 
 Depending on your distribution, you need to run the following command as
@@ -861,11 +864,11 @@ never be used in production environments.  It will only work when used with gcc
 or clang and should be used in conjunction with the `-DPEDANTIC` option
 (or the `--strict-warnings` option).
 
-### no-ui ###
+### no-ui-console ###
 
-Don't build with the User Interface (UI) capability
+Don't build with the User Interface (UI) console method
 
-The User Interface is the set of features enabling text based prompts.
+The User Interface console method enables text based console prompts.
 
 ### enable-unit-test ###
 
@@ -1342,6 +1345,18 @@ access a structure's field directly.
 
 Some APIs have changed as well.  However, older APIs have been preserved when
 possible.
+
+
+Post-installation Notes
+-----------------------
+
+With the default OpenSSL installation comes a FIPS provider module, which
+needs some post-installation attention, without which it will not be usable.
+This involves using the following command:
+
+    openssl fipsinstall
+
+See the openssl-fipsinstall(1) manual for details and examples.
 
 
 Advanced Build Options

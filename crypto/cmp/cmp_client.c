@@ -140,7 +140,7 @@ static int send_receive_check(OSSL_CMP_CTX *ctx, const OSSL_CMP_MSG *req,
     OSSL_CMP_transfer_cb_t transfer_cb = ctx->transfer_cb;
 
     if (transfer_cb == NULL)
-        transfer_cb = NULL; /* TODO: will be OSSL_CMP_MSG_http_perform of chunk 10 */
+        transfer_cb = OSSL_CMP_MSG_http_perform;
 
     *rep = NULL;
     msg_timeout = ctx->msg_timeout; /* backup original value */
@@ -284,7 +284,7 @@ static int poll_for_response(OSSL_CMP_CTX *ctx, int sleep, int rid,
             if (check_after < 0 || (uint64_t)check_after
                 > (sleep ? ULONG_MAX / 1000 : INT_MAX)) {
                 CMPerr(0, CMP_R_CHECKAFTER_OUT_OF_RANGE);
-                if (BIO_snprintf(str, OSSL_CMP_PKISI_BUFLEN, "value = %ld",
+                if (BIO_snprintf(str, OSSL_CMP_PKISI_BUFLEN, "value = %jd",
                                  check_after) >= 0)
                     ERR_add_error_data(1, str);
                 goto err;
@@ -754,6 +754,10 @@ X509 *OSSL_CMP_exec_RR_ses(OSSL_CMP_CTX *ctx)
         CMPerr(0, CMP_R_INVALID_ARGS);
         return 0;
     }
+    if (ctx->oldCert == NULL) {
+        CMPerr(0, CMP_R_MISSING_REFERENCE_CERT);
+        return 0;
+    }
     ctx->status = -1;
 
     /* OSSL_CMP_rr_new() also checks if all necessary options are set */
@@ -764,10 +768,17 @@ X509 *OSSL_CMP_exec_RR_ses(OSSL_CMP_CTX *ctx)
         goto end;
 
     rrep = rp->body->value.rp;
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     if (sk_OSSL_CMP_PKISI_num(rrep->status) != num_RevDetails) {
         CMPerr(0, CMP_R_WRONG_RP_COMPONENT_COUNT);
         goto end;
     }
+#else
+    if (sk_OSSL_CMP_PKISI_num(rrep->status) < 1) {
+        CMPerr(0, CMP_R_WRONG_RP_COMPONENT_COUNT);
+        goto end;
+    }
+#endif
 
     /* evaluate PKIStatus field */
     si = ossl_cmp_revrepcontent_get_pkisi(rrep, rsid);
@@ -822,15 +833,19 @@ X509 *OSSL_CMP_exec_RR_ses(OSSL_CMP_CTX *ctx)
             goto err;
         }
         if (X509_NAME_cmp(issuer, OSSL_CRMF_CERTID_get0_issuer(cid)) != 0) {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
             CMPerr(0, CMP_R_WRONG_CERTID_IN_RP);
             result = NULL;
             goto err;
+#endif
         }
         if (ASN1_INTEGER_cmp(serial,
                              OSSL_CRMF_CERTID_get0_serialNumber(cid)) != 0) {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
             CMPerr(0, CMP_R_WRONG_SERIAL_IN_RP);
             result = NULL;
             goto err;
+#endif
         }
     }
 

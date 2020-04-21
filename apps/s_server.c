@@ -103,6 +103,8 @@ static int keymatexportlen = 20;
 
 static int async = 0;
 
+static int use_sendfile = 0;
+
 static const char *session_id_prefix = NULL;
 
 #ifndef OPENSSL_NO_DTLS
@@ -749,7 +751,7 @@ typedef enum OPTION_choice {
     OPT_SSL3, OPT_TLS1_3, OPT_TLS1_2, OPT_TLS1_1, OPT_TLS1, OPT_DTLS, OPT_DTLS1,
     OPT_DTLS1_2, OPT_SCTP, OPT_TIMEOUT, OPT_MTU, OPT_LISTEN, OPT_STATELESS,
     OPT_ID_PREFIX, OPT_SERVERNAME, OPT_SERVERNAME_FATAL,
-    OPT_CERT2, OPT_KEY2, OPT_NEXTPROTONEG, OPT_ALPN,
+    OPT_CERT2, OPT_KEY2, OPT_NEXTPROTONEG, OPT_ALPN, OPT_SENDFILE,
     OPT_SRTP_PROFILES, OPT_KEYMATEXPORT, OPT_KEYMATEXPORTLEN,
     OPT_KEYLOG_FILE, OPT_MAX_EARLY, OPT_RECV_MAX_EARLY, OPT_EARLY_DATA,
     OPT_S_NUM_TICKETS, OPT_ANTI_REPLAY, OPT_NO_ANTI_REPLAY, OPT_SCTP_LABEL_BUG,
@@ -800,31 +802,36 @@ const OPTIONS s_server_options[] = {
     {"verify", OPT_VERIFY, 'n', "Turn on peer certificate verification"},
     {"Verify", OPT_UPPER_V_VERIFY, 'n',
      "Turn on peer certificate verification, must have a cert"},
-    {"cert", OPT_CERT, '<', "Certificate file to use; default is " TEST_CERT},
+    {"nameopt", OPT_NAMEOPT, 's', "Certificate subject/issuer name printing options"},
+    {"cert", OPT_CERT, '<', "Server certificate file to use; default is " TEST_CERT},
     {"cert2", OPT_CERT2, '<',
      "Certificate file to use for servername; default is" TEST_CERT2},
-    {"key2", OPT_KEY2, '<',
-     "-Private Key file to use for servername if not in -cert2"},
-    {"nameopt", OPT_NAMEOPT, 's', "Various certificate name options"},
+    {"certform", OPT_CERTFORM, 'F',
+     "Server certificate file format (PEM or DER) PEM default"},
+    {"cert_chain", OPT_CERT_CHAIN, '<',
+     "Server certificate chain file in PEM format"},
+    {"build_chain", OPT_BUILD_CHAIN, '-', "Build server certificate chain"},
     {"serverinfo", OPT_SERVERINFO, 's',
      "PEM serverinfo file for certificate"},
-    {"certform", OPT_CERTFORM, 'F',
-     "Certificate format (PEM or DER) PEM default"},
     {"key", OPT_KEY, 's',
-     "Private Key if not in -cert; default is " TEST_CERT},
+     "Private key file to use; default is -cert file or else" TEST_CERT},
+    {"key2", OPT_KEY2, '<',
+     "-Private Key file to use for servername if not in -cert2"},
     {"keyform", OPT_KEYFORM, 'f',
      "Key format (PEM, DER or ENGINE) PEM default"},
     {"pass", OPT_PASS, 's', "Private key file pass phrase source"},
     {"dcert", OPT_DCERT, '<',
-     "Second certificate file to use (usually for DSA)"},
-    {"dhparam", OPT_DHPARAM, '<', "DH parameters file to use"},
+     "Second server certificate file to use (usually for DSA)"},
     {"dcertform", OPT_DCERTFORM, 'F',
-     "Second certificate format (PEM or DER) PEM default"},
+     "Second server certificate file format (PEM or DER) PEM default"},
+    {"dcert_chain", OPT_DCERT_CHAIN, '<',
+     "second server certificate chain file in PEM format"},
     {"dkey", OPT_DKEY, '<',
      "Second private key file to use (usually for DSA)"},
     {"dkeyform", OPT_DKEYFORM, 'F',
-     "Second key format (PEM, DER or ENGINE) PEM default"},
+     "Second key file format (PEM, DER or ENGINE) PEM default"},
     {"dpass", OPT_DPASS, 's', "Second private key file pass phrase source"},
+    {"dhparam", OPT_DHPARAM, '<', "DH parameters file to use"},
     {"servername", OPT_SERVERNAME, 's',
      "Servername for HostName TLS extension"},
     {"servername_fatal", OPT_SERVERNAME_FATAL, '-',
@@ -848,12 +855,17 @@ const OPTIONS s_server_options[] = {
     {"keymatexportlen", OPT_KEYMATEXPORTLEN, 'p',
      "Export len bytes of keying material (default 20)"},
     {"CRL", OPT_CRL, '<', "CRL file to use"},
+    {"CRLform", OPT_CRLFORM, 'F', "CRL file format (PEM or DER); default PEM"},
     {"crl_download", OPT_CRL_DOWNLOAD, '-',
-     "Download CRL from distribution points"},
+     "Download CRLs from distribution points in certificate CDP entries"},
+    {"chainCAfile", OPT_CHAINCAFILE, '<',
+     "CA file for certificate chain (PEM format)"},
     {"chainCApath", OPT_CHAINCAPATH, '/',
      "use dir as certificate store path to build CA certificate chain"},
     {"chainCAstore", OPT_CHAINCASTORE, ':',
      "use URI as certificate store to build CA certificate chain"},
+    {"verifyCAfile", OPT_VERIFYCAFILE, '<',
+     "CA file for certificate verification (PEM format)"},
     {"verifyCApath", OPT_VERIFYCAPATH, '/',
      "use dir as certificate store path to verify CA certificate"},
     {"verifyCAstore", OPT_VERIFYCASTORE, ':',
@@ -861,13 +873,10 @@ const OPTIONS s_server_options[] = {
     {"no_cache", OPT_NO_CACHE, '-', "Disable session cache"},
     {"ext_cache", OPT_EXT_CACHE, '-',
      "Disable internal cache, setup and use external cache"},
-    {"CRLform", OPT_CRLFORM, 'F', "CRL format (PEM or DER) PEM is default"},
     {"verify_return_error", OPT_VERIFY_RET_ERROR, '-',
      "Close connection on verification error"},
     {"verify_quiet", OPT_VERIFY_QUIET, '-',
      "No verify output except verify errors"},
-    {"verifyCAfile", OPT_VERIFYCAFILE, '<',
-     "CA file for certificate verification (PEM format)"},
     {"ign_eof", OPT_IGN_EOF, '-', "ignore input eof (default when -quiet)"},
     {"no_ign_eof", OPT_NO_IGN_EOF, '-', "Do not ignore input eof"},
 
@@ -981,17 +990,13 @@ const OPTIONS s_server_options[] = {
 #endif
     {"alpn", OPT_ALPN, 's',
      "Set the advertised protocols for the ALPN extension (comma-separated list)"},
+#ifndef OPENSSL_NO_KTLS
+    {"sendfile", OPT_SENDFILE, '-', "Use sendfile to response file with -WWW"},
+#endif
 
     OPT_R_OPTIONS,
     OPT_S_OPTIONS,
     OPT_V_OPTIONS,
-    {"cert_chain", OPT_CERT_CHAIN, '<',
-     "certificate chain file in PEM format"},
-    {"dcert_chain", OPT_DCERT_CHAIN, '<',
-     "second certificate chain file in PEM format"},
-    {"build_chain", OPT_BUILD_CHAIN, '-', "Build certificate chain"},
-    {"chainCAfile", OPT_CHAINCAFILE, '<',
-     "CA file for certificate chain (PEM format)"},
     OPT_X_OPTIONS,
     OPT_PROV_OPTIONS,
     {NULL}
@@ -1095,6 +1100,7 @@ int s_server_main(int argc, char *argv[])
     s_quiet = 0;
     s_brief = 0;
     async = 0;
+    use_sendfile = 0;
 
     cctx = SSL_CONF_CTX_new();
     vpm = X509_VERIFY_PARAM_new();
@@ -1238,7 +1244,7 @@ int s_server_main(int argc, char *argv[])
             s_key_file = opt_arg();
             break;
         case OPT_KEYFORM:
-            if (!opt_format(opt_arg(), OPT_FMT_ANY, &s_key_format))
+            if (!opt_format(opt_arg(), OPT_FMT_PDE, &s_key_format))
                 goto opthelp;
             break;
         case OPT_PASS:
@@ -1260,7 +1266,7 @@ int s_server_main(int argc, char *argv[])
             s_dcert_file = opt_arg();
             break;
         case OPT_DKEYFORM:
-            if (!opt_format(opt_arg(), OPT_FMT_PEMDER, &s_dkey_format))
+            if (!opt_format(opt_arg(), OPT_FMT_PDE, &s_dkey_format))
                 goto opthelp;
             break;
         case OPT_DPASS:
@@ -1643,6 +1649,11 @@ int s_server_main(int argc, char *argv[])
         case OPT_HTTP_SERVER_BINMODE:
             http_server_binmode = 1;
             break;
+        case OPT_SENDFILE:
+#ifndef OPENSSL_NO_KTLS
+            use_sendfile = 1;
+#endif
+            break;
         }
     }
     argc = opt_num_rest();
@@ -1692,6 +1703,13 @@ int s_server_main(int argc, char *argv[])
         }
         /* SCTP is unusual. It uses DTLS over a SOCK_STREAM protocol */
         socket_type = SOCK_STREAM;
+    }
+#endif
+
+#ifndef OPENSSL_NO_KTLS
+    if (use_sendfile && www <= 1) {
+        BIO_printf(bio_err, "Can't use -sendfile without -WWW or -HTTP\n");
+        goto end;
     }
 #endif
 
@@ -3336,38 +3354,79 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
                              "HTTP/1.0 200 ok\r\nContent-type: text/plain\r\n\r\n");
             }
             /* send the file */
-            for (;;) {
-                i = BIO_read(file, buf, bufsize);
-                if (i <= 0)
-                    break;
+#ifndef OPENSSL_NO_KTLS
+            if (use_sendfile) {
+                FILE *fp = NULL;
+                int fd;
+                struct stat st;
+                off_t offset = 0;
+                size_t filesize;
 
-#ifdef RENEG
-                total_bytes += i;
-                BIO_printf(bio_err, "%d\n", i);
-                if (total_bytes > 3 * 1024) {
-                    total_bytes = 0;
-                    BIO_printf(bio_err, "RENEGOTIATE\n");
-                    SSL_renegotiate(con);
+                BIO_get_fp(file, &fp);
+                fd = fileno(fp);
+                if (fstat(fd, &st) < 0) {
+                    BIO_printf(io, "Error fstat '%s'\r\n", p);
+                    ERR_print_errors(io);
+                    goto write_error;
                 }
-#endif
 
-                for (j = 0; j < i;) {
+                filesize = st.st_size;
+                if (((int)BIO_flush(io)) < 0)
+                    goto write_error;
+
+                for (;;) {
+                    i = SSL_sendfile(con, fd, offset, filesize, 0);
+                    if (i < 0) {
+                        BIO_printf(io, "Error SSL_sendfile '%s'\r\n", p);
+                        ERR_print_errors(io);
+                        break;
+                    } else {
+                        offset += i;
+                        filesize -= i;
+                    }
+
+                    if (filesize <= 0) {
+                        if (!s_quiet)
+                            BIO_printf(bio_err, "KTLS SENDFILE '%s' OK\n", p);
+
+                        break;
+                    }
+                }
+            } else
+#endif
+            {
+                for (;;) {
+                    i = BIO_read(file, buf, bufsize);
+                    if (i <= 0)
+                        break;
+
 #ifdef RENEG
-                    static count = 0;
-                    if (++count == 13) {
+                    total_bytes += i;
+                    BIO_printf(bio_err, "%d\n", i);
+                    if (total_bytes > 3 * 1024) {
+                        total_bytes = 0;
+                        BIO_printf(bio_err, "RENEGOTIATE\n");
                         SSL_renegotiate(con);
                     }
 #endif
-                    k = BIO_write(io, &(buf[j]), i - j);
-                    if (k <= 0) {
-                        if (!BIO_should_retry(io)
-                            && !SSL_waiting_for_async(con))
-                            goto write_error;
-                        else {
-                            BIO_printf(bio_s_out, "rwrite W BLOCK\n");
+
+                    for (j = 0; j < i;) {
+#ifdef RENEG
+                        static count = 0;
+                        if (++count == 13)
+                            SSL_renegotiate(con);
+#endif
+                        k = BIO_write(io, &(buf[j]), i - j);
+                        if (k <= 0) {
+                            if (!BIO_should_retry(io)
+                                && !SSL_waiting_for_async(con)) {
+                                goto write_error;
+                            } else {
+                                BIO_printf(bio_s_out, "rwrite W BLOCK\n");
+                            }
+                        } else {
+                            j += k;
                         }
-                    } else {
-                        j += k;
                     }
                 }
             }

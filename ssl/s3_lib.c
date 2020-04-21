@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -2637,7 +2637,23 @@ static SSL_CIPHER ssl3_ciphers[] = {
      },
     {
      1,
-     "GOST2012-GOST8912-GOST8912",
+     "IANA-GOST2012-GOST8912-GOST8912",
+     NULL,
+     0x0300c102,
+     SSL_kGOST,
+     SSL_aGOST12 | SSL_aGOST01,
+     SSL_eGOST2814789CNT12,
+     SSL_GOST89MAC12,
+     TLS1_VERSION, TLS1_2_VERSION,
+     0, 0,
+     SSL_HIGH,
+     SSL_HANDSHAKE_MAC_GOST12_256 | TLS1_PRF_GOST12_256 | TLS1_STREAM_MAC,
+     256,
+     256,
+     },
+    {
+     1,
+     "LEGACY-GOST2012-GOST8912-GOST8912",
      NULL,
      0x0300ff85,
      SSL_kGOST,
@@ -4355,8 +4371,10 @@ int ssl3_get_req_cert_type(SSL *s, WPACKET *pkt)
 #ifndef OPENSSL_NO_GOST
     if (s->version >= TLS1_VERSION && (alg_k & SSL_kGOST))
             return WPACKET_put_bytes_u8(pkt, TLS_CT_GOST01_SIGN)
-                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_SIGN)
-                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_512_SIGN);
+                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_IANA_SIGN)
+                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_IANA_512_SIGN)
+                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_LEGACY_SIGN)
+                    && WPACKET_put_bytes_u8(pkt, TLS_CT_GOST12_LEGACY_512_SIGN);
 #endif
 
     if ((s->version == SSL3_VERSION) && (alg_k & SSL_kDHE)) {
@@ -4721,26 +4739,10 @@ EVP_PKEY *ssl_generate_pkey_group(SSL *s, uint16_t id)
         goto err;
     }
     gtype = ginf->flags & TLS_GROUP_TYPE;
-    /*
-     * TODO(3.0): Convert these EVP_PKEY_CTX_new_id calls to ones that take
-     * s->ctx->libctx and s->ctx->propq when keygen has been updated to be
-     * provider aware.
-     */
-# ifndef OPENSSL_NO_DH
-    if (gtype == TLS_GROUP_FFDHE)
-        pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_DH, NULL);
-#  ifndef OPENSSL_NO_EC
-    else
-#  endif
-# endif
-# ifndef OPENSSL_NO_EC
-    {
-        if (gtype == TLS_GROUP_CURVE_CUSTOM)
-            pctx = EVP_PKEY_CTX_new_id(ginf->nid, NULL);
-        else
-            pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
-    }
-# endif
+
+    pctx = EVP_PKEY_CTX_new_from_name(s->ctx->libctx, ginf->keytype,
+                                      s->ctx->propq);
+
     if (pctx == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_SSL_GENERATE_PKEY_GROUP,
                  ERR_R_MALLOC_FAILURE);
@@ -4806,7 +4808,7 @@ EVP_PKEY *ssl_generate_param_group(SSL *s, uint16_t id)
     EVP_PKEY_CTX *pctx = NULL;
     EVP_PKEY *pkey = NULL;
     const TLS_GROUP_INFO *ginf = tls1_group_id_lookup(id);
-    int pkey_ctx_id;
+    const char *pkey_ctx_name;
 
     if (ginf == NULL)
         goto err;
@@ -4819,14 +4821,10 @@ EVP_PKEY *ssl_generate_param_group(SSL *s, uint16_t id)
         return NULL;
     }
 
-    /*
-     * TODO(3.0): Convert this EVP_PKEY_CTX_new_id call to one that takes
-     * s->ctx->libctx and s->ctx->propq when paramgen has been updated to be
-     * provider aware.
-     */
-    pkey_ctx_id = (ginf->flags & TLS_GROUP_FFDHE)
-                        ? EVP_PKEY_DH : EVP_PKEY_EC;
-    pctx = EVP_PKEY_CTX_new_id(pkey_ctx_id, NULL);
+    pkey_ctx_name = (ginf->flags & TLS_GROUP_FFDHE) != 0 ? "DH" : "EC";
+    pctx = EVP_PKEY_CTX_new_from_name(s->ctx->libctx, pkey_ctx_name,
+                                      s->ctx->propq);
+
     if (pctx == NULL)
         goto err;
     if (EVP_PKEY_paramgen_init(pctx) <= 0)

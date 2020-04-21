@@ -2152,9 +2152,10 @@ static int tls_process_ske_dhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
                  ERR_R_EVP_LIB);
         goto err;
     }
+    dh = NULL;
 
     if (!ssl_security(s, SSL_SECOP_TMP_DH, EVP_PKEY_security_bits(peer_tmp),
-                      0, dh)) {
+                      0, EVP_PKEY_get0_DH(peer_tmp))) {
         SSLfatal(s, SSL_AD_HANDSHAKE_FAILURE, SSL_F_TLS_PROCESS_SKE_DHE,
                  SSL_R_DH_KEY_TOO_SMALL);
         goto err;
@@ -2223,6 +2224,21 @@ static int tls_process_ske_ecdhe(SSL *s, PACKET *pkt, EVP_PKEY **pkey)
     if (!PACKET_get_length_prefixed_1(pkt, &encoded_pt)) {
         SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_F_TLS_PROCESS_SKE_ECDHE,
                  SSL_R_LENGTH_MISMATCH);
+        return 0;
+    }
+
+    /*
+     * TODO(3.0) Remove this when EVP_PKEY_get1_tls_encodedpoint()
+     * knows how to get a key from an encoded point with the help of
+     * a OSSL_SERIALIZER deserializer.  We know that EVP_PKEY_get0()
+     * downgrades an EVP_PKEY to contain a legacy key.
+     *
+     * THIS IS TEMPORARY
+     */
+    EVP_PKEY_get0(s->s3.peer_tmp);
+    if (EVP_PKEY_id(s->s3.peer_tmp) == EVP_PKEY_NONE) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_SKE_ECDHE,
+                 ERR_R_INTERNAL_ERROR);
         return 0;
     }
 
@@ -2361,7 +2377,9 @@ MSG_PROCESS_RETURN tls_process_key_exchange(SSL *s, PACKET *pkt)
             goto err;
         }
 
-        if (EVP_DigestVerifyInit(md_ctx, &pctx, md, NULL, pkey) <= 0) {
+        if (EVP_DigestVerifyInit_ex(md_ctx, &pctx,
+                                    md == NULL ? NULL : EVP_MD_name(md),
+                                    s->ctx->propq, pkey, s->ctx->libctx) <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_PROCESS_KEY_EXCHANGE,
                      ERR_R_EVP_LIB);
             goto err;
@@ -3123,6 +3141,21 @@ static int tls_construct_cke_ecdhe(SSL *s, WPACKET *pkt)
     if (ckey == NULL) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CKE_ECDHE,
                  ERR_R_MALLOC_FAILURE);
+        goto err;
+    }
+
+    /*
+     * TODO(3.0) Remove this when EVP_PKEY_get1_tls_encodedpoint()
+     * knows how to get a key from an encoded point with the help of
+     * a OSSL_SERIALIZER deserializer.  We know that EVP_PKEY_get0()
+     * downgrades an EVP_PKEY to contain a legacy key.
+     *
+     * THIS IS TEMPORARY
+     */
+    EVP_PKEY_get0(ckey);
+    if (EVP_PKEY_id(skey) == EVP_PKEY_NONE) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CKE_ECDHE,
+                 ERR_R_INTERNAL_ERROR);
         goto err;
     }
 

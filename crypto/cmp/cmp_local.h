@@ -36,10 +36,10 @@ struct ossl_cmp_ctx_st {
     void *transfer_cb_arg; /* allows to store optional argument to cb */
     /* HTTP-based transfer */
     char *serverPath;
-    char *serverName;
+    char *server;
     int serverPort;
-    char *proxyName;
-    int proxyPort;
+    char *proxy;
+    char *no_proxy;
     int msg_timeout; /* max seconds to wait for each CMP message round trip */
     int total_timeout; /* max number of seconds an enrollment may take, incl. */
     /* attempts polling for a response if a 'waiting' PKIStatus is received */
@@ -674,11 +674,11 @@ DECLARE_ASN1_FUNCTIONS(OSSL_CMP_MSG)
  * body      PKIBody
  * }
  */
-typedef struct cmp_protectedpart_st {
+typedef struct ossl_cmp_protectedpart_st {
     OSSL_CMP_PKIHEADER *header;
     OSSL_CMP_PKIBODY *body;
-} CMP_PROTECTEDPART;
-DECLARE_ASN1_FUNCTIONS(CMP_PROTECTEDPART)
+} OSSL_CMP_PROTECTEDPART;
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_PROTECTEDPART)
 
 /*-
  *  this is not defined here as it is already in CRMF:

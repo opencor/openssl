@@ -21,6 +21,12 @@
 #include "crypto/dsa.h"
 #include "dsa_local.h"
 
+#ifdef FIPS_MODE
+# define MIN_STRENGTH 112
+#else
+# define MIN_STRENGTH 80
+#endif
+
 static int dsa_keygen(DSA *dsa, int pairwise_test);
 static int dsa_keygen_pairwise_test(DSA *dsa, OSSL_CALLBACK *cb, void *cbarg);
 
@@ -68,8 +74,13 @@ static int dsa_keygen(DSA *dsa, int pairwise_test)
         priv_key = dsa->priv_key;
     }
 
+    /*
+     * For FFC FIPS 186-4 keygen
+     * security strength s = 112,
+     * Max Private key size N = len(q)
+     */
     if (!ffc_generate_private_key(ctx, &dsa->params, BN_num_bits(dsa->params.q),
-                                  112, priv_key))
+                                  MIN_STRENGTH, priv_key))
         goto err;
 
     if (dsa->pub_key == NULL) {

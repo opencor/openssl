@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -85,7 +85,7 @@ int X509_REQ_check_private_key(X509_REQ *x, EVP_PKEY *k)
     int ok = 0;
 
     xk = X509_REQ_get_pubkey(x);
-    switch (EVP_PKEY_cmp(xk, k)) {
+    switch (EVP_PKEY_eq(xk, k)) {
     case 1:
         ok = 1;
         break;

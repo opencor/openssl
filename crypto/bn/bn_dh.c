@@ -22,14 +22,14 @@
 
 /* DH parameters from RFC3526 */
 
-# ifndef FIPS_MODE
+# ifndef FIPS_MODULE
 /*
  * "1536-bit MODP Group" from RFC3526, Section 2.
  *
  * The prime is: 2^1536 - 2^1472 - 1 + 2^64 * { [2^1406 pi] + 741804 }
  *
  * RFC3526 specifies a generator of 2.
- * RFC2312 specifies a generator of 22.
+ * RFC2412 specifies a generator of 22.
  */
 static const BN_ULONG modp_1536_p[] = {
     BN_DEF(0xFFFFFFFF, 0xFFFFFFFF), BN_DEF(0xCA237327, 0xF1746C08),
@@ -60,7 +60,7 @@ static const BN_ULONG modp_1536_q[] = {
     BN_DEF(0x4533E63A, 0x94812704), BN_DEF(0xC06E0E68, 0x62633145),
     BN_DEF(0x10B4611A, 0xE487ED51), BN_DEF(0xFFFFFFFF, 0x7FFFFFFF)
 };
-# endif /* FIPS_MODE */
+# endif /* FIPS_MODULE */
 
 /*-
  * "2048-bit MODP Group" from RFC3526, Section 3.
@@ -1037,7 +1037,7 @@ make_dh_bn(ffdhe6144_q)
 make_dh_bn(ffdhe8192_p)
 make_dh_bn(ffdhe8192_q)
 
-# ifndef FIPS_MODE
+# ifndef FIPS_MODULE
 make_dh_bn(modp_1536_p)
 make_dh_bn(modp_1536_q)
 # endif

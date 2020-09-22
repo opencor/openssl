@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -33,6 +33,8 @@ int OSSL_PARAM_BLD_push_uint64(OSSL_PARAM_BLD *bld, const char *key,
                                uint64_t val);
 int OSSL_PARAM_BLD_push_size_t(OSSL_PARAM_BLD *bld, const char *key,
                                size_t val);
+int OSSL_PARAM_BLD_push_time_t(OSSL_PARAM_BLD *bld, const char *key,
+                               time_t val);
 int OSSL_PARAM_BLD_push_double(OSSL_PARAM_BLD *bld, const char *key,
                                double val);
 int OSSL_PARAM_BLD_push_BN(OSSL_PARAM_BLD *bld, const char *key,

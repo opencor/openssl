@@ -42,7 +42,6 @@
 # include <openssl/pem.h>
 # include <openssl/x509.h>
 
-
 # ifndef PATH_MAX
 #  define PATH_MAX 4096
 # endif

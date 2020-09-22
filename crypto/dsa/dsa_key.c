@@ -18,10 +18,11 @@
 #include "internal/cryptlib.h"
 #include <openssl/bn.h>
 #include <openssl/self_test.h>
+#include "prov/providercommon.h"
 #include "crypto/dsa.h"
 #include "dsa_local.h"
 
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
 # define MIN_STRENGTH 112
 #else
 # define MIN_STRENGTH 80
@@ -32,7 +33,7 @@ static int dsa_keygen_pairwise_test(DSA *dsa, OSSL_CALLBACK *cb, void *cbarg);
 
 int DSA_generate_key(DSA *dsa)
 {
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     if (dsa->meth->dsa_keygen != NULL)
         return dsa->meth->dsa_keygen(dsa);
 #endif
@@ -74,6 +75,11 @@ static int dsa_keygen(DSA *dsa, int pairwise_test)
         priv_key = dsa->priv_key;
     }
 
+    /* Do a partial check for invalid p, q, g */
+    if (!ffc_params_simple_validate(dsa->libctx, &dsa->params,
+                                    FFC_PARAM_TYPE_DSA))
+        goto err;
+
     /*
      * For FFC FIPS 186-4 keygen
      * security strength s = 112,
@@ -96,9 +102,9 @@ static int dsa_keygen(DSA *dsa, int pairwise_test)
     dsa->priv_key = priv_key;
     dsa->pub_key = pub_key;
 
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     pairwise_test = 1;
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
 
     ok = 1;
     if (pairwise_test) {
@@ -108,8 +114,11 @@ static int dsa_keygen(DSA *dsa, int pairwise_test)
         OSSL_SELF_TEST_get_callback(dsa->libctx, &cb, &cbarg);
         ok = dsa_keygen_pairwise_test(dsa, cb, cbarg);
         if (!ok) {
+            ossl_set_error_state(OSSL_SELF_TEST_TYPE_PCT);
             BN_free(dsa->pub_key);
             BN_clear_free(dsa->priv_key);
+            dsa->pub_key = NULL;
+            dsa->priv_key = NULL;
             BN_CTX_free(ctx);
             return ok;
         }

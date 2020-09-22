@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2003-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -82,7 +82,7 @@ static void *v2i_POLICY_MAPPINGS(const X509V3_EXT_METHOD *method,
         if (!val->value || !val->name) {
             X509V3err(X509V3_F_V2I_POLICY_MAPPINGS,
                       X509V3_R_INVALID_OBJECT_IDENTIFIER);
-            X509V3_conf_err(val);
+            ERR_add_error_data(1, val->name);
             goto err;
         }
         obj1 = OBJ_txt2obj(val->name, 0);
@@ -90,7 +90,7 @@ static void *v2i_POLICY_MAPPINGS(const X509V3_EXT_METHOD *method,
         if (!obj1 || !obj2) {
             X509V3err(X509V3_F_V2I_POLICY_MAPPINGS,
                       X509V3_R_INVALID_OBJECT_IDENTIFIER);
-            X509V3_conf_err(val);
+            ERR_add_error_data(1, val->name);
             goto err;
         }
         pmap = POLICY_MAPPING_new();

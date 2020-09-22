@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -305,7 +305,6 @@ int ecparam_main(int argc, char **argv)
         size_t buf_len = 0, tmp_len = 0;
         const EC_POINT *point;
         int is_prime, len = 0;
-        const EC_METHOD *meth = EC_GROUP_method_of(group);
 
         if ((ec_p = BN_new()) == NULL
                 || (ec_a = BN_new()) == NULL
@@ -317,7 +316,7 @@ int ecparam_main(int argc, char **argv)
             goto end;
         }
 
-        is_prime = (EC_METHOD_get_field_type(meth) == NID_X9_62_prime_field);
+        is_prime = (EC_GROUP_get_field_type(group) == NID_X9_62_prime_field);
         if (!is_prime) {
             BIO_printf(bio_err, "Can only handle X9.62 prime fields\n");
             goto end;

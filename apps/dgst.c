@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -62,7 +62,7 @@ const OPTIONS dgst_options[] = {
     {"c", OPT_C, '-', "Print the digest with separating colons"},
     {"r", OPT_R, '-', "Print the digest in coreutils format"},
     {"out", OPT_OUT, '>', "Output to filename rather than stdout"},
-    {"keyform", OPT_KEYFORM, 'f', "Key file format (PEM or ENGINE)"},
+    {"keyform", OPT_KEYFORM, 'f', "Key file format (ENGINE, other values ignored)"},
     {"hex", OPT_HEX, '-', "Print as hex dump"},
     {"binary", OPT_BINARY, '-', "Print in binary form"},
     {"d", OPT_DEBUG, '-', "Print debug info"},
@@ -291,7 +291,7 @@ int dgst_main(int argc, char **argv)
     if (mac_name != NULL) {
         EVP_PKEY_CTX *mac_ctx = NULL;
         int r = 0;
-        if (!init_gen_str(&mac_ctx, mac_name, impl, 0))
+        if (!init_gen_str(&mac_ctx, mac_name, impl, 0, NULL, NULL))
             goto mac_end;
         if (macopts != NULL) {
             char *macopt;
@@ -319,7 +319,8 @@ int dgst_main(int argc, char **argv)
 
     if (hmac_key != NULL) {
         sigkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_HMAC, impl,
-                                              (unsigned char *)hmac_key, -1);
+                                              (unsigned char *)hmac_key,
+                                              strlen(hmac_key));
         if (sigkey == NULL)
             goto end;
     }
@@ -405,13 +406,8 @@ int dgst_main(int argc, char **argv)
     } else {
         const char *sig_name = NULL;
         if (!out_bin) {
-            if (sigkey != NULL) {
-                const EVP_PKEY_ASN1_METHOD *ameth;
-                ameth = EVP_PKEY_get0_asn1(sigkey);
-                if (ameth)
-                    EVP_PKEY_asn1_get0_info(NULL, NULL,
-                                            NULL, NULL, &sig_name, ameth);
-            }
+            if (sigkey != NULL)
+                sig_name = EVP_PKEY_get0_first_alg_name(sigkey);
         }
         ret = 0;
         for (i = 0; i < argc; i++) {

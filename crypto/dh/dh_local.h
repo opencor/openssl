@@ -28,7 +28,7 @@ struct dh_st {
     int flags;
     BN_MONT_CTX *method_mont_p;
     CRYPTO_REF_COUNT references;
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     CRYPTO_EX_DATA ex_data;
     ENGINE *engine;
 #endif
@@ -58,6 +58,3 @@ struct dh_method {
     int (*generate_params) (DH *dh, int prime_len, int generator,
                             BN_GENCB *cb);
 };
-
-int dh_buf2key(DH *key, const unsigned char *buf, size_t len);
-size_t dh_key2buf(const DH *dh, unsigned char **pbuf);

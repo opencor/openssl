@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -94,7 +94,7 @@ static void dummy_free(void *parent, void *ptr, CRYPTO_EX_DATA *ad, int idx,
 }
 
 static int dummy_dup(CRYPTO_EX_DATA *to, const CRYPTO_EX_DATA *from,
-                     void *from_d, int idx,
+                     void **from_d, int idx,
                      long argl, void *argp)
 {
     return 1;
@@ -445,7 +445,11 @@ int CRYPTO_set_ex_data(CRYPTO_EX_DATA *ad, int idx, void *val)
             return 0;
         }
     }
-    sk_void_set(ad->sk, idx, val);
+    if (sk_void_set(ad->sk, idx, val) != val) {
+        /* Probably the index is out of bounds */
+        CRYPTOerr(CRYPTO_F_CRYPTO_SET_EX_DATA, ERR_R_PASSED_INVALID_ARGUMENT);
+        return 0;
+    }
     return 1;
 }
 

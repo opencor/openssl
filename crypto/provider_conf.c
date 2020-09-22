@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,9 +14,10 @@
 #include <openssl/safestack.h>
 #include "internal/provider.h"
 
+DEFINE_STACK_OF(OSSL_PROVIDER)
+
 /* PROVIDER config module */
 
-DEFINE_STACK_OF(OSSL_PROVIDER)
 static STACK_OF(OSSL_PROVIDER) *activated_providers = NULL;
 
 static const char *skip_dot(const char *name)
@@ -87,6 +88,7 @@ static int provider_conf_load(OPENSSL_CTX *libctx, const char *name,
 
     if (!ecmds) {
         CRYPTOerr(CRYPTO_F_PROVIDER_CONF_LOAD, CRYPTO_R_PROVIDER_SECTION_ERROR);
+        ERR_add_error_data(3, "section=", value, " not found");
         return 0;
     }
 

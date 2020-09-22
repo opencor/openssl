@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -48,7 +48,7 @@ const OPTIONS dsa_options[] = {
 
     OPT_SECTION("Input"),
     {"in", OPT_IN, 's', "Input key"},
-    {"inform", OPT_INFORM, 'f', "Input format, DER PEM PVK"},
+    {"inform", OPT_INFORM, 'f', "Input format (DER/PEM/PVK); has no effect"},
     {"pubin", OPT_PUBIN, '-', "Expect a public key in input file"},
     {"passin", OPT_PASSIN, 's', "Input file pass phrase source"},
 

@@ -24,6 +24,7 @@ B<openssl> B<genpkey>
 [B<-text>]
 {- $OpenSSL::safe::opt_engine_synopsis -}
 {- $OpenSSL::safe::opt_provider_synopsis -}
+{- $OpenSSL::safe::opt_config_synopsis -}
 
 =for openssl ifdef engine
 
@@ -106,6 +107,8 @@ parameters along with the PEM or DER structure.
 {- $OpenSSL::safe::opt_engine_item -}
 
 {- $OpenSSL::safe::opt_provider_item -}
+
+{- $OpenSSL::safe::opt_config_item -}
 
 =back
 
@@ -359,9 +362,11 @@ were added in OpenSSL 1.0.2.
 The ability to generate X25519 keys was added in OpenSSL 1.1.0.
 The ability to generate X448, ED25519 and ED448 keys was added in OpenSSL 1.1.1.
 
+The B<-engine> option was deprecated in OpenSSL 3.0.
+
 =head1 COPYRIGHT
 
-Copyright 2006-2019 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

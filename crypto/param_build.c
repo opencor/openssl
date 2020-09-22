@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -125,6 +125,8 @@ static void free_all_params(OSSL_PARAM_BLD *bld)
 
 void OSSL_PARAM_BLD_free(OSSL_PARAM_BLD *bld)
 {
+    if (bld == NULL)
+        return;
     free_all_params(bld);
     sk_OSSL_PARAM_BLD_DEF_free(bld->params);
     OPENSSL_free(bld);
@@ -186,6 +188,13 @@ int OSSL_PARAM_BLD_push_size_t(OSSL_PARAM_BLD *bld, const char *key,
 {
     return param_push_num(bld, key, &num, sizeof(num),
                           OSSL_PARAM_UNSIGNED_INTEGER);
+}
+
+int OSSL_PARAM_BLD_push_time_t(OSSL_PARAM_BLD *bld, const char *key,
+                               time_t num)
+{
+    return param_push_num(bld, key, &num, sizeof(num),
+                          OSSL_PARAM_INTEGER);
 }
 
 int OSSL_PARAM_BLD_push_double(OSSL_PARAM_BLD *bld, const char *key,
@@ -312,7 +321,7 @@ static OSSL_PARAM *param_bld_convert(OSSL_PARAM_BLD *bld, OSSL_PARAM *param,
         param[i].key = pd->key;
         param[i].data_type = pd->type;
         param[i].data_size = pd->size;
-        param[i].return_size = 0;
+        param[i].return_size = OSSL_PARAM_UNMODIFIED;
 
         if (pd->secure) {
             p = secure;
@@ -361,14 +370,12 @@ OSSL_PARAM *OSSL_PARAM_BLD_to_param(OSSL_PARAM_BLD *bld)
         if (s == NULL) {
             CRYPTOerr(CRYPTO_F_OSSL_PARAM_BLD_TO_PARAM,
                       CRYPTO_R_SECURE_MALLOC_FAILURE);
-            OPENSSL_free(bld);
             return NULL;
         }
     }
     params = OPENSSL_malloc(total);
     if (params == NULL) {
         CRYPTOerr(CRYPTO_F_OSSL_PARAM_BLD_TO_PARAM, ERR_R_MALLOC_FAILURE);
-        OPENSSL_free(bld);
         OPENSSL_secure_free(s);
         return NULL;
     }

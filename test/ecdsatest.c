@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -123,10 +123,10 @@ static int x9_62_tests(int n)
 
     TEST_info("ECDSA KATs for curve %s", OBJ_nid2sn(nid));
 
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     if (EC_curve_nid2nist(nid) == NULL)
         return TEST_skip("skip non approved curves");
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
 
     if (!TEST_ptr(mctx = EVP_MD_CTX_new())
         /* get the message digest */
@@ -237,6 +237,20 @@ static int test_builtin(int n, int as)
         return 1;
     }
 
+    /*
+     * skip SM2 curve if 'as' is equal to EVP_PKEY_EC or, skip all curves
+     * except SM2 curve if 'as' is equal to EVP_PKEY_SM2
+     */
+    if (nid == NID_sm2 && as == EVP_PKEY_EC) {
+        TEST_info("skipped: EC key type unsupported for curve %s",
+                  OBJ_nid2sn(nid));
+        return 1;
+    } else if (nid != NID_sm2 && as == EVP_PKEY_SM2) {
+        TEST_info("skipped: SM2 key type unsupported for curve %s",
+                  OBJ_nid2sn(nid));
+        return 1;
+    }
+
     TEST_info("testing ECDSA for curve %s as %s key type", OBJ_nid2sn(nid),
               as == EVP_PKEY_EC ? "EC" : "SM2");
 
@@ -252,6 +266,7 @@ static int test_builtin(int n, int as)
         || !TEST_ptr(eckey_neg = EC_KEY_new_by_curve_name(nid))
         || !TEST_true(EC_KEY_generate_key(eckey_neg))
         || !TEST_ptr(pkey_neg = EVP_PKEY_new())
+        || !TEST_false(EVP_PKEY_assign_EC_KEY(pkey_neg, NULL))
         || !TEST_true(EVP_PKEY_assign_EC_KEY(pkey_neg, eckey_neg)))
         goto err;
 

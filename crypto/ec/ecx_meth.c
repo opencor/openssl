@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -59,7 +59,7 @@ static int ecx_key_op(EVP_PKEY *pkey, int id, const X509_ALGOR *palg,
         }
     }
 
-    key = ecx_key_new(KEYNID2TYPE(id), 1);
+    key = ecx_key_new(libctx, KEYNID2TYPE(id), 1);
     if (key == NULL) {
         ECerr(EC_F_ECX_KEY_OP, ERR_R_MALLOC_FAILURE);
         return 0;
@@ -88,25 +88,9 @@ static int ecx_key_op(EVP_PKEY *pkey, int id, const X509_ALGOR *palg,
         } else {
             memcpy(privkey, p, KEYLENID(id));
         }
-        switch (id) {
-        case EVP_PKEY_X25519:
-            X25519_public_from_private(pubkey, privkey);
-            break;
-        case EVP_PKEY_ED25519:
-            if (!ED25519_public_from_private(libctx, pubkey, privkey)) {
-                ECerr(EC_F_ECX_KEY_OP, EC_R_FAILED_MAKING_PUBLIC_KEY);
-                return 0;
-            }
-            break;
-        case EVP_PKEY_X448:
-            X448_public_from_private(pubkey, privkey);
-            break;
-        case EVP_PKEY_ED448:
-            if (!ED448_public_from_private(libctx, pubkey, privkey)) {
-                ECerr(EC_F_ECX_KEY_OP, EC_R_FAILED_MAKING_PUBLIC_KEY);
-                return 0;
-            }
-            break;
+        if (!ecx_public_from_private(key)) {
+            ECerr(EC_F_ECX_KEY_OP, EC_R_FAILED_MAKING_PUBLIC_KEY);
+            goto err;
         }
     }
 
@@ -142,7 +126,7 @@ static int ecx_pub_encode(X509_PUBKEY *pk, const EVP_PKEY *pkey)
     return 1;
 }
 
-static int ecx_pub_decode(EVP_PKEY *pkey, X509_PUBKEY *pubkey)
+static int ecx_pub_decode(EVP_PKEY *pkey, const X509_PUBKEY *pubkey)
 {
     const unsigned char *p;
     int pklen;
@@ -455,7 +439,7 @@ static int ecx_generic_import_from(const OSSL_PARAM params[], void *vpctx,
 {
     EVP_PKEY_CTX *pctx = vpctx;
     EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(pctx);
-    ECX_KEY *ecx = ecx_key_new(KEYNID2TYPE(keytype), 0);
+    ECX_KEY *ecx = ecx_key_new(pctx->libctx, KEYNID2TYPE(keytype), 0);
 
     if (ecx == NULL) {
         ERR_raise(ERR_LIB_DH, ERR_R_MALLOC_FAILURE);
@@ -586,9 +570,9 @@ static int ecd_size448(const EVP_PKEY *pkey)
     return ED448_SIGSIZE;
 }
 
-static int ecd_item_verify(EVP_MD_CTX *ctx, const ASN1_ITEM *it, void *asn,
-                           X509_ALGOR *sigalg, ASN1_BIT_STRING *str,
-                           EVP_PKEY *pkey)
+static int ecd_item_verify(EVP_MD_CTX *ctx, const ASN1_ITEM *it,
+                           const void *asn, const X509_ALGOR *sigalg,
+                           const ASN1_BIT_STRING *str, EVP_PKEY *pkey)
 {
     const ASN1_OBJECT *obj;
     int ptype;
@@ -608,7 +592,8 @@ static int ecd_item_verify(EVP_MD_CTX *ctx, const ASN1_ITEM *it, void *asn,
     return 2;
 }
 
-static int ecd_item_sign25519(EVP_MD_CTX *ctx, const ASN1_ITEM *it, void *asn,
+static int ecd_item_sign25519(EVP_MD_CTX *ctx, const ASN1_ITEM *it,
+                              const void *asn,
                               X509_ALGOR *alg1, X509_ALGOR *alg2,
                               ASN1_BIT_STRING *str)
 {
@@ -628,7 +613,8 @@ static int ecd_sig_info_set25519(X509_SIG_INFO *siginf, const X509_ALGOR *alg,
     return 1;
 }
 
-static int ecd_item_sign448(EVP_MD_CTX *ctx, const ASN1_ITEM *it, void *asn,
+static int ecd_item_sign448(EVP_MD_CTX *ctx, const ASN1_ITEM *it,
+                            const void *asn,
                             X509_ALGOR *alg1, X509_ALGOR *alg2,
                             ASN1_BIT_STRING *str)
 {
@@ -963,7 +949,7 @@ static int s390x_pkey_ecx_keygen25519(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
-    ECX_KEY *key = ecx_key_new(ECX_KEY_TYPE_X25519, 1);
+    ECX_KEY *key = ecx_key_new(ctx->libctx, ECX_KEY_TYPE_X25519, 1);
     unsigned char *privkey = NULL, *pubkey;
 
     if (key == NULL) {
@@ -1005,7 +991,7 @@ static int s390x_pkey_ecx_keygen448(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
     };
-    ECX_KEY *key = ecx_key_new(ECX_KEY_TYPE_X448, 1);
+    ECX_KEY *key = ecx_key_new(ctx->libctx, ECX_KEY_TYPE_X448, 1);
     unsigned char *privkey = NULL, *pubkey;
 
     if (key == NULL) {
@@ -1050,7 +1036,7 @@ static int s390x_pkey_ecd_keygen25519(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
     };
     unsigned char x_dst[32], buff[SHA512_DIGEST_LENGTH];
-    ECX_KEY *key = ecx_key_new(ECX_KEY_TYPE_ED25519, 1);
+    ECX_KEY *key = ecx_key_new(ctx->libctx, ECX_KEY_TYPE_ED25519, 1);
     unsigned char *privkey = NULL, *pubkey;
     unsigned int sz;
 
@@ -1107,7 +1093,7 @@ static int s390x_pkey_ecd_keygen448(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
         0x24, 0xbc, 0xb6, 0x6e, 0x71, 0x46, 0x3f, 0x69, 0x00
     };
     unsigned char x_dst[57], buff[114];
-    ECX_KEY *key = ecx_key_new(ECX_KEY_TYPE_ED448, 1);
+    ECX_KEY *key = ecx_key_new(ctx->libctx, ECX_KEY_TYPE_ED448, 1);
     unsigned char *privkey = NULL, *pubkey;
     EVP_MD_CTX *hashctx = NULL;
 

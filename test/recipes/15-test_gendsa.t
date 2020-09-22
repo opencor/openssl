@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2017-2018 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2017-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -19,7 +19,7 @@ setup("test_gendsa");
 plan skip_all => "This test is unsupported in a no-dsa build"
     if disabled("dsa");
 
-plan tests => 8;
+plan tests => 10;
 
 ok(run(app([ 'openssl', 'genpkey', '-genparam',
              '-algorithm', 'DSA',
@@ -39,6 +39,13 @@ ok(run(app([ 'openssl', 'genpkey', '-genparam',
              '-pkeyopt', 'type:fips186_2',
              '-text'])),
    "genpkey DSA params fips186_2");
+
+ok(run(app([ 'openssl', 'genpkey', '-genparam',
+             '-algorithm', 'DSA',
+             '-pkeyopt', 'type:fips186_2',
+             '-pkeyopt', 'dsa_paramgen_bits:1024',
+             '-out', 'dsagen.legacy.pem'])),
+   "genpkey DSA params fips186_2 PEM");
 
 ok(!run(app([ 'openssl', 'genpkey', '-algorithm', 'DSA',
              '-pkeyopt', 'type:group',
@@ -61,6 +68,12 @@ ok(run(app([ 'openssl', 'genpkey', '-genparam',
              '-outform', 'DER',
              '-out', 'dsagen.der'])),
    "genpkey DSA params fips186_4 DER");
+
+ok(run(app([ 'openssl', 'genpkey',
+             '-paramfile', 'dsagen.legacy.pem',
+             '-pkeyopt', 'type:fips186_2',
+             '-text'])),
+   "genpkey DSA fips186_2 with PEM params");
 
 # The seed and counter should be the ones generated from the param generation
 # Just put some dummy ones in to show it works.

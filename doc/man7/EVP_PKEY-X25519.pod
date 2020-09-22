@@ -9,14 +9,28 @@ EVP_KEYMGMT-X25519, EVP_KEYMGMT-X448, EVP_KEYMGMT-ED25519, EVP_KEYMGMT-ED448
 =head1 DESCRIPTION
 
 The B<X25519>, B<X448>, B<ED25519> and B<ED448> keytypes are
-implemented in OpenSSL's default provider.
+implemented in OpenSSL's default and FIPS providers.  These implementations
+support the associated key, containing the public key I<pub> and the
+private key I<priv>.
+
+In the FIPS provider they are non-approved algorithms and do not have the
+"fips=yes" property set.
+No additional parameters can be set during key generation.
+
 
 =head2 Common X25519, X448, ED25519 and ED448 parameters
 
-The following Import/Export types are available for the built-in X25519, X448,
-ED25519 and X448 algorithms:
+In addition to the common parameters that all keytypes should support (see
+L<provider-keymgmt(7)/Common parameters>), the implementation of these keytypes
+support the following.
 
 =over 4
+
+=item "group" (B<OSSL_PKEY_PARAM_GROUP_NAME>) <UTF8 string>
+
+This is only supported by X25519 and X448. The group name must be "x25519" or
+"x448" respectively for those algorithms. This is only present for consistency
+with other key exchange algorithms and is typically not needed.
 
 =item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <octet string>
 
@@ -26,6 +40,21 @@ The public key value.
 
 The private key value.
 
+=item "tls-encoded-pt" (B<OSSL_PKEY_PARAM_TLS_ENCODED_PT>) <octet string>
+
+Used for getting and setting the encoding of the public key used in a key exchange
+message for the TLS protocol.
+
+=back
+
+=head2 ED25519 and ED448 parameters
+
+=over 4
+
+=item "mandatory-digest" (B<OSSL_PKEY_PARAM_MANDATORY_DIGEST>) <utf8 string>
+
+The empty string, signifying that no digest may be specified.
+
 =back
 
 =head1 CONFORMING TO
@@ -33,6 +62,8 @@ The private key value.
 =over 4
 
 =item RFC 8032
+
+=item RFC 8410
 
 =back
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -24,8 +24,10 @@ SCT_CTX *SCT_CTX_new(OPENSSL_CTX *libctx, const char *propq)
 {
     SCT_CTX *sctx = OPENSSL_zalloc(sizeof(*sctx));
 
-    if (sctx == NULL)
+    if (sctx == NULL) {
         CTerr(CT_F_SCT_CTX_NEW, ERR_R_MALLOC_FAILURE);
+        return NULL;
+    }
 
     sctx->libctx = libctx;
     if (propq != NULL) {

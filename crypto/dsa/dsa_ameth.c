@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -27,7 +27,7 @@
 #include "internal/ffc.h"
 #include "dsa_local.h"
 
-static int dsa_pub_decode(EVP_PKEY *pkey, X509_PUBKEY *pubkey)
+static int dsa_pub_decode(EVP_PKEY *pkey, const X509_PUBKEY *pubkey)
 {
     const unsigned char *p, *pm;
     int pklen, pmlen;

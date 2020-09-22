@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -45,7 +45,7 @@ int EC_GROUP_check_named_curve(const EC_GROUP *group, int nist_only,
 
 int EC_GROUP_check(const EC_GROUP *group, BN_CTX *ctx)
 {
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     /*
     * ECC domain parameter validation.
     * See SP800-56A R3 5.5.2 "Assurances of Domain-Parameter Validity" Part 1b.
@@ -114,5 +114,5 @@ int EC_GROUP_check(const EC_GROUP *group, BN_CTX *ctx)
     BN_CTX_free(new_ctx);
     EC_POINT_free(point);
     return ret;
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
 }

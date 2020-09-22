@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -188,8 +188,11 @@ static int test_ssl_corrupt(int testidx)
     int testresult = 0;
     STACK_OF(SSL_CIPHER) *ciphers;
     const SSL_CIPHER *currcipher;
+    int err;
 
     docorrupt = 0;
+
+    ERR_clear_error();
 
     TEST_info("Starting #%d, %s", testidx, cipher_list[testidx]);
 
@@ -232,9 +235,14 @@ static int test_ssl_corrupt(int testidx)
     if (!TEST_int_lt(SSL_read(server, junk, sizeof(junk)), 0))
         goto end;
 
-    if (!TEST_int_eq(ERR_GET_REASON(ERR_peek_error()),
-                     SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC))
-        goto end;
+    do {
+        err = ERR_get_error();
+
+        if (err == 0) {
+            TEST_error("Decryption failed or bad record MAC not seen");
+            goto end;
+        }
+    } while (ERR_GET_REASON(err) != SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC);
 
     testresult = 1;
  end:

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2011-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -59,7 +59,7 @@ typedef uint64_t u64;
 
 /*
  * The underlying field. P256 operates over GF(2^256-2^224+2^192+2^96-1). We
- * can serialise an element of this field into 32 bytes. We call this an
+ * can serialize an element of this field into 32 bytes. We call this an
  * felem_bytearray.
  */
 
@@ -138,7 +138,7 @@ static void bin32_to_felem(felem out, const u8 in[32])
 }
 
 /*
- * smallfelem_to_bin32 takes a smallfelem and serialises into a little
+ * smallfelem_to_bin32 takes a smallfelem and serializes into a little
  * endian, 32 byte array. This assumes that the CPU is little-endian.
  */
 static void smallfelem_to_bin32(u8 out[32], const smallfelem in)
@@ -1798,8 +1798,6 @@ const EC_METHOD *EC_GFp_nistp256_method(void)
         ec_GFp_simple_point_clear_finish,
         ec_GFp_simple_point_copy,
         ec_GFp_simple_point_set_to_infinity,
-        ec_GFp_simple_set_Jprojective_coordinates_GFp,
-        ec_GFp_simple_get_Jprojective_coordinates_GFp,
         ec_GFp_simple_point_set_affine_coordinates,
         ec_GFp_nistp256_point_get_affine_coordinates,
         0 /* point_set_compressed_coordinates */ ,
@@ -1914,7 +1912,7 @@ int ec_GFp_nistp256_group_set_curve(EC_GROUP *group, const BIGNUM *p,
 {
     int ret = 0;
     BIGNUM *curve_p, *curve_a, *curve_b;
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     BN_CTX *new_ctx = NULL;
 
     if (ctx == NULL)
@@ -1941,7 +1939,7 @@ int ec_GFp_nistp256_group_set_curve(EC_GROUP *group, const BIGNUM *p,
     ret = ec_GFp_simple_group_set_curve(group, p, a, b, ctx);
  err:
     BN_CTX_end(ctx);
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     BN_CTX_free(new_ctx);
 #endif
     return ret;
@@ -2080,9 +2078,8 @@ int ec_GFp_nistp256_points_mul(const EC_GROUP *group, EC_POINT *r,
             ECerr(EC_F_EC_GFP_NISTP256_POINTS_MUL, ERR_R_BN_LIB);
             goto err;
         }
-        if (!EC_POINT_set_Jprojective_coordinates_GFp(group,
-                                                      generator, x, y, z,
-                                                      ctx))
+        if (!ec_GFp_simple_set_Jprojective_coordinates_GFp(group, generator, x,
+                                                           y, z, ctx))
             goto err;
         if (0 == EC_POINT_cmp(group, generator, group->generator, ctx))
             /* precomputation matches generator */
@@ -2222,7 +2219,7 @@ int ec_GFp_nistp256_points_mul(const EC_GROUP *group, EC_POINT *r,
         ECerr(EC_F_EC_GFP_NISTP256_POINTS_MUL, ERR_R_BN_LIB);
         goto err;
     }
-    ret = EC_POINT_set_Jprojective_coordinates_GFp(group, r, x, y, z, ctx);
+    ret = ec_GFp_simple_set_Jprojective_coordinates_GFp(group, r, x, y, z, ctx);
 
  err:
     BN_CTX_end(ctx);
@@ -2242,14 +2239,14 @@ int ec_GFp_nistp256_precompute_mult(EC_GROUP *group, BN_CTX *ctx)
     EC_POINT *generator = NULL;
     smallfelem tmp_smallfelems[32];
     felem x_tmp, y_tmp, z_tmp;
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     BN_CTX *new_ctx = NULL;
 #endif
 
     /* throw away old precomputation */
     EC_pre_comp_free(group);
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     if (ctx == NULL)
         ctx = new_ctx = BN_CTX_new();
 #endif
@@ -2373,7 +2370,7 @@ int ec_GFp_nistp256_precompute_mult(EC_GROUP *group, BN_CTX *ctx)
  err:
     BN_CTX_end(ctx);
     EC_POINT_free(generator);
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     BN_CTX_free(new_ctx);
 #endif
     EC_nistp256_pre_comp_free(pre);

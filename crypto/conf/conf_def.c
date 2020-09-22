@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -11,6 +11,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#ifdef __TANDEM
+# include <strings.h> /* strcasecmp */
+#endif
 #include "internal/cryptlib.h"
 #include "internal/o_dir.h"
 #include <openssl/lhash.h>
@@ -418,6 +421,7 @@ static int def_load_bio(CONF *conf, BIO *in, long *line)
                     OPENSSL_strlcpy(include_path, include_dir, newlen);
                     OPENSSL_strlcat(include_path, "/", newlen);
                     OPENSSL_strlcat(include_path, include, newlen);
+                    OPENSSL_free(include);
                 } else {
                     include_path = include;
                 }
@@ -427,15 +431,11 @@ static int def_load_bio(CONF *conf, BIO *in, long *line)
                 next = process_include(include_path, &dirctx, &dirpath);
                 if (include_path != dirpath) {
                     /* dirpath will contain include in case of a directory */
-                    OPENSSL_free(include);
-                    if (include_path != include)
-                        OPENSSL_free(include_path);
+                    OPENSSL_free(include_path);
                 }
 #else
                 next = BIO_new_file(include_path, "r");
-                OPENSSL_free(include);
-                if (include_path != include)
-                    OPENSSL_free(include_path);
+                OPENSSL_free(include_path);
 #endif
 
                 if (next != NULL) {
@@ -443,11 +443,13 @@ static int def_load_bio(CONF *conf, BIO *in, long *line)
                     if (biosk == NULL) {
                         if ((biosk = sk_BIO_new_null()) == NULL) {
                             CONFerr(CONF_F_DEF_LOAD_BIO, ERR_R_MALLOC_FAILURE);
+                            BIO_free(next);
                             goto err;
                         }
                     }
                     if (!sk_BIO_push(biosk, in)) {
                         CONFerr(CONF_F_DEF_LOAD_BIO, ERR_R_MALLOC_FAILURE);
+                        BIO_free(next);
                         goto err;
                     }
                     /* continue with reading from the included BIO */

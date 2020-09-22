@@ -61,6 +61,7 @@ OPTIONS={- $config{options} -}
 CONFIGURE_ARGS=({- join(", ",quotify_l(@{$config{perlargv}})) -})
 SRCDIR={- $config{sourcedir} -}
 BLDDIR={- $config{builddir} -}
+FIPSKEY={- $config{FIPSKEY} -}
 
 VERSION={- "$config{full_version}" -}
 MAJOR={- $config{major} -}
@@ -138,7 +139,7 @@ INSTALL_ENGINES={-
                                && $unified_info{attributes}->{modules}->{$_}->{engine} }
                         @{$unified_info{modules}}))
 -}
-INSTALL_MODDULES={-
+INSTALL_MODULES={-
         join(" \\\n" . ' ' x 16,
              fill_lines(" ", $COLUMNS - 16,
                         map { platform->dso($_) }
@@ -172,35 +173,35 @@ MISC_SCRIPTS={-
 -}
 HTMLDOCS1={-
         join(" \\\n" . ' ' x 10,
-             fill_lines(" ", $COLUMNS - 10, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 10,
                         @{$unified_info{htmldocs}->{man1}})) -}
 HTMLDOCS3={-
         join(" \\\n" . ' ' x 10,
-             fill_lines(" ", $COLUMNS - 10, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 10,
                         @{$unified_info{htmldocs}->{man3}})) -}
 HTMLDOCS5={-
         join(" \\\n" . ' ' x 10,
-             fill_lines(" ", $COLUMNS - 10, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 10,
                         @{$unified_info{htmldocs}->{man5}})) -}
 HTMLDOCS7={-
         join(" \\\n" . ' ' x 10,
-             fill_lines(" ", $COLUMNS - 10, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 10,
                         @{$unified_info{htmldocs}->{man7}})) -}
 MANDOCS1={-
         join(" \\\n" . ' ' x 9,
-             fill_lines(" ", $COLUMNS - 9, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 9,
                         @{$unified_info{mandocs}->{man1}})) -}
 MANDOCS3={-
         join(" \\\n" . ' ' x 9,
-             fill_lines(" ", $COLUMNS - 9, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 9,
                         @{$unified_info{mandocs}->{man3}})) -}
 MANDOCS5={-
         join(" \\\n" . ' ' x 9,
-             fill_lines(" ", $COLUMNS - 9, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 9,
                         @{$unified_info{mandocs}->{man5}})) -}
 MANDOCS7={-
         join(" \\\n" . ' ' x 9,
-             fill_lines(" ", $COLUMNS - 9, map { platform->bin($_) }
+             fill_lines(" ", $COLUMNS - 9,
                         @{$unified_info{mandocs}->{man7}})) -}
 
 APPS_OPENSSL="{- use File::Spec::Functions;
@@ -475,6 +476,7 @@ test: tests
 	( SRCTOP=$(SRCDIR) \
 	  BLDTOP=$(BLDDIR) \
 	  PERL="$(PERL)" \
+	  FIPSKEY="$(FIPSKEY)" \
 	  EXE_EXT={- platform->binext() -} \
 	  $(PERL) $(SRCDIR)/test/run_tests.pl $(TESTS) )
 	@ : {- if ($disabled{tests}) { output_on(); } else { output_off(); } "" -}
@@ -519,7 +521,7 @@ clean: libclean
 	-$(RM) `find . -name '*{- platform->depext() -}' \! -name '.*' \! -type d -print`
 	-$(RM) `find . -name '*{- platform->objext() -}' \! -name '.*' \! -type d -print`
 	$(RM) core
-	$(RM) tags TAGS doc-nits cmd-nits
+	$(RM) tags TAGS doc-nits cmd-nits md-nits
 	$(RM) -r test/test-runs
 	$(RM) openssl.pc libcrypto.pc libssl.pc
 	-$(RM) `find . -type l \! -name '.*' -print`
@@ -859,30 +861,30 @@ install_man_docs: build_man_docs
 	@set -e; for x in dummy $(MANDOCS1); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man1/$$fn"; \
-		cp $$x $(DESTDIR)$(MANDIR)/man1/$$fn$(MANSUFFIX); \
-		chmod 755 $(DESTDIR)$(MANDIR)/man1/$$fn$(MANSUFFIX); \
+		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+		cp $$x $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX); \
+		chmod 644 $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS3); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man3/$$fn"; \
-		cp $$x $(DESTDIR)$(MANDIR)/man3/$$fn$(MANSUFFIX); \
-		chmod 755 $(DESTDIR)$(MANDIR)/man3/$$fn$(MANSUFFIX); \
+		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+		cp $$x $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX); \
+		chmod 644 $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS5); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man5/$$fn"; \
-		cp $$x $(DESTDIR)$(MANDIR)/man5/$$fn$(MANSUFFIX); \
-		chmod 755 $(DESTDIR)$(MANDIR)/man5/$$fn$(MANSUFFIX); \
+		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+		cp $$x $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX); \
+		chmod 644 $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS7); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man7/$$fn"; \
-		cp $$x $(DESTDIR)$(MANDIR)/man7/$$fn$(MANSUFFIX); \
-		chmod 755 $(DESTDIR)$(MANDIR)/man7/$$fn$(MANSUFFIX); \
+		$(ECHO) "install $$x -> $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+		cp $$x $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX); \
+		chmod 644 $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX); \
 	done
 
 uninstall_man_docs:
@@ -890,26 +892,26 @@ uninstall_man_docs:
 	@set -e; for x in dummy $(MANDOCS1); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man1/$$fn"; \
-		$(RM) $(DESTDIR)$(MANDIR)/man1/$$fn$(MANSUFFIX); \
+		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX)"; \
+		$(RM) $(DESTDIR)$(MANDIR)/man1/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS3); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man3/$$fn"; \
-		$(RM) $(DESTDIR)$(MANDIR)/man3/$$fn$(MANSUFFIX); \
+		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX)"; \
+		$(RM) $(DESTDIR)$(MANDIR)/man3/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS5); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man5/$$fn"; \
-		$(RM) $(DESTDIR)$(MANDIR)/man5/$$fn$(MANSUFFIX); \
+		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX)"; \
+		$(RM) $(DESTDIR)$(MANDIR)/man5/$${fn}$(MANSUFFIX); \
 	done
 	@set -e; for x in dummy $(MANDOCS7); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
-		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man7/$$fn"; \
-		$(RM) $(DESTDIR)$(MANDIR)/man7/$$fn$(MANSUFFIX); \
+		$(ECHO) "$(RM) $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX)"; \
+		$(RM) $(DESTDIR)$(MANDIR)/man7/$${fn}$(MANSUFFIX); \
 	done
 
 install_html_docs: build_html_docs
@@ -924,28 +926,28 @@ install_html_docs: build_html_docs
 		fn=`basename $$x`; \
 		$(ECHO) "install $$x -> $(DESTDIR)$(HTMLDIR)/man1/$$fn"; \
 		cp $$x $(DESTDIR)$(HTMLDIR)/man1/$$fn; \
-		chmod 755 $(DESTDIR)$(HTMLDIR)/man1/$$fn; \
+		chmod 644 $(DESTDIR)$(HTMLDIR)/man1/$$fn; \
 	done
 	@set -e; for x in dummy $(HTMLDOCS3); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
 		$(ECHO) "install $$x -> $(DESTDIR)$(HTMLDIR)/man3/$$fn"; \
 		cp $$x $(DESTDIR)$(HTMLDIR)/man3/$$fn; \
-		chmod 755 $(DESTDIR)$(HTMLDIR)/man3/$$fn; \
+		chmod 644 $(DESTDIR)$(HTMLDIR)/man3/$$fn; \
 	done
 	@set -e; for x in dummy $(HTMLDOCS5); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
 		$(ECHO) "install $$x -> $(DESTDIR)$(HTMLDIR)/man5/$$fn"; \
 		cp $$x $(DESTDIR)$(HTMLDIR)/man5/$$fn; \
-		chmod 755 $(DESTDIR)$(HTMLDIR)/man5/$$fn; \
+		chmod 644 $(DESTDIR)$(HTMLDIR)/man5/$$fn; \
 	done
 	@set -e; for x in dummy $(HTMLDOCS7); do \
 		if [ "$$x" = "dummy" ]; then continue; fi; \
 		fn=`basename $$x`; \
 		$(ECHO) "install $$x -> $(DESTDIR)$(HTMLDIR)/man7/$$fn"; \
 		cp $$x $(DESTDIR)$(HTMLDIR)/man7/$$fn; \
-		chmod 755 $(DESTDIR)$(HTMLDIR)/man7/$$fn; \
+		chmod 644 $(DESTDIR)$(HTMLDIR)/man7/$$fn; \
 	done
 
 uninstall_html_docs:
@@ -982,12 +984,21 @@ update: generate errors ordinals
 generate: generate_apps generate_crypto_bn generate_crypto_objects \
           generate_crypto_conf generate_crypto_asn1 generate_fuzz_oids
 
-.PHONY: doc-nits cmd-nits
+.PHONY: doc-nits cmd-nits md-nits
 doc-nits: build_generated
 	$(PERL) $(SRCDIR)/util/find-doc-nits -n -l -e
 
 cmd-nits: build_generated apps/openssl
 	$(PERL) $(SRCDIR)/util/find-doc-nits -c
+
+# This uses "mdl", the markdownlint application, which is written in ruby.
+# The source is at https://github.com/markdownlint/markdownlint
+# If you have ruby installed, "gem install mdl" should work.
+# Another option is at https://snapcraft.io/install/mdl/debian
+# Finally, there's a Node.js version, which we haven't tried, that
+# can be found at https://github.com/DavidAnson/markdownlint
+md-nits:
+	mdl -s util/markdownlint.rb . NOTES-Windows.txt
 
 # Test coverage is a good idea for the future
 #coverage: $(PROGRAMS) $(TESTPROGRAMS)
@@ -1051,7 +1062,7 @@ errors:
 
 {- use File::Basename;
 
-   our @sslheaders =
+   my @sslheaders_tmpl =
        qw( include/openssl/ssl.h
            include/openssl/ssl2.h
            include/openssl/ssl3.h
@@ -1059,39 +1070,63 @@ errors:
            include/openssl/tls1.h
            include/openssl/dtls1.h
            include/openssl/srtp.h );
-   our @cryptoheaders =
+   my @cryptoheaders_tmpl =
        qw( include/internal/dso.h
            include/internal/o_dir.h
            include/internal/err.h
            include/internal/evp.h
+           include/internal/pem.h
+           include/internal/asn1.h
            include/internal/sslconf.h );
-   our @cryptoskipheaders = ( @sslheaders,
+   my @cryptoskipheaders = ( @sslheaders_tmpl,
        qw( include/openssl/conf_api.h
            include/openssl/ebcdic.h
            include/openssl/opensslconf.h
            include/openssl/symhacks.h ) );
-   foreach my $f ( glob(catfile($config{sourcedir},
-                                'include','openssl','*.h')) ) {
-       my $fn = "include/openssl/" . basename($f);
-       push @cryptoheaders, $fn unless grep { $_ eq $fn } @cryptoskipheaders;
+   our %cryptoheaders = ();
+   our %sslheaders = ();
+   foreach my $d ( qw( include/openssl include/internal ) ) {
+       my @header_patterns =
+           map { catfile($config{sourcedir}, $d, $_) } ( '*.h', '*.h.in' );
+       foreach my $f ( map { glob($_) } @header_patterns ) {
+           my $base = basename($f);
+           my $base_in = basename($f, '.in');
+           my $dir = catfile($config{sourcedir}, $d);
+           if ($base ne $base_in) {
+               # We have a .h.in file, which means the header file is in the
+               # build tree.
+               $base = $base_in;
+               $dir = catfile($config{builddir}, $d);
+           }
+           my $new_f = catfile($dir, $base);
+           my $fn = "$d/$base";
+           # The logic to add files to @cryptoheaders is a bit complex.  The
+           # file to be added must be either in the public header directory
+           # or one of the pre-declared internal headers, and must under no
+           # circumstances be one of those that must be skipped.
+           $cryptoheaders{$new_f} = 1
+               if (($d eq 'include/openssl'
+                    || ( grep { $_ eq $fn } @cryptoheaders_tmpl ))
+                   && !( grep { $_ eq $fn } @cryptoskipheaders ));
+           # The logic to add files to @sslheaders is much simpler...
+           $sslheaders{$new_f} = 1 if grep { $_ eq $fn } @sslheaders_tmpl;
+       }
    }
    "";
 -}
 CRYPTOHEADERS={- join(" \\\n" . ' ' x 14,
-                      fill_lines(" ", $COLUMNS - 14, sort @cryptoheaders)) -}
+                      fill_lines(" ", $COLUMNS - 14, sort keys %cryptoheaders)) -}
 SSLHEADERS={- join(" \\\n" . ' ' x 11,
-                   fill_lines(" ", $COLUMNS - 11, sort @sslheaders)) -}
-ordinals:
-	( cd $(SRCDIR); \
-          $(PERL) util/mknum.pl --version $(VERSION) --no-warnings \
-                  --ordinals util/libcrypto.num \
-                  --symhacks include/openssl/symhacks.h \
-                  $(CRYPTOHEADERS) )
-	( cd $(SRCDIR); \
-          $(PERL) util/mknum.pl --version $(VERSION) --no-warnings \
-                  --ordinals util/libssl.num \
-                  --symhacks include/openssl/symhacks.h \
-                  $(SSLHEADERS))
+                   fill_lines(" ", $COLUMNS - 11, sort keys %sslheaders)) -}
+ordinals: build_generated
+	$(PERL) $(SRCDIR)/util/mknum.pl --version $(VERSION) --no-warnings \
+                --ordinals $(SRCDIR)/util/libcrypto.num \
+                --symhacks $(SRCDIR)/include/openssl/symhacks.h \
+                $(CRYPTOHEADERS)
+	$(PERL) $(SRCDIR)/util/mknum.pl --version $(VERSION) --no-warnings \
+                --ordinals $(SRCDIR)/util/libssl.num \
+                --symhacks $(SRCDIR)/include/openssl/symhacks.h \
+                $(SSLHEADERS)
 
 test_ordinals:
 	( cd test; \
@@ -1268,7 +1303,7 @@ EOF
 
           if ($args{generator}->[0] =~ /\.pl$/) {
               $generator = 'CC="$(CC)" $(PERL)'.$generator_incs.' '.$generator
-                  .' "$(PERLASM_SCHEME)"'.$incs.' '.$cppflags.$defs.' $(PROCESSSOR)';
+                  .' "$(PERLASM_SCHEME)"'.$incs.' '.$cppflags.$defs.' $(PROCESSOR)';
           } elsif ($args{generator}->[0] =~ /\.m4$/) {
               $generator = 'm4 -B 8192'.$generator_incs.' '.$generator.' >'
           } elsif ($args{generator}->[0] =~ /\.S$/) {
@@ -1476,7 +1511,8 @@ EOF
                  @{$args{objs}};
       my @deps = compute_lib_depends(@{$args{deps}});
       my $shared_def = join("", map { ' '.$target{shared_defflag}.$_ } @defs);
-
+      # TODO(3.0): next line needs to become "less magic" (see PR #11950)
+      $shared_def .= ' '.$target{shared_fipsflag} if (m/providers\/fips/ && defined $target{shared_fipsflag});
       my $objs = join(" \\\n\t\t", fill_lines(' ', $COLUMNS - 16, @objs));
       my $deps = join(" \\\n" . ' ' x (length($dso) + 2),
                       fill_lines(' ', $COLUMNS - length($dso) - 2,
@@ -1494,11 +1530,17 @@ EOF
       my %args = @_;
       my $lib = platform->staticlib($args{lib});
       my @objs = map { platform->obj($_) } @{$args{objs}};
-      my $objs = join(" \\\n" . ' ' x (length($lib) + 2),
+      my $deps = join(" \\\n" . ' ' x (length($lib) + 2),
                       fill_lines(' ', $COLUMNS - length($lib) - 2, @objs));
+      my $max_per_call = 500;
+      my @objs_grouped;
+      push @objs_grouped, join(" ", splice @objs, 0, $max_per_call) while @objs;
+      my $fill_lib =
+          join("\n\t", (map { "\$(AR) \$(ARFLAGS) $lib $_" } @objs_grouped));
       return <<"EOF";
-$lib: $objs
-	\$(AR) \$(ARFLAGS) \$\@ \$\?
+$lib: $deps
+	\$(RM) $lib
+	$fill_lib
 	\$(RANLIB) \$\@ || echo Never mind.
 EOF
   }

@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -778,7 +778,7 @@ static void print_details(SSL *c_ssl, const char *prefix)
                prefix,
                SSL_get_version(c_ssl),
                SSL_CIPHER_get_version(ciph), SSL_CIPHER_get_name(ciph));
-    cert = SSL_get_peer_certificate(c_ssl);
+    cert = SSL_get0_peer_certificate(c_ssl);
     if (cert != NULL) {
         EVP_PKEY* pubkey = X509_get0_pubkey(cert);
 
@@ -786,7 +786,6 @@ static void print_details(SSL *c_ssl, const char *prefix)
             BIO_puts(bio_stdout, ", ");
             print_key_details(bio_stdout, pubkey);
         }
-        X509_free(cert);
     }
     if (SSL_get_peer_tmp_key(c_ssl, &pkey)) {
         BIO_puts(bio_stdout, ", temp key: ");

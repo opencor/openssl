@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2018 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -25,11 +25,9 @@ use lib bldtop_dir('.');
 use platform;
 
 my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
+my $infile = bldtop_file('providers', platform->dso('fips'));
 
-$ENV{OPENSSL_MODULES} = bldtop_dir("providers");
-$ENV{OPENSSL_CONF_INCLUDE} = bldtop_dir("providers");
 $ENV{TEST_CERTS_DIR} = srctop_dir("test", "certs");
-$ENV{CTLOG_FILE} = srctop_file("test", "ct", "log_list.cnf");
 
 my @conf_srcs =  glob(srctop_file("test", "ssl-tests", "*.cnf.in"));
 map { s/;.*// } @conf_srcs if $^O eq "VMS";
@@ -119,11 +117,8 @@ my %skip = (
 
 unless ($no_fips) {
     ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsinstall.cnf'),
-                '-module', bldtop_file('providers', platform->dso('fips')),
-                '-provider_name', 'fips', '-mac_name', 'HMAC',
-                '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
-                '-section_name', 'fips_sect'])),
+                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
+                '-module', $infile])),
        "fipsinstall");
 }
 
@@ -176,7 +171,7 @@ sub test_conf {
 
       if ($provider eq "fips") {
           ok(run(test(["ssl_test", $output_file, $provider,
-                       srctop_file("test", "fips.cnf")])),
+                       srctop_file("test", "fips-and-base.cnf")])),
              "running ssl_test $conf");
       } else {
           ok(run(test(["ssl_test", $output_file, $provider])),

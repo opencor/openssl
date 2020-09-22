@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -387,10 +387,12 @@ int ASN1_STRING_length(const ASN1_STRING *x)
     return x->length;
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 void ASN1_STRING_length_set(ASN1_STRING *x, int len)
 {
     x->length = len;
 }
+#endif
 
 int ASN1_STRING_type(const ASN1_STRING *x)
 {

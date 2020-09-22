@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2018 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -281,7 +281,7 @@ EOF
     { regexp   => qr/(.*)\bLHASH_OF<<<\((.*?)\)>>>(.*)/,
       massager => sub { return ("$1struct lhash_st_$2$3"); }
     },
-    { regexp   => qr/DEFINE_LHASH_OF<<<\((.*)\)>>>/,
+    { regexp   => qr/DEFINE_LHASH_OF(?:_INTERNAL)?<<<\((.*)\)>>>/,
       massager => sub {
           return (<<"EOF");
 static ossl_inline LHASH_OF($1) * lh_$1_new(unsigned long (*hfn)(const $1 *),
@@ -357,6 +357,21 @@ static ossl_inline STACK_OF($1) *sk_$1_deep_copy(const STACK_OF($1) *sk,
                                                  sk_$1_freefunc freefunc);
 static ossl_inline sk_$1_compfunc sk_$1_set_cmp_func(STACK_OF($1) *sk,
                                                      sk_$1_compfunc compare);
+EOF
+      }
+    },
+    { regexp   => qr/SKM_DEFINE_STACK_OF_INTERNAL<<<\((.*),\s*(.*),\s*(.*)\)>>>/,
+      massager => sub {
+          return (<<"EOF");
+STACK_OF($1);
+typedef int (*sk_$1_compfunc)(const $3 * const *a, const $3 *const *b);
+typedef void (*sk_$1_freefunc)($3 *a);
+typedef $3 * (*sk_$1_copyfunc)(const $3 *a);
+static ossl_unused ossl_inline $2 *ossl_check_$1_type($2 *ptr);
+static ossl_unused ossl_inline const OPENSSL_STACK *ossl_check_const_$1_sk_type(const STACK_OF($1) *sk);
+static ossl_unused ossl_inline OPENSSL_sk_compfunc ossl_check_$1_compfunc_type(sk_$1_compfunc cmp);
+static ossl_unused ossl_inline OPENSSL_sk_copyfunc ossl_check_$1_copyfunc_type(sk_$1_copyfunc cpy);
+static ossl_unused ossl_inline OPENSSL_sk_freefunc ossl_check_$1_freefunc_type(sk_$1_freefunc fr);
 EOF
       }
     },
@@ -586,6 +601,7 @@ my @chandlers = (
       massager => sub { return (); }
     },
     # Function returning function pointer declaration
+    # This sort of declaration may have a body (inline functions, for example)
     { regexp   => qr/(?:(typedef)\s?)?          # Possible typedef      ($1)
                      ((?:\w|\*|\s)*?)           # Return type           ($2)
                      \s?                        # Possible space
@@ -594,14 +610,15 @@ my @chandlers = (
                      (\(.*\))                   # Parameters            ($4)
                      \)>>>
                      <<<(\(.*\))>>>             # F.p. parameters       ($5)
-                     ;
+                     (?:<<<\{.*\}>>>|;)         # Body or semicolon
                     /x,
       massager => sub {
-          return ("", $3, 'F', "", "$2(*$4)$5", all_conds())
+          return ("", $3, 'T', "", "$2(*$4)$5", all_conds())
               if defined $1;
           return ("", $3, 'F', "$2(*)$5", "$2(*$4)$5", all_conds()); }
     },
     # Function pointer declaration, or typedef thereof
+    # This sort of declaration never has a function body
     { regexp   => qr/(?:(typedef)\s?)?          # Possible typedef      ($1)
                      ((?:\w|\*|\s)*?)           # Return type           ($2)
                      <<<\(\*([[:alpha:]_]\w*)\)>>> # T.d. or var name   ($3)
@@ -615,12 +632,13 @@ my @chandlers = (
       },
     },
     # Function declaration, or typedef thereof
+    # This sort of declaration may have a body (inline functions, for example)
     { regexp   => qr/(?:(typedef)\s?)?          # Possible typedef      ($1)
                      ((?:\w|\*|\s)*?)           # Return type           ($2)
                      \s?                        # Possible space
                      ([[:alpha:]_]\w*)          # Function name         ($3)
                      <<<(\(.*\))>>>             # Parameters            ($4)
-                     ;
+                     (?:<<<\{.*\}>>>|;)         # Body or semicolon
                     /x,
       massager => sub {
           return ("", $3, 'T', "", "$2$4", all_conds())

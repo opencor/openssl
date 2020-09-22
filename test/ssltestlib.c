@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -741,8 +741,10 @@ const SSL_METHOD *cm,
     return 1;
 
  err:
-    SSL_CTX_free(serverctx);
-    SSL_CTX_free(clientctx);
+    if (*sctx == NULL)
+        SSL_CTX_free(serverctx);
+    if (cctx != NULL && *cctx == NULL)
+        SSL_CTX_free(clientctx);
     return 0;
 }
 

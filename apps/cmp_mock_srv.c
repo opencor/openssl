@@ -14,7 +14,7 @@
 #include <openssl/cmp.h>
 #include <openssl/err.h>
 #include <openssl/cmperr.h>
-
+ 
 /* the context for the CMP mock server */
 typedef struct
 {
@@ -204,6 +204,7 @@ static OSSL_CMP_PKISI *process_cert_request(OSSL_CMP_SRV_CTX *srv_ctx,
     }
     if (ctx->certOut != NULL
             && (*certOut = X509_dup(ctx->certOut)) == NULL)
+        /* TODO better return a cert produced from data in request template */
         goto err;
     if (ctx->chainOut != NULL
             && (*chainOut = X509_chain_up_ref(ctx->chainOut)) == NULL)
@@ -383,9 +384,9 @@ static int process_pollReq(OSSL_CMP_SRV_CTX *srv_ctx,
     return 1;
 }
 
-OSSL_CMP_SRV_CTX *ossl_cmp_mock_srv_new(void)
+OSSL_CMP_SRV_CTX *ossl_cmp_mock_srv_new(OPENSSL_CTX *libctx, const char *propq)
 {
-    OSSL_CMP_SRV_CTX *srv_ctx = OSSL_CMP_SRV_CTX_new();
+    OSSL_CMP_SRV_CTX *srv_ctx = OSSL_CMP_SRV_CTX_new(libctx, propq);
     mock_srv_ctx *ctx = mock_srv_ctx_new();
 
     if (srv_ctx != NULL && ctx != NULL

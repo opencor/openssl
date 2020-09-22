@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -31,7 +31,7 @@ typedef enum OPTION_choice {
     /* Do not change the order here; see case statements below */
     OPT_PVK_NONE, OPT_PVK_WEAK, OPT_PVK_STRONG,
     OPT_NOOUT, OPT_TEXT, OPT_MODULUS, OPT_CHECK, OPT_CIPHER,
-    OPT_PROV_ENUM
+    OPT_PROV_ENUM, OPT_TRADITIONAL
 } OPTION_CHOICE;
 
 const OPTIONS rsa_options[] = {
@@ -45,7 +45,7 @@ const OPTIONS rsa_options[] = {
 
     OPT_SECTION("Input"),
     {"in", OPT_IN, 's', "Input file"},
-    {"inform", OPT_INFORM, 'f', "Input format, one of DER PEM"},
+    {"inform", OPT_INFORM, 'f', "Input format (DER/PEM/P12/ENGINE"},
     {"pubin", OPT_PUBIN, '-', "Expect a public key in input file"},
     {"RSAPublicKey_in", OPT_RSAPUBKEY_IN, '-', "Input is an RSAPublicKey"},
     {"passin", OPT_PASSIN, 's', "Input file pass phrase source"},
@@ -59,15 +59,17 @@ const OPTIONS rsa_options[] = {
     {"noout", OPT_NOOUT, '-', "Don't print key out"},
     {"text", OPT_TEXT, '-', "Print the key in text"},
     {"modulus", OPT_MODULUS, '-', "Print the RSA key modulus"},
+    {"traditional", OPT_TRADITIONAL, '-',
+     "Use traditional format for private keys"},
 
 #if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_RC4)
     OPT_SECTION("PVK"),
     {"pvk-strong", OPT_PVK_STRONG, '-', "Enable 'Strong' PVK encoding level (default)"},
     {"pvk-weak", OPT_PVK_WEAK, '-', "Enable 'Weak' PVK encoding level"},
     {"pvk-none", OPT_PVK_NONE, '-', "Don't enforce PVK encoding"},
+#endif
 
     OPT_PROV_OPTIONS,
-#endif
     {NULL}
 };
 
@@ -88,6 +90,7 @@ int rsa_main(int argc, char **argv)
     int pvk_encr = 2;
 #endif
     OPTION_CHOICE o;
+    int traditional = 0;
 
     prog = opt_init(argc, argv, rsa_options);
     while ((o = opt_next()) != OPT_EOF) {
@@ -162,6 +165,9 @@ int rsa_main(int argc, char **argv)
         case OPT_PROV_CASES:
             if (!opt_provider(o))
                 goto end;
+            break;
+        case OPT_TRADITIONAL:
+            traditional = 1;
             break;
         }
     }
@@ -280,8 +286,13 @@ int rsa_main(int argc, char **argv)
                 i = PEM_write_bio_RSA_PUBKEY(out, rsa);
         } else {
             assert(private);
-            i = PEM_write_bio_RSAPrivateKey(out, rsa,
-                                            enc, NULL, 0, NULL, passout);
+            if (traditional) {
+                i = PEM_write_bio_PrivateKey_traditional(out, pkey, enc, NULL, 0,
+                                                         NULL, passout);
+            } else {
+                i = PEM_write_bio_PrivateKey(out, pkey,
+                                             enc, NULL, 0, NULL, passout);
+            }
         }
 #ifndef OPENSSL_NO_DSA
     } else if (outformat == FORMAT_MSBLOB || outformat == FORMAT_PVK) {

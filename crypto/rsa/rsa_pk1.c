@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -265,7 +265,7 @@ int RSA_padding_check_PKCS1_type_2(unsigned char *to, int tlen,
     }
 
     OPENSSL_clear_free(em, num);
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     /*
      * This trick doesn't work in the FIPS provider because libcrypto manages
      * the error stack. Instead we opt not to put an error on the stack at all

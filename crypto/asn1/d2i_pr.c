@@ -1,11 +1,14 @@
 /*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
  */
+
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <stdio.h>
 #include "internal/cryptlib.h"
@@ -51,12 +54,14 @@ EVP_PKEY *d2i_PrivateKey_ex(int type, EVP_PKEY **a, const unsigned char **pp,
             p8 = d2i_PKCS8_PRIV_KEY_INFO(NULL, &p, length);
             if (p8 == NULL)
                 goto err;
-            tmp = evp_pkcs82pkey_int(p8, libctx, propq);
+            tmp = EVP_PKCS82PKEY_with_libctx(p8, libctx, propq);
             PKCS8_PRIV_KEY_INFO_free(p8);
             if (tmp == NULL)
                 goto err;
             EVP_PKEY_free(ret);
             ret = tmp;
+            if (EVP_PKEY_type(type) != EVP_PKEY_base_id(ret))
+                goto err;
         } else {
             ASN1err(0, ERR_R_ASN1_LIB);
             goto err;
@@ -116,7 +121,7 @@ EVP_PKEY *d2i_AutoPrivateKey_ex(EVP_PKEY **a, const unsigned char **pp,
             ASN1err(0, ASN1_R_UNSUPPORTED_PUBLIC_KEY_TYPE);
             return NULL;
         }
-        ret = evp_pkcs82pkey_int(p8, libctx, propq);
+        ret = EVP_PKCS82PKEY_with_libctx(p8, libctx, propq);
         PKCS8_PRIV_KEY_INFO_free(p8);
         if (ret == NULL)
             return NULL;

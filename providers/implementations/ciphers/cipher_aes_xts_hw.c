@@ -59,6 +59,7 @@ static int cipher_hw_aes_xts_generic_initkey(PROV_CIPHER_CTX *ctx,
         XTS_SET_KEY_FN(HWAES_set_encrypt_key, HWAES_set_decrypt_key,
                        HWAES_encrypt, HWAES_decrypt,
                        stream_enc, stream_dec);
+        return 1;
     } else
 #endif /* HWAES_CAPABLE */
 
@@ -169,7 +170,7 @@ static const PROV_CIPHER_HW aes_generic_xts = {
     cipher_hw_aes_xts_copyctx
 };
 PROV_CIPHER_HW_declare_xts()
-const PROV_CIPHER_HW *PROV_CIPHER_HW_aes_xts(size_t keybits)
+const PROV_CIPHER_HW *ossl_prov_cipher_hw_aes_xts(size_t keybits)
 {
     PROV_CIPHER_HW_select_xts()
     return &aes_generic_xts;

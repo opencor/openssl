@@ -27,8 +27,9 @@ int ecx_public_from_private(ECX_KEY *key)
         X25519_public_from_private(key->pubkey, key->privkey);
         break;
     case ECX_KEY_TYPE_ED25519:
-        if (!ED25519_public_from_private(key->libctx, key->pubkey, key->privkey)) {
-            ECerr(0, EC_R_FAILED_MAKING_PUBLIC_KEY);
+        if (!ED25519_public_from_private(key->libctx, key->pubkey, key->privkey,
+                                         key->propq)) {
+            ERR_raise(ERR_LIB_EC, EC_R_FAILED_MAKING_PUBLIC_KEY);
             return 0;
         }
         break;
@@ -36,8 +37,9 @@ int ecx_public_from_private(ECX_KEY *key)
         X448_public_from_private(key->pubkey, key->privkey);
         break;
     case ECX_KEY_TYPE_ED448:
-        if (!ED448_public_from_private(key->libctx, key->pubkey, key->privkey)) {
-            ECerr(0, EC_R_FAILED_MAKING_PUBLIC_KEY);
+        if (!ED448_public_from_private(key->libctx, key->pubkey, key->privkey,
+                                       key->propq)) {
+            ERR_raise(ERR_LIB_EC, EC_R_FAILED_MAKING_PUBLIC_KEY);
             return 0;
         }
         break;

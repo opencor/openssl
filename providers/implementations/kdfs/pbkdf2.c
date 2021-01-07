@@ -111,7 +111,7 @@ static void kdf_pbkdf2_reset(void *vctx)
 static void kdf_pbkdf2_init(KDF_PBKDF2 *ctx)
 {
     OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
 
     params[0] = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST,
                                                  SN_sha1, 0);
@@ -168,7 +168,7 @@ static int kdf_pbkdf2_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KDF_PBKDF2 *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
     int pkcs5;
     uint64_t iter, min_iter;
 
@@ -240,7 +240,7 @@ static const OSSL_PARAM *kdf_pbkdf2_gettable_ctx_params(ossl_unused void *p_ctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_pbkdf2_functions[] = {
+const OSSL_DISPATCH ossl_kdf_pbkdf2_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_pbkdf2_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_pbkdf2_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_pbkdf2_reset },

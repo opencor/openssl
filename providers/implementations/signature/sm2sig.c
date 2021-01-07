@@ -59,7 +59,7 @@ static OSSL_FUNC_signature_settable_ctx_md_params_fn sm2sig_settable_ctx_md_para
  * we use that here too.
  */
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     char *propq;
     EC_KEY *ec;
 
@@ -102,7 +102,7 @@ static void *sm2sig_newctx(void *provctx, const char *propq)
     if (ctx == NULL)
         return NULL;
 
-    ctx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    ctx->libctx = PROV_LIBCTX_OF(provctx);
     if (propq != NULL && (ctx->propq = OPENSSL_strdup(propq)) == NULL) {
         OPENSSL_free(ctx);
         ctx = NULL;

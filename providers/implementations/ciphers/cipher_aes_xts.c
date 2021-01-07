@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
@@ -81,7 +82,7 @@ static int aes_xts_init(void *vctx, const unsigned char *key, size_t keylen,
     ctx->enc = enc;
 
     if (iv != NULL) {
-        if (!cipher_generic_initiv(vctx, iv, ivlen))
+        if (!ossl_cipher_generic_initiv(vctx, iv, ivlen))
             return 0;
     }
     if (key != NULL) {
@@ -114,8 +115,9 @@ static void *aes_xts_newctx(void *provctx, unsigned int mode, uint64_t flags,
     PROV_AES_XTS_CTX *ctx = OPENSSL_zalloc(sizeof(*ctx));
 
     if (ctx != NULL) {
-        cipher_generic_initkey(&ctx->base, kbits, blkbits, ivbits, mode, flags,
-                               PROV_CIPHER_HW_aes_xts(kbits), NULL);
+        ossl_cipher_generic_initkey(&ctx->base, kbits, blkbits, ivbits, mode,
+                                    flags, ossl_prov_cipher_hw_aes_xts(kbits),
+                                    NULL);
     }
     return ctx;
 }
@@ -124,7 +126,7 @@ static void aes_xts_freectx(void *vctx)
 {
     PROV_AES_XTS_CTX *ctx = (PROV_AES_XTS_CTX *)vctx;
 
-    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
+    ossl_cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 
@@ -255,7 +257,7 @@ static int aes_xts_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 static OSSL_FUNC_cipher_get_params_fn aes_##kbits##_##lcmode##_get_params;     \
 static int aes_##kbits##_##lcmode##_get_params(OSSL_PARAM params[])            \
 {                                                                              \
-    return cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE,         \
+    return ossl_cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE,    \
                                      flags, 2 * kbits, AES_XTS_BLOCK_BITS,     \
                                      AES_XTS_IV_BITS);                         \
 }                                                                              \
@@ -265,7 +267,7 @@ static void *aes_##kbits##_xts_newctx(void *provctx)                           \
     return aes_xts_newctx(provctx, EVP_CIPH_##UCMODE##_MODE, flags, 2 * kbits, \
                           AES_XTS_BLOCK_BITS, AES_XTS_IV_BITS);                \
 }                                                                              \
-const OSSL_DISPATCH aes##kbits##xts_functions[] = {                            \
+const OSSL_DISPATCH ossl_aes##kbits##xts_functions[] = {                       \
     { OSSL_FUNC_CIPHER_NEWCTX, (void (*)(void))aes_##kbits##_xts_newctx },     \
     { OSSL_FUNC_CIPHER_ENCRYPT_INIT, (void (*)(void))aes_xts_einit },          \
     { OSSL_FUNC_CIPHER_DECRYPT_INIT, (void (*)(void))aes_xts_dinit },          \
@@ -277,11 +279,11 @@ const OSSL_DISPATCH aes##kbits##xts_functions[] = {                            \
     { OSSL_FUNC_CIPHER_GET_PARAMS,                                             \
       (void (*)(void))aes_##kbits##_##lcmode##_get_params },                   \
     { OSSL_FUNC_CIPHER_GETTABLE_PARAMS,                                        \
-      (void (*)(void))cipher_generic_gettable_params },                        \
+      (void (*)(void))ossl_cipher_generic_gettable_params },                   \
     { OSSL_FUNC_CIPHER_GET_CTX_PARAMS,                                         \
-      (void (*)(void))cipher_generic_get_ctx_params },                         \
+      (void (*)(void))ossl_cipher_generic_get_ctx_params },                    \
     { OSSL_FUNC_CIPHER_GETTABLE_CTX_PARAMS,                                    \
-      (void (*)(void))cipher_generic_gettable_ctx_params },                    \
+      (void (*)(void))ossl_cipher_generic_gettable_ctx_params },               \
     { OSSL_FUNC_CIPHER_SET_CTX_PARAMS,                                         \
       (void (*)(void))aes_xts_set_ctx_params },                                \
     { OSSL_FUNC_CIPHER_SETTABLE_CTX_PARAMS,                                    \

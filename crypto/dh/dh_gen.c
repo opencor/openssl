@@ -42,14 +42,14 @@ int dh_generate_ffc_parameters(DH *dh, int type, int pbits, int qbits,
 
 #ifndef FIPS_MODULE
     if (type == DH_PARAMGEN_TYPE_FIPS_186_2)
-        ret = ffc_params_FIPS186_2_generate(dh->libctx, &dh->params,
-                                            FFC_PARAM_TYPE_DH,
-                                            pbits, qbits, &res, cb);
+        ret = ossl_ffc_params_FIPS186_2_generate(dh->libctx, &dh->params,
+                                                 FFC_PARAM_TYPE_DH,
+                                                 pbits, qbits, &res, cb);
     else
 #endif
-        ret = ffc_params_FIPS186_4_generate(dh->libctx, &dh->params,
-                                            FFC_PARAM_TYPE_DH,
-                                            pbits, qbits, &res, cb);
+        ret = ossl_ffc_params_FIPS186_4_generate(dh->libctx, &dh->params,
+                                                 FFC_PARAM_TYPE_DH,
+                                                 pbits, qbits, &res, cb);
     if (ret > 0)
         dh->dirty_cnt++;
     return ret;
@@ -91,7 +91,7 @@ int dh_get_named_group_uid_from_size(int pbits)
 
 #ifdef FIPS_MODULE
 
-static int dh_gen_named_group(OPENSSL_CTX *libctx, DH *ret, int prime_len)
+static int dh_gen_named_group(OSSL_LIB_CTX *libctx, DH *ret, int prime_len)
 {
     DH *dh;
     int ok = 0;
@@ -100,9 +100,9 @@ static int dh_gen_named_group(OPENSSL_CTX *libctx, DH *ret, int prime_len)
     if (nid == NID_undef)
         return 0;
 
-    dh = dh_new_by_nid_with_libctx(libctx, nid);
+    dh = dh_new_by_nid_ex(libctx, nid);
     if (dh != NULL
-        && ffc_params_copy(&ret->params, &dh->params)) {
+        && ossl_ffc_params_copy(&ret->params, &dh->params)) {
         ok = 1;
         ret->dirty_cnt++;
     }
@@ -160,12 +160,12 @@ static int dh_builtin_genparams(DH *ret, int prime_len, int generator,
     BN_CTX *ctx = NULL;
 
     if (prime_len > OPENSSL_DH_MAX_MODULUS_BITS) {
-        DHerr(DH_F_DH_BUILTIN_GENPARAMS, DH_R_MODULUS_TOO_LARGE);
+        ERR_raise(ERR_LIB_DH, DH_R_MODULUS_TOO_LARGE);
         return 0;
     }
 
     if (prime_len < DH_MIN_MODULUS_BITS) {
-        DHerr(DH_F_DH_BUILTIN_GENPARAMS, DH_R_MODULUS_TOO_SMALL);
+        ERR_raise(ERR_LIB_DH, DH_R_MODULUS_TOO_SMALL);
         return 0;
     }
 
@@ -185,7 +185,7 @@ static int dh_builtin_genparams(DH *ret, int prime_len, int generator,
         goto err;
 
     if (generator <= 1) {
-        DHerr(DH_F_DH_BUILTIN_GENPARAMS, DH_R_BAD_GENERATOR);
+        ERR_raise(ERR_LIB_DH, DH_R_BAD_GENERATOR);
         goto err;
     }
     if (generator == DH_GENERATOR_2) {
@@ -223,7 +223,7 @@ static int dh_builtin_genparams(DH *ret, int prime_len, int generator,
     ok = 1;
  err:
     if (ok == -1) {
-        DHerr(DH_F_DH_BUILTIN_GENPARAMS, ERR_R_BN_LIB);
+        ERR_raise(ERR_LIB_DH, ERR_R_BN_LIB);
         ok = 0;
     }
 

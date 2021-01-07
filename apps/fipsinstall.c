@@ -80,7 +80,7 @@ static int do_mac(EVP_MAC_CTX *ctx, unsigned char *tmp, BIO *in,
 
     if (!EVP_MAC_init(ctx))
         goto err;
-    if (EVP_MAC_size(ctx) > outsz)
+    if (EVP_MAC_CTX_get_mac_size(ctx) > outsz)
         goto end;
     while ((i = BIO_read(in, (char *)tmp, BUFSIZE)) != 0) {
         if (i < 0 || !EVP_MAC_update(ctx, tmp, i))
@@ -220,7 +220,7 @@ static void free_config_and_unload(CONF *conf)
 
 static int verify_module_load(const char *parent_config_file)
 {
-    return OPENSSL_CTX_load_config(NULL, parent_config_file);
+    return OSSL_LIB_CTX_load_config(NULL, parent_config_file);
 }
 
 /*
@@ -373,7 +373,11 @@ opthelp:
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
+    if (argc != 0)
+        goto opthelp;
 
     if (parent_config != NULL) {
         /* Test that a parent config can load the module */
@@ -386,9 +390,8 @@ opthelp:
         goto end;
     }
     if (module_fname == NULL
-        || (verify && in_fname == NULL)
-        || (!verify && out_fname == NULL)
-        || argc != 0)
+            || (verify && in_fname == NULL)
+            || (!verify && out_fname == NULL))
         goto opthelp;
 
     tail = opt_path_end(module_fname);

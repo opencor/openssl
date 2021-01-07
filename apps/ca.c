@@ -26,7 +26,7 @@
 #ifndef W_OK
 # ifdef OPENSSL_SYS_VMS
 #  include <unistd.h>
-# elif !defined(OPENSSL_SYS_VXWORKS) && !defined(OPENSSL_SYS_WINDOWS) && !defined(OPENSSL_SYSNAME_TANDEM)
+# elif !defined(OPENSSL_SYS_VXWORKS) && !defined(OPENSSL_SYS_WINDOWS) && !defined(OPENSSL_SYS_TANDEM)
 #  include <sys/file.h>
 # endif
 #endif
@@ -100,7 +100,7 @@ static int certify(X509 **xret, const char *infile, int informat,
                    long days, int batch, const char *ext_sect, CONF *conf,
                    int verbose, unsigned long certopt, unsigned long nameopt,
                    int default_op, int ext_copy, int selfsign);
-static int certify_cert(X509 **xret, const char *infile, int informat,
+static int certify_cert(X509 **xret, const char *infile, int certformat,
                         const char *passin, EVP_PKEY *pkey, X509 *x509,
                         const EVP_MD *dgst,
                         STACK_OF(OPENSSL_STRING) *sigopts,
@@ -138,7 +138,7 @@ static int make_revoked(X509_REVOKED *rev, const char *str);
 static int old_entry_print(const ASN1_OBJECT *obj, const ASN1_STRING *str);
 static void write_new_certificate(BIO *bp, X509 *x, int output_der, int notext);
 
-static CONF *extconf = NULL;
+static CONF *extfile_conf = NULL;
 static int preserve = 0;
 static int msie_hack = 0;
 
@@ -211,9 +211,11 @@ const OPTIONS ca_options[] = {
     OPT_SECTION("Signing"),
     {"md", OPT_MD, 's', "md to use; one of md2, md5, sha or sha1"},
     {"keyfile", OPT_KEYFILE, 's', "The CA private key"},
-    {"keyform", OPT_KEYFORM, 'f', "Private key file format (ENGINE, other values ignored)"},
+    {"keyform", OPT_KEYFORM, 'f',
+     "Private key file format (ENGINE, other values ignored)"},
     {"passin", OPT_PASSIN, 's', "Key and cert input file pass phrase source"},
-    {"key", OPT_KEY, 's', "Key to decrypt key or cert files. Better use -passin"},
+    {"key", OPT_KEY, 's',
+     "Key to decrypt the private key or cert files if encrypted. Better use -passin"},
     {"cert", OPT_CERT, '<', "The CA cert"},
     {"certform", OPT_CERTFORM, 'F',
      "Certificate input format (DER/PEM/P12); has no effect"},
@@ -486,7 +488,9 @@ opthelp:
             break;
         }
     }
+
 end_of_options:
+    /* Remaining args are files to certify. */
     argc = opt_num_rest();
     argv = opt_rest();
 
@@ -515,10 +519,8 @@ end_of_options:
             BIO_free(oid_bio);
         }
     }
-    if (!add_oid_section(conf)) {
-        ERR_print_errors(bio_err);
+    if (!add_oid_section(conf))
         goto end;
-    }
 
     app_RAND_load_conf(conf, BASE_SECTION);
 
@@ -580,6 +582,7 @@ end_of_options:
         }
     }
     pkey = load_key(keyfile, keyformat, 0, passin, e, "CA private key");
+    cleanse(passin);
     if (pkey == NULL)
         /* load_key() has already printed an appropriate message */
         goto end;
@@ -591,7 +594,7 @@ end_of_options:
             && (certfile = lookup_conf(conf, section, ENV_CERTIFICATE)) == NULL)
             goto end;
 
-        x509 = load_cert_pass(certfile, certformat, passin, "CA certificate");
+        x509 = load_cert_pass(certfile, 1, passin, "CA certificate");
         if (x509 == NULL)
             goto end;
 
@@ -760,7 +763,7 @@ end_of_options:
     /*****************************************************************/
     /* Read extensions config file                                   */
     if (extfile) {
-        if ((extconf = app_load_config(extfile)) == NULL) {
+        if ((extfile_conf = app_load_config(extfile)) == NULL) {
             ret = 1;
             goto end;
         }
@@ -771,7 +774,7 @@ end_of_options:
 
         /* We can have sections in the ext file */
         if (extensions == NULL) {
-            extensions = NCONF_get_string(extconf, "default", "extensions");
+            extensions = NCONF_get_string(extfile_conf, "default", "extensions");
             if (extensions == NULL)
                 extensions = "default";
         }
@@ -835,7 +838,20 @@ end_of_options:
                 goto end;
         }
 
-        if (extconf == NULL) {
+        if (extfile_conf != NULL) {
+            /* Check syntax of extfile */
+            X509V3_CTX ctx;
+
+            X509V3_set_ctx_test(&ctx);
+            X509V3_set_nconf(&ctx, extfile_conf);
+            if (!X509V3_EXT_add_nconf(extfile_conf, &ctx, extensions, NULL)) {
+                BIO_printf(bio_err,
+                           "Error checking certificate extensions from extfile section %s\n",
+                           extensions);
+                ret = 1;
+                goto end;
+            }
+        } else {
             /*
              * no '-extfile' option, so we look for extensions in the main
              * configuration file
@@ -846,13 +862,13 @@ end_of_options:
                     ERR_clear_error();
             }
             if (extensions != NULL) {
-                /* Check syntax of file */
+                /* Check syntax of config file section */
                 X509V3_CTX ctx;
                 X509V3_set_ctx_test(&ctx);
                 X509V3_set_nconf(&ctx, conf);
                 if (!X509V3_EXT_add_nconf(conf, &ctx, extensions, NULL)) {
                     BIO_printf(bio_err,
-                               "Error Loading extension section %s\n",
+                               "Error checking certificate extension config section %s\n",
                                extensions);
                     ret = 1;
                     goto end;
@@ -1130,7 +1146,7 @@ end_of_options:
             X509V3_set_nconf(&ctx, conf);
             if (!X509V3_EXT_add_nconf(conf, &ctx, crl_ext, NULL)) {
                 BIO_printf(bio_err,
-                           "Error Loading CRL extension section %s\n", crl_ext);
+                           "Error checking CRL extension section %s\n", crl_ext);
                 ret = 1;
                 goto end;
             }
@@ -1219,8 +1235,11 @@ end_of_options:
             X509V3_set_nconf(&crlctx, conf);
 
             if (crl_ext != NULL)
-                if (!X509V3_EXT_CRL_add_nconf(conf, &crlctx, crl_ext, crl))
+                if (!X509V3_EXT_CRL_add_nconf(conf, &crlctx, crl_ext, crl)) {
+                    BIO_printf(bio_err,
+                               "Error adding CRL extensions from section %s\n", crl_ext);
                     goto end;
+                }
             if (crlnumberfile != NULL) {
                 tmpser = BN_to_ASN1_INTEGER(crlnumber, NULL);
                 if (!tmpser)
@@ -1269,7 +1288,8 @@ end_of_options:
         } else {
             X509 *revcert;
 
-            revcert = load_cert_pass(infile, certformat, passin, infile);
+            revcert = load_cert_pass(infile, 1, passin,
+                                     "certificate to be revoked");
             if (revcert == NULL)
                 goto end;
             if (dorevoke == 2)
@@ -1310,7 +1330,7 @@ end_of_options:
     X509_free(x509);
     X509_CRL_free(crl);
     NCONF_free(conf);
-    NCONF_free(extconf);
+    NCONF_free(extfile_conf);
     release_engine(e);
     return ret;
 }
@@ -1343,38 +1363,32 @@ static int certify(X509 **xret, const char *infile, int informat,
     req = load_csr(infile, informat, "certificate request");
     if (req == NULL)
         goto end;
+    if ((pktmp = X509_REQ_get0_pubkey(req)) == NULL) {
+        BIO_printf(bio_err, "Error unpacking public key\n");
+        goto end;
+    }
     if (verbose)
         X509_REQ_print_ex(bio_err, req, nameopt, X509_FLAG_COMPAT);
 
     BIO_printf(bio_err, "Check that the request matches the signature\n");
+    ok = 0;
 
     if (selfsign && !X509_REQ_check_private_key(req, pkey)) {
         BIO_printf(bio_err,
                    "Certificate request and CA private key do not match\n");
-        ok = 0;
-        goto end;
-    }
-    if ((pktmp = X509_REQ_get0_pubkey(req)) == NULL) {
-        BIO_printf(bio_err, "error unpacking public key\n");
         goto end;
     }
     i = do_X509_REQ_verify(req, pktmp, vfyopts);
-    pktmp = NULL;
     if (i < 0) {
-        ok = 0;
-        BIO_printf(bio_err, "Signature verification problems....\n");
-        ERR_print_errors(bio_err);
+        BIO_printf(bio_err, "Signature verification problems...\n");
         goto end;
     }
     if (i == 0) {
-        ok = 0;
         BIO_printf(bio_err,
                    "Signature did not match the certificate request\n");
-        ERR_print_errors(bio_err);
         goto end;
-    } else {
-        BIO_printf(bio_err, "Signature ok\n");
     }
+    BIO_printf(bio_err, "Signature ok\n");
 
     ok = do_body(xret, pkey, x509, dgst, sigopts, policy, db, serial, subj,
                  chtype, multirdn, email_dn, startdate, enddate, days, batch,
@@ -1382,6 +1396,7 @@ static int certify(X509 **xret, const char *infile, int informat,
                  ext_copy, selfsign);
 
  end:
+    ERR_print_errors(bio_err);
     X509_REQ_free(req);
     return ok;
 }
@@ -1398,23 +1413,24 @@ static int certify_cert(X509 **xret, const char *infile, int certformat,
                         CONF *lconf, int verbose, unsigned long certopt,
                         unsigned long nameopt, int default_op, int ext_copy)
 {
-    X509 *req = NULL;
+    X509 *template_cert = NULL;
     X509_REQ *rreq = NULL;
     EVP_PKEY *pktmp = NULL;
     int ok = -1, i;
 
-    if ((req = load_cert_pass(infile, certformat, passin, infile)) == NULL)
+    if ((template_cert = load_cert_pass(infile, 1, passin,
+                                        "template certificate")) == NULL)
         goto end;
     if (verbose)
-        X509_print(bio_err, req);
+        X509_print(bio_err, template_cert);
 
     BIO_printf(bio_err, "Check that the request matches the signature\n");
 
-    if ((pktmp = X509_get0_pubkey(req)) == NULL) {
+    if ((pktmp = X509_get0_pubkey(template_cert)) == NULL) {
         BIO_printf(bio_err, "error unpacking public key\n");
         goto end;
     }
-    i = do_X509_verify(req, pktmp, vfyopts);
+    i = do_X509_verify(template_cert, pktmp, vfyopts);
     if (i < 0) {
         ok = 0;
         BIO_printf(bio_err, "Signature verification problems....\n");
@@ -1428,7 +1444,7 @@ static int certify_cert(X509 **xret, const char *infile, int certformat,
         BIO_printf(bio_err, "Signature ok\n");
     }
 
-    if ((rreq = X509_to_X509_REQ(req, NULL, NULL)) == NULL)
+    if ((rreq = X509_to_X509_REQ(template_cert, NULL, NULL)) == NULL)
         goto end;
 
     ok = do_body(xret, pkey, x509, dgst, sigopts, policy, db, serial, subj,
@@ -1438,7 +1454,7 @@ static int certify_cert(X509 **xret, const char *infile, int certformat,
 
  end:
     X509_REQ_free(rreq);
-    X509_free(req);
+    X509_free(template_cert);
     return ok;
 }
 
@@ -1473,10 +1489,8 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
     if (subj) {
         X509_NAME *n = parse_name(subj, chtype, multirdn, "subject");
 
-        if (!n) {
-            ERR_print_errors(bio_err);
+        if (!n)
             goto end;
-        }
         X509_REQ_set_subject_name(req, n);
         X509_NAME_free(n);
     }
@@ -1651,14 +1665,8 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
         BIO_printf(bio_err,
                    "Everything appears to be ok, creating and signing the certificate\n");
 
-    if ((ret = X509_new_with_libctx(app_get0_libctx(), app_get0_propq())) == NULL)
+    if ((ret = X509_new_ex(app_get0_libctx(), app_get0_propq())) == NULL)
         goto end;
-
-#ifdef X509_V3
-    /* Make it an X509 v3 certificate. */
-    if (!X509_set_version(ret, 2))
-        goto end;
-#endif
 
     if (BN_to_ASN1_INTEGER(serial, X509_get_serialNumber(ret)) == NULL)
         goto end;
@@ -1691,30 +1699,24 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
 
     /* Lets add the extensions, if there are any */
     if (ext_sect) {
-        X509V3_CTX ctx;
+        X509V3_CTX ext_ctx;
 
         /* Initialize the context structure */
-        if (selfsign)
-            X509V3_set_ctx(&ctx, ret, ret, req, NULL, 0);
-        else
-            X509V3_set_ctx(&ctx, x509, ret, req, NULL, 0);
+        X509V3_set_ctx(&ext_ctx, selfsign ? ret : x509,
+                       ret, req, NULL, X509V3_CTX_REPLACE);
 
-        if (extconf != NULL) {
+        if (extfile_conf != NULL) {
             if (verbose)
                 BIO_printf(bio_err, "Extra configuration file found\n");
 
-            /* Use the extconf configuration db LHASH */
-            X509V3_set_nconf(&ctx, extconf);
-
-            /* Test the structure (needed?) */
-            /* X509V3_set_ctx_test(&ctx); */
+            /* Use the extfile_conf configuration db LHASH */
+            X509V3_set_nconf(&ext_ctx, extfile_conf);
 
             /* Adds exts contained in the configuration file */
-            if (!X509V3_EXT_add_nconf(extconf, &ctx, ext_sect, ret)) {
+            if (!X509V3_EXT_add_nconf(extfile_conf, &ext_ctx, ext_sect, ret)) {
                 BIO_printf(bio_err,
-                           "ERROR: adding extensions in section %s\n",
+                           "Error adding certificate extensions from extfile section %s\n",
                            ext_sect);
-                ERR_print_errors(bio_err);
                 goto end;
             }
             if (verbose)
@@ -1722,13 +1724,12 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
                            "Successfully added extensions from file.\n");
         } else if (ext_sect) {
             /* We found extensions to be set from config file */
-            X509V3_set_nconf(&ctx, lconf);
+            X509V3_set_nconf(&ext_ctx, lconf);
 
-            if (!X509V3_EXT_add_nconf(lconf, &ctx, ext_sect, ret)) {
+            if (!X509V3_EXT_add_nconf(lconf, &ext_ctx, ext_sect, ret)) {
                 BIO_printf(bio_err,
-                           "ERROR: adding extensions in section %s\n",
+                           "Error adding certificate extensions from config section %s\n",
                            ext_sect);
-                ERR_print_errors(bio_err);
                 goto end;
             }
 
@@ -1742,17 +1743,7 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
 
     if (!copy_extensions(ret, req, ext_copy)) {
         BIO_printf(bio_err, "ERROR: adding extensions from request\n");
-        ERR_print_errors(bio_err);
         goto end;
-    }
-
-    {
-        const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(ret);
-
-        if (exts != NULL && sk_X509_EXTENSION_num(exts) > 0)
-            /* Make it an X509 v3 certificate. */
-            if (!X509_set_version(ret, 2))
-                goto end;
     }
 
     if (verbose)
@@ -1923,8 +1914,8 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
     row[DB_exp_date][tm->length] = '\0';
     row[DB_rev_date] = NULL;
     row[DB_file] = OPENSSL_strdup("unknown");
-    if ((row[DB_type] == NULL) || (row[DB_exp_date] == NULL) ||
-        (row[DB_file] == NULL) || (row[DB_name] == NULL)) {
+    if ((row[DB_type] == NULL) || (row[DB_file] == NULL)
+        || (row[DB_name] == NULL)) {
         BIO_printf(bio_err, "Memory allocation failure\n");
         goto end;
     }
@@ -2000,7 +1991,6 @@ static int certify_spkac(X509 **xret, const char *infile, EVP_PKEY *pkey,
     parms = CONF_load(NULL, infile, &errline);
     if (parms == NULL) {
         BIO_printf(bio_err, "error on line %ld of %s\n", errline, infile);
-        ERR_print_errors(bio_err);
         goto end;
     }
 
@@ -2018,10 +2008,8 @@ static int certify_spkac(X509 **xret, const char *infile, EVP_PKEY *pkey,
      * and we can use the same code as if you had a real X509 request.
      */
     req = X509_REQ_new();
-    if (req == NULL) {
-        ERR_print_errors(bio_err);
+    if (req == NULL)
         goto end;
-    }
 
     /*
      * Build up the subject name set.
@@ -2052,7 +2040,6 @@ static int certify_spkac(X509 **xret, const char *infile, EVP_PKEY *pkey,
                 if (spki == NULL) {
                     BIO_printf(bio_err,
                                "unable to load Netscape SPKAC structure\n");
-                    ERR_print_errors(bio_err);
                     goto end;
                 }
             }

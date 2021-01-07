@@ -166,7 +166,7 @@ static int kdf_tls1_prf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     TLS1_PRF *ctx = vctx;
-    OPENSSL_CTX *libctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
 
     if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_DIGEST)) != NULL) {
         if (strcasecmp(p->data, SN_md5_sha1) == 0) {
@@ -241,7 +241,7 @@ static const OSSL_PARAM *kdf_tls1_prf_gettable_ctx_params(ossl_unused void *ctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_tls1_prf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_tls1_prf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_tls1_prf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_tls1_prf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_tls1_prf_reset },
@@ -296,7 +296,7 @@ static int tls1_prf_P_hash(EVP_MAC_CTX *ctx_init,
         goto err;
     if (!EVP_MAC_init(ctx_init))
         goto err;
-    chunk = EVP_MAC_size(ctx_init);
+    chunk = EVP_MAC_CTX_get_mac_size(ctx_init);
     if (chunk == 0)
         goto err;
     /* A(0) = seed */

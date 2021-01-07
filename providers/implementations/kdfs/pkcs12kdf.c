@@ -223,7 +223,7 @@ static int kdf_pkcs12_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KDF_PKCS12 *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
 
     if (!ossl_prov_digest_load_from_params(&ctx->digest, params, provctx))
         return 0;
@@ -278,7 +278,7 @@ static const OSSL_PARAM *kdf_pkcs12_gettable_ctx_params(ossl_unused void *provct
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_pkcs12_functions[] = {
+const OSSL_DISPATCH ossl_kdf_pkcs12_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_pkcs12_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_pkcs12_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_pkcs12_reset },

@@ -62,7 +62,7 @@ static OSSL_ITEM padding_item[] = {
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     RSA *rsa;
     int pad_mode;
     int operation;
@@ -87,7 +87,7 @@ static void *rsa_newctx(void *provctx)
     prsactx = OPENSSL_zalloc(sizeof(PROV_RSA_CTX));
     if (prsactx == NULL)
         return NULL;
-    prsactx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    prsactx->libctx = PROV_LIBCTX_OF(provctx);
 
     return prsactx;
 }
@@ -113,7 +113,7 @@ static int rsa_init(void *vprsactx, void *vrsa, int operation)
         ERR_raise(ERR_LIB_PROV, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
         return 0;
     }
-    if (!rsa_check_key(vrsa, operation == EVP_PKEY_OP_ENCRYPT)) {
+    if (!ossl_rsa_check_key(vrsa, operation == EVP_PKEY_OP_ENCRYPT)) {
         ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
         return 0;
     }
@@ -155,22 +155,22 @@ static int rsa_encrypt(void *vprsactx, unsigned char *out, size_t *outlen,
         unsigned char *tbuf;
 
         if ((tbuf = OPENSSL_malloc(rsasize)) == NULL) {
-            PROVerr(0, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
             return 0;
         }
         if (prsactx->oaep_md == NULL) {
             OPENSSL_free(tbuf);
             prsactx->oaep_md = EVP_MD_fetch(prsactx->libctx, "SHA-1", NULL);
-            PROVerr(0, ERR_R_INTERNAL_ERROR);
+            ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
             return 0;
         }
         ret =
-            rsa_padding_add_PKCS1_OAEP_mgf1_with_libctx(prsactx->libctx, tbuf,
-                                                        rsasize, in, inlen,
-                                                        prsactx->oaep_label,
-                                                        prsactx->oaep_labellen,
-                                                        prsactx->oaep_md,
-                                                        prsactx->mgf1_md);
+            ossl_rsa_padding_add_PKCS1_OAEP_mgf1_ex(prsactx->libctx, tbuf,
+                                                    rsasize, in, inlen,
+                                                    prsactx->oaep_label,
+                                                    prsactx->oaep_labellen,
+                                                    prsactx->oaep_md,
+                                                    prsactx->mgf1_md);
 
         if (!ret) {
             OPENSSL_free(tbuf);
@@ -230,7 +230,7 @@ static int rsa_decrypt(void *vprsactx, unsigned char *out, size_t *outlen,
         unsigned char *tbuf;
 
         if ((tbuf = OPENSSL_malloc(len)) == NULL) {
-            PROVerr(0, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
             return 0;
         }
         ret = RSA_private_decrypt(inlen, in, tbuf, prsactx->rsa,
@@ -248,7 +248,7 @@ static int rsa_decrypt(void *vprsactx, unsigned char *out, size_t *outlen,
             if (prsactx->oaep_md == NULL) {
                 prsactx->oaep_md = EVP_MD_fetch(prsactx->libctx, "SHA-1", NULL);
                 if (prsactx->oaep_md == NULL) {
-                    PROVerr(0, ERR_R_INTERNAL_ERROR);
+                    ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
                     return 0;
                 }
             }
@@ -264,11 +264,9 @@ static int rsa_decrypt(void *vprsactx, unsigned char *out, size_t *outlen,
                 ERR_raise(ERR_LIB_PROV, PROV_R_BAD_TLS_CLIENT_VERSION);
                 return 0;
             }
-            ret = rsa_padding_check_PKCS1_type_2_TLS(prsactx->libctx, out,
-                                                     outsize,
-                                                     tbuf, len,
-                                                     prsactx->client_version,
-                                                     prsactx->alt_version);
+            ret = ossl_rsa_padding_check_PKCS1_type_2_TLS(
+                        prsactx->libctx, out, outsize, tbuf, len,
+                        prsactx->client_version, prsactx->alt_version);
         }
         OPENSSL_free(tbuf);
     } else {
@@ -563,7 +561,7 @@ static const OSSL_PARAM *rsa_settable_ctx_params(ossl_unused void *provctx)
     return known_settable_ctx_params;
 }
 
-const OSSL_DISPATCH rsa_asym_cipher_functions[] = {
+const OSSL_DISPATCH ossl_rsa_asym_cipher_functions[] = {
     { OSSL_FUNC_ASYM_CIPHER_NEWCTX, (void (*)(void))rsa_newctx },
     { OSSL_FUNC_ASYM_CIPHER_ENCRYPT_INIT, (void (*)(void))rsa_encrypt_init },
     { OSSL_FUNC_ASYM_CIPHER_ENCRYPT, (void (*)(void))rsa_encrypt },

@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use the OPENSSL_fork_*() deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/crypto.h>
 #include "internal/cryptlib.h"
 
@@ -182,7 +185,7 @@ int CRYPTO_atomic_add(int *val, int amount, int *ret, CRYPTO_RWLOCK *lock)
         return 1;
     }
 # endif
-    if (!CRYPTO_THREAD_write_lock(lock))
+    if (lock == NULL || !CRYPTO_THREAD_write_lock(lock))
         return 0;
 
     *val += amount;
@@ -194,16 +197,65 @@ int CRYPTO_atomic_add(int *val, int amount, int *ret, CRYPTO_RWLOCK *lock)
     return 1;
 }
 
-# ifndef FIPS_MODULE
-/* TODO(3.0): No fork protection in FIPS module yet! */
+int CRYPTO_atomic_or(uint64_t *val, uint64_t op, uint64_t *ret,
+                     CRYPTO_RWLOCK *lock)
+{
+# if defined(__GNUC__) && defined(__ATOMIC_ACQ_REL)
+    if (__atomic_is_lock_free(sizeof(*val), val)) {
+        *ret = __atomic_or_fetch(val, op, __ATOMIC_ACQ_REL);
+        return 1;
+    }
+# elif defined(__sun) && (defined(__SunOS_5_10) || defined(__SunOS_5_11))
+    /* This will work for all future Solaris versions. */
+    if (ret != NULL) {
+        *ret = atomic_or_64_nv(val, op);
+        return 1;
+    }
+# endif
+    if (lock == NULL || !CRYPTO_THREAD_write_lock(lock))
+        return 0;
+    *val |= op;
+    *ret  = *val;
 
+    if (!CRYPTO_THREAD_unlock(lock))
+        return 0;
+
+    return 1;
+}
+
+int CRYPTO_atomic_load(uint64_t *val, uint64_t *ret, CRYPTO_RWLOCK *lock)
+{
+# if defined(__GNUC__) && defined(__ATOMIC_ACQUIRE)
+    if (__atomic_is_lock_free(sizeof(*val), val)) {
+        __atomic_load(val, ret, __ATOMIC_ACQUIRE);
+        return 1;
+    }
+# elif defined(__sun) && (defined(__SunOS_5_10) || defined(__SunOS_5_11))
+    /* This will work for all future Solaris versions. */
+    if (ret != NULL) {
+        *ret = atomic_or_64_nv(val, 0);
+        return 1;
+    }
+# endif
+    if (lock == NULL || !CRYPTO_THREAD_read_lock(lock))
+        return 0;
+    *ret  = *val;
+    if (!CRYPTO_THREAD_unlock(lock))
+        return 0;
+
+    return 1;
+}
+# ifndef FIPS_MODULE
 #  ifdef OPENSSL_SYS_UNIX
+
 static pthread_once_t fork_once_control = PTHREAD_ONCE_INIT;
 
 static void fork_once_func(void)
 {
+#   ifndef OPENSSL_NO_DEPRECATED_3_0
     pthread_atfork(OPENSSL_fork_prepare,
                    OPENSSL_fork_parent, OPENSSL_fork_child);
+#   endif
 }
 #  endif
 

@@ -14,12 +14,9 @@
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
+# include <openssl/cryptoerr_legacy.h>
 
 
-# ifdef  __cplusplus
-extern "C"
-# endif
-int ERR_load_CRYPTO_strings(void);
 
 /*
  * CRYPTO function codes.
@@ -81,6 +78,7 @@ int ERR_load_CRYPTO_strings(void);
 # define CRYPTO_R_BAD_ALGORITHM_NAME                      117
 # define CRYPTO_R_CONFLICTING_NAMES                       118
 # define CRYPTO_R_FIPS_MODE_NOT_SUPPORTED                 101
+# define CRYPTO_R_HEX_STRING_TOO_SHORT                    121
 # define CRYPTO_R_ILLEGAL_HEX_DIGIT                       102
 # define CRYPTO_R_INSUFFICIENT_DATA_SPACE                 106
 # define CRYPTO_R_INSUFFICIENT_PARAM_SIZE                 107
@@ -90,11 +88,13 @@ int ERR_load_CRYPTO_strings(void);
 # define CRYPTO_R_ODD_NUMBER_OF_DIGITS                    103
 # define CRYPTO_R_PROVIDER_ALREADY_EXISTS                 104
 # define CRYPTO_R_PROVIDER_SECTION_ERROR                  105
+# define CRYPTO_R_RANDOM_SECTION_ERROR                    119
 # define CRYPTO_R_SECURE_MALLOC_FAILURE                   111
 # define CRYPTO_R_STRING_TOO_LONG                         112
 # define CRYPTO_R_TOO_MANY_BYTES                          113
 # define CRYPTO_R_TOO_MANY_RECORDS                        114
 # define CRYPTO_R_TOO_SMALL_BUFFER                        116
+# define CRYPTO_R_UNKNOWN_NAME_IN_RANDOM_SECTION          120
 # define CRYPTO_R_ZERO_LENGTH_NUMBER                      115
 
 #endif

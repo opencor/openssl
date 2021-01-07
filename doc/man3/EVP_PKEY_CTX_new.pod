@@ -12,10 +12,10 @@ EVP_PKEY_CTX_new_from_pkey, EVP_PKEY_CTX_dup, EVP_PKEY_CTX_free
 
  EVP_PKEY_CTX *EVP_PKEY_CTX_new(EVP_PKEY *pkey, ENGINE *e);
  EVP_PKEY_CTX *EVP_PKEY_CTX_new_id(int id, ENGINE *e);
- EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OPENSSL_CTX *libctx,
+ EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OSSL_LIB_CTX *libctx,
                                           const char *name,
                                           const char *propquery);
- EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_pkey(OPENSSL_CTX *libctx,
+ EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_pkey(OSSL_LIB_CTX *libctx,
                                           EVP_PKEY *pkey,
                                           const char *propquery);
  EVP_PKEY_CTX *EVP_PKEY_CTX_dup(const EVP_PKEY_CTX *ctx);
@@ -30,14 +30,14 @@ The EVP_PKEY_CTX_new_id() function allocates public key algorithm context
 using the key type specified by I<id> and ENGINE I<e>.
 
 The EVP_PKEY_CTX_new_from_name() function allocates a public key algorithm
-context using the library context I<libctx> (see L<OPENSSL_CTX(3)>), the
+context using the library context I<libctx> (see L<OSSL_LIB_CTX(3)>), the
 key type specified by I<name> and the property query I<propquery>.  None
 of the arguments are duplicated, so they  must remain unchanged for the
 lifetime of the returned B<EVP_PKEY_CTX> or of any of its duplicates.  Read
 further about the possible names in L</NOTES> below.
 
 The EVP_PKEY_CTX_new_from_pkey() function allocates a public key algorithm
-context using the library context I<libctx> (see L<OPENSSL_CTX(3)>) and the
+context using the library context I<libctx> (see L<OSSL_LIB_CTX(3)>) and the
 algorithm specified by I<pkey> and the property query I<propquery>. None of the
 arguments are duplicated, so they must remain unchanged for the lifetime of the
 returned B<EVP_PKEY_CTX> or any of its duplicates.
@@ -47,7 +47,8 @@ used when no B<EVP_PKEY> structure is associated with the operations,
 for example during parameter generation or key generation for some
 algorithms.
 
-EVP_PKEY_CTX_dup() duplicates the context I<ctx>.
+EVP_PKEY_CTX_dup() duplicates the context I<ctx>. It is not supported for a
+keygen operation.
 
 EVP_PKEY_CTX_free() frees up the context I<ctx>.
 If I<ctx> is NULL, nothing is done.
@@ -96,7 +97,7 @@ documentation for more information.
 
 =head1 RETURN VALUES
 
-EVP_PKEY_CTX_new(), EVP_PKEY_CTX_new_id(), EVP_PKEY_CTX_dup() returns either
+EVP_PKEY_CTX_new(), EVP_PKEY_CTX_new_id() and EVP_PKEY_CTX_dup() return either
 the newly allocated B<EVP_PKEY_CTX> structure or B<NULL> if an error occurred.
 
 EVP_PKEY_CTX_free() does not return a value.

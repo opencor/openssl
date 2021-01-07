@@ -12,12 +12,12 @@
 #include "prov/der_sm2.h"
 
 /* Aliases so we can have a uniform MD_CASE */
-#define der_oid_id_sm2_with_sm3   der_oid_sm2_with_SM3
+#define ossl_der_oid_id_sm2_with_sm3   ossl_der_oid_sm2_with_SM3
 
 #define MD_CASE(name)                                                   \
     case NID_##name:                                                    \
-        precompiled = der_oid_id_sm2_with_##name;                     \
-        precompiled_sz = sizeof(der_oid_id_sm2_with_##name);          \
+        precompiled = ossl_der_oid_id_sm2_with_##name;                  \
+        precompiled_sz = sizeof(ossl_der_oid_id_sm2_with_##name);       \
         break;
 
 int DER_w_algorithmIdentifier_SM2_with_MD(WPACKET *pkt, int cont,
@@ -32,8 +32,8 @@ int DER_w_algorithmIdentifier_SM2_with_MD(WPACKET *pkt, int cont,
         return 0;
     }
 
-    return DER_w_begin_sequence(pkt, cont)
+    return ossl_DER_w_begin_sequence(pkt, cont)
         /* No parameters (yet?) */
-        && DER_w_precompiled(pkt, -1, precompiled, precompiled_sz)
-        && DER_w_end_sequence(pkt, cont);
+        && ossl_DER_w_precompiled(pkt, -1, precompiled, precompiled_sz)
+        && ossl_DER_w_end_sequence(pkt, cont);
 }

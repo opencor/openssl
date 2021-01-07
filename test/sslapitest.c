@@ -30,8 +30,9 @@
 #include <openssl/core_names.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/provider.h>
+#include <openssl/param_build.h>
 
-#include "ssltestlib.h"
+#include "helpers/ssltestlib.h"
 #include "testutil.h"
 #include "testutil/output.h"
 #include "internal/nelem.h"
@@ -48,7 +49,7 @@ int tls_provider_init(const OSSL_CORE_HANDLE *handle,
                       const OSSL_DISPATCH **out,
                       void **provctx);
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *defctxnull = NULL;
 
 #ifndef OPENSSL_NO_TLS1_3
@@ -74,6 +75,14 @@ static char *cert = NULL;
 static char *privkey = NULL;
 static char *cert2 = NULL;
 static char *privkey2 = NULL;
+static char *cert1024 = NULL;
+static char *privkey1024 = NULL;
+static char *cert3072 = NULL;
+static char *privkey3072 = NULL;
+static char *cert4096 = NULL;
+static char *privkey4096 = NULL;
+static char *cert8192 = NULL;
+static char *privkey8192 = NULL;
 static char *srpvfile = NULL;
 static char *tmpfilename = NULL;
 
@@ -797,7 +806,7 @@ static int execute_test_large_message(const SSL_METHOD *smeth,
     if (!TEST_ptr(certbio = BIO_new_file(cert, "r")))
         goto end;
 
-    if (!TEST_ptr(chaincert = X509_new_with_libctx(libctx, NULL)))
+    if (!TEST_ptr(chaincert = X509_new_ex(libctx, NULL)))
         goto end;
 
     if (PEM_read_bio_X509(certbio, &chaincert, NULL, NULL) == NULL)
@@ -1546,7 +1555,7 @@ static int test_tlsext_status_type(void)
     if (!TEST_ptr(certbio = BIO_new_file(cert, "r"))
             || !TEST_ptr(id = OCSP_RESPID_new())
             || !TEST_ptr(ids = sk_OCSP_RESPID_new_null())
-            || !TEST_ptr(ocspcert = X509_new_with_libctx(libctx, NULL))
+            || !TEST_ptr(ocspcert = X509_new_ex(libctx, NULL))
             || !TEST_ptr(PEM_read_bio_X509(certbio, &ocspcert, NULL, NULL))
             || !TEST_true(OCSP_RESPID_set_by_key_ex(id, ocspcert, libctx, NULL))
             || !TEST_true(sk_OCSP_RESPID_push(ids, id)))
@@ -2568,7 +2577,7 @@ static int execute_test_ssl_bio(int pop_ssl, bio_change_t change_bio)
     SSL *ssl = NULL;
     int testresult = 0;
 
-    if (!TEST_ptr(ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method()))
+    if (!TEST_ptr(ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method()))
             || !TEST_ptr(ssl = SSL_new(ctx))
             || !TEST_ptr(sslbio = BIO_new(BIO_f_ssl()))
             || !TEST_ptr(membio1 = BIO_new(BIO_s_mem())))
@@ -5279,7 +5288,7 @@ static int test_serverinfo(int tst)
     int ret, expected, testresult = 0;
     SSL_CTX *ctx;
 
-    ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method());
+    ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method());
     if (!TEST_ptr(ctx))
         goto end;
 
@@ -5834,7 +5843,7 @@ static int test_max_fragment_len_ext(int idx_tst)
     int testresult = 0, MFL_mode = 0;
     BIO *rbio, *wbio;
 
-    ctx = SSL_CTX_new_with_libctx(libctx, NULL, TLS_method());
+    ctx = SSL_CTX_new_ex(libctx, NULL, TLS_method());
     if (!TEST_ptr(ctx))
         goto end;
 
@@ -6374,6 +6383,9 @@ static int test_info_callback(int tst)
                                        privkey)))
         goto end;
 
+    if (!TEST_true(SSL_CTX_set_dh_auto(sctx, 1)))
+        goto end;
+
     /*
      * For even numbered tests we check the server callbacks. For odd numbers we
      * check the client.
@@ -6565,7 +6577,7 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
     SSL *clientssl = NULL, *serverssl = NULL;
     int testresult = 0;
     char buf[1024];
-    OPENSSL_CTX *tmplibctx = OPENSSL_CTX_new();
+    OSSL_LIB_CTX *tmplibctx = OSSL_LIB_CTX_new();
 
     if (!TEST_ptr(tmplibctx))
         goto end;
@@ -6578,11 +6590,11 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
      * having the full set of ciphersuites and once with the server side.
      */
     if (clnt) {
-        cctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_client_method());
+        cctx = SSL_CTX_new_ex(tmplibctx, NULL, TLS_client_method());
         if (!TEST_ptr(cctx))
             goto end;
     } else {
-        sctx = SSL_CTX_new_with_libctx(tmplibctx, NULL, TLS_server_method());
+        sctx = SSL_CTX_new_ex(tmplibctx, NULL, TLS_server_method());
         if (!TEST_ptr(sctx))
             goto end;
     }
@@ -6630,7 +6642,7 @@ static int int_test_ssl_get_shared_ciphers(int tst, int clnt)
     SSL_free(clientssl);
     SSL_CTX_free(sctx);
     SSL_CTX_free(cctx);
-    OPENSSL_CTX_free(tmplibctx);
+    OSSL_LIB_CTX_free(tmplibctx);
 
     return testresult;
 }
@@ -7188,7 +7200,7 @@ static int cert_cb(SSL *s, void *arg)
             goto out;
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
                 || !TEST_int_ge(BIO_read_filename(in, rootfile), 0)
-                || !TEST_ptr(rootx = X509_new_with_libctx(libctx, NULL))
+                || !TEST_ptr(rootx = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &rootx, NULL, NULL))
                 || !TEST_true(sk_X509_push(chain, rootx)))
             goto out;
@@ -7196,7 +7208,7 @@ static int cert_cb(SSL *s, void *arg)
         BIO_free(in);
         if (!TEST_ptr(in = BIO_new(BIO_s_file()))
                 || !TEST_int_ge(BIO_read_filename(in, ecdsacert), 0)
-                || !TEST_ptr(x509 = X509_new_with_libctx(libctx, NULL))
+                || !TEST_ptr(x509 = X509_new_ex(libctx, NULL))
                 || !TEST_ptr(PEM_read_bio_X509(in, &x509, NULL, NULL)))
             goto out;
         BIO_free(in);
@@ -7346,7 +7358,7 @@ static int client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
     if (!TEST_ptr(in))
         return 0;
 
-    if (!TEST_ptr(xcert = X509_new_with_libctx(libctx, NULL))
+    if (!TEST_ptr(xcert = X509_new_ex(libctx, NULL))
             || !TEST_ptr(PEM_read_bio_X509(in, &xcert, NULL, NULL))
             || !TEST_ptr(priv_in = BIO_new_file(privkey, "r"))
             || !TEST_ptr(privpkey = PEM_read_bio_PrivateKey_ex(priv_in, NULL,
@@ -7808,7 +7820,8 @@ static int test_servername(int tst)
     return testresult;
 }
 
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) \
+    && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
 /*
  * Test that if signature algorithms are not available, then we do not offer or
  * accept them.
@@ -7824,8 +7837,8 @@ static int test_sigalgs_available(int idx)
     SSL_CTX *cctx = NULL, *sctx = NULL;
     SSL *clientssl = NULL, *serverssl = NULL;
     int testresult = 0;
-    OPENSSL_CTX *tmpctx = OPENSSL_CTX_new();
-    OPENSSL_CTX *clientctx = libctx, *serverctx = libctx;
+    OSSL_LIB_CTX *tmpctx = OSSL_LIB_CTX_new();
+    OSSL_LIB_CTX *clientctx = libctx, *serverctx = libctx;
     OSSL_PROVIDER *filterprov = NULL;
     int sig, hash;
 
@@ -7865,8 +7878,8 @@ static int test_sigalgs_available(int idx)
             serverctx = tmpctx;
     }
 
-    cctx = SSL_CTX_new_with_libctx(clientctx, NULL, TLS_client_method());
-    sctx = SSL_CTX_new_with_libctx(serverctx, NULL, TLS_server_method());
+    cctx = SSL_CTX_new_ex(clientctx, NULL, TLS_client_method());
+    sctx = SSL_CTX_new_ex(serverctx, NULL, TLS_server_method());
     if (!TEST_ptr(cctx) || !TEST_ptr(sctx))
         goto end;
 
@@ -7876,6 +7889,17 @@ static int test_sigalgs_available(int idx)
                                        0,
                                        &sctx, &cctx, cert, privkey)))
         goto end;
+
+    /* Ensure we only use TLSv1.2 ciphersuites based on SHA256 */
+    if (idx < 4) {
+        if (!TEST_true(SSL_CTX_set_cipher_list(cctx,
+                                               "ECDHE-RSA-AES128-GCM-SHA256")))
+            goto end;
+    } else {
+        if (!TEST_true(SSL_CTX_set_cipher_list(cctx,
+                                               "ECDHE-ECDSA-AES128-GCM-SHA256")))
+            goto end;
+    }
 
     if (idx < 3) {
         if (!SSL_CTX_set1_sigalgs_list(cctx,
@@ -7928,14 +7952,17 @@ static int test_sigalgs_available(int idx)
     SSL_CTX_free(sctx);
     SSL_CTX_free(cctx);
     OSSL_PROVIDER_unload(filterprov);
-    OPENSSL_CTX_free(tmpctx);
+    OSSL_LIB_CTX_free(tmpctx);
 
     return testresult;
 }
-#endif /* OPENSSL_NO_EC */
+#endif /*
+        * !defined(OPENSSL_NO_EC) \
+        * && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
+        */
 
 #ifndef OPENSSL_NO_TLS1_3
-static int test_pluggable_group(void)
+static int test_pluggable_group(int idx)
 {
     SSL_CTX *cctx = NULL, *sctx = NULL;
     SSL *clientssl = NULL, *serverssl = NULL;
@@ -7943,9 +7970,19 @@ static int test_pluggable_group(void)
     OSSL_PROVIDER *tlsprov = OSSL_PROVIDER_load(libctx, "tls-provider");
     /* Check that we are not impacted by a provider without any groups */
     OSSL_PROVIDER *legacyprov = OSSL_PROVIDER_load(libctx, "legacy");
+    const char *group_name = idx == 0 ? "xorgroup" : "xorkemgroup";
 
-    if (!TEST_ptr(tlsprov) || !TEST_ptr(legacyprov))
+    if (!TEST_ptr(tlsprov))
         goto end;
+
+    if (legacyprov == NULL) {
+        /*
+         * In this case we assume we've been built with "no-legacy" and skip
+         * this test (there is no OPENSSL_NO_LEGACY)
+         */
+        testresult = 1;
+        goto end;
+    }
 
     if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
                                        TLS_client_method(),
@@ -7956,8 +7993,8 @@ static int test_pluggable_group(void)
                                              NULL, NULL)))
         goto end;
 
-    if (!TEST_true(SSL_set1_groups_list(serverssl, "xorgroup"))
-            || !TEST_true(SSL_set1_groups_list(clientssl, "xorgroup")))
+    if (!TEST_true(SSL_set1_groups_list(serverssl, group_name))
+            || !TEST_true(SSL_set1_groups_list(clientssl, group_name)))
         goto end;
 
     if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
@@ -8044,6 +8081,360 @@ static int test_ssl_dup(void)
 
     return testresult;
 }
+
+# ifndef OPENSSL_NO_DH
+
+static EVP_PKEY *tmp_dh_params = NULL;
+
+/* Helper function for the test_set_tmp_dh() tests */
+static EVP_PKEY *get_tmp_dh_params(void)
+{
+    if (tmp_dh_params == NULL) {
+        BIGNUM *p = NULL;
+        OSSL_PARAM_BLD *tmpl = NULL;
+        EVP_PKEY_CTX *pctx = NULL;
+        OSSL_PARAM *params = NULL;
+        EVP_PKEY *dhpkey = NULL;
+
+        p = BN_get_rfc3526_prime_2048(NULL);
+        if (!TEST_ptr(p))
+            goto end;
+
+        pctx = EVP_PKEY_CTX_new_from_name(libctx, "DH", NULL);
+        if (!TEST_ptr(pctx)
+                || !TEST_true(EVP_PKEY_key_fromdata_init(pctx)))
+            goto end;
+
+        tmpl = OSSL_PARAM_BLD_new();
+        if (!TEST_ptr(tmpl)
+                || !TEST_true(OSSL_PARAM_BLD_push_BN(tmpl,
+                                                        OSSL_PKEY_PARAM_FFC_P,
+                                                        p))
+                || !TEST_true(OSSL_PARAM_BLD_push_uint(tmpl,
+                                                        OSSL_PKEY_PARAM_FFC_G,
+                                                        2)))
+            goto end;
+
+        params = OSSL_PARAM_BLD_to_param(tmpl);
+        if (!TEST_ptr(params)
+                || !TEST_true(EVP_PKEY_fromdata(pctx, &dhpkey, params)))
+            goto end;
+
+        tmp_dh_params = dhpkey;
+    end:
+        BN_free(p);
+        EVP_PKEY_CTX_free(pctx);
+        OSSL_PARAM_BLD_free(tmpl);
+        OSSL_PARAM_BLD_free_params(params);
+    }
+
+    if (!EVP_PKEY_up_ref(tmp_dh_params))
+        return NULL;
+
+    return tmp_dh_params;
+}
+
+#  ifndef OPENSSL_NO_DEPRECATED
+/* Callback used by test_set_tmp_dh() */
+static DH *tmp_dh_callback(SSL *s, int is_export, int keylen)
+{
+    EVP_PKEY *dhpkey = get_tmp_dh_params();
+    DH *ret = NULL;
+
+    if (!TEST_ptr(dhpkey))
+        return NULL;
+
+    ret = EVP_PKEY_get0_DH(dhpkey);
+
+    EVP_PKEY_free(dhpkey);
+
+    return ret;
+}
+#  endif
+
+/*
+ * Test the various methods for setting temporary DH parameters
+ *
+ * Test  0: Default (no auto) setting
+ * Test  1: Explicit SSL_CTX auto off
+ * Test  2: Explicit SSL auto off
+ * Test  3: Explicit SSL_CTX auto on
+ * Test  4: Explicit SSL auto on
+ * Test  5: Explicit SSL_CTX auto off, custom DH params via EVP_PKEY
+ * Test  6: Explicit SSL auto off, custom DH params via EVP_PKEY
+ *
+ * The following are testing deprecated APIs, so we only run them if available
+ * Test  7: Explicit SSL_CTX auto off, custom DH params via DH
+ * Test  8: Explicit SSL auto off, custom DH params via DH
+ * Test  9: Explicit SSL_CTX auto off, custom DH params via callback
+ * Test 10: Explicit SSL auto off, custom DH params via callback
+ */
+static int test_set_tmp_dh(int idx)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+    int dhauto = (idx == 3 || idx == 4) ? 1 : 0;
+    int expected = (idx <= 2) ? 0 : 1;
+    EVP_PKEY *dhpkey = NULL;
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
+    DH *dh = NULL;
+#  else
+
+    if (idx >= 7)
+        return 1;
+#  endif
+
+    if (idx >= 5 && idx <= 8) {
+        dhpkey = get_tmp_dh_params();
+        if (!TEST_ptr(dhpkey))
+            goto end;
+    }
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
+    if (idx == 7 || idx == 8) {
+        dh = EVP_PKEY_get0_DH(dhpkey);
+        if (!TEST_ptr(dh))
+            goto end;
+    }
+#  endif
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(),
+                                       0,
+                                       0,
+                                       &sctx, &cctx, cert, privkey)))
+        goto end;
+
+    if ((idx & 1) == 1) {
+        if (!TEST_true(SSL_CTX_set_dh_auto(sctx, dhauto)))
+            goto end;
+    }
+
+    if (idx == 5) {
+        if (!TEST_true(SSL_CTX_set0_tmp_dh_pkey(sctx, dhpkey)))
+            goto end;
+        dhpkey = NULL;
+    }
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
+    else if (idx == 7) {
+        if (!TEST_true(SSL_CTX_set_tmp_dh(sctx, dh)))
+            goto end;
+    } else if (idx == 9) {
+        SSL_CTX_set_tmp_dh_callback(sctx, tmp_dh_callback);
+    }
+#  endif
+
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl, &clientssl,
+                                      NULL, NULL)))
+        goto end;
+
+    if ((idx & 1) == 0 && idx != 0) {
+        if (!TEST_true(SSL_set_dh_auto(serverssl, dhauto)))
+            goto end;
+    }
+    if (idx == 6) {
+        if (!TEST_true(SSL_set0_tmp_dh_pkey(serverssl, dhpkey)))
+            goto end;
+        dhpkey = NULL;
+    }
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
+    else if (idx == 8) {
+        if (!TEST_true(SSL_set_tmp_dh(serverssl, dh)))
+            goto end;
+    } else if (idx == 10) {
+        SSL_set_tmp_dh_callback(serverssl, tmp_dh_callback);
+    }
+#  endif
+
+    if (!TEST_true(SSL_set_min_proto_version(serverssl, TLS1_2_VERSION))
+            || !TEST_true(SSL_set_max_proto_version(serverssl, TLS1_2_VERSION))
+            || !TEST_true(SSL_set_cipher_list(serverssl, "DHE-RSA-AES128-SHA")))
+        goto end;
+
+    /*
+     * If autoon then we should succeed. Otherwise we expect failure because
+     * there are no parameters
+     */
+    if (!TEST_int_eq(create_ssl_connection(serverssl, clientssl,
+                                           SSL_ERROR_NONE), expected))
+        goto end;
+
+    testresult = 1;
+
+ end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    EVP_PKEY_free(dhpkey);
+
+    return testresult;
+}
+
+/*
+ * Test the auto DH keys are appropriately sized
+ */
+static int test_dh_auto(int idx)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+    EVP_PKEY *tmpkey = NULL;
+    char *thiscert = NULL, *thiskey = NULL;
+    size_t expdhsize = 0;
+    const char *ciphersuite = "DHE-RSA-AES128-SHA";
+
+    switch (idx) {
+    case 0:
+        /* The FIPS provider doesn't support this DH size - so we ignore it */
+        if (is_fips)
+            return 1;
+        thiscert = cert1024;
+        thiskey = privkey1024;
+        expdhsize = 1024;
+        break;
+    case 1:
+        /* 2048 bit prime */
+        thiscert = cert;
+        thiskey = privkey;
+        expdhsize = 2048;
+        break;
+    case 2:
+        thiscert = cert3072;
+        thiskey = privkey3072;
+        expdhsize = 3072;
+        break;
+    case 3:
+        thiscert = cert4096;
+        thiskey = privkey4096;
+        expdhsize = 4096;
+        break;
+    case 4:
+        thiscert = cert8192;
+        thiskey = privkey8192;
+        expdhsize = 8192;
+        break;
+    /* No certificate cases */
+    case 5:
+        /* The FIPS provider doesn't support this DH size - so we ignore it */
+        if (is_fips)
+            return 1;
+        ciphersuite = "ADH-AES128-SHA256:@SECLEVEL=0";
+        expdhsize = 1024;
+        break;
+    case 6:
+        ciphersuite = "ADH-AES256-SHA256:@SECLEVEL=0";
+        expdhsize = 3072;
+        break;
+    default:
+        TEST_error("Invalid text index");
+        goto end;
+    }
+
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(),
+                                       0,
+                                       0,
+                                       &sctx, &cctx, thiscert, thiskey)))
+        goto end;
+
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl, &clientssl,
+                                      NULL, NULL)))
+        goto end;
+
+    if (!TEST_true(SSL_set_dh_auto(serverssl, 1))
+            || !TEST_true(SSL_set_min_proto_version(serverssl, TLS1_2_VERSION))
+            || !TEST_true(SSL_set_max_proto_version(serverssl, TLS1_2_VERSION))
+            || !TEST_true(SSL_set_cipher_list(serverssl, ciphersuite))
+            || !TEST_true(SSL_set_cipher_list(clientssl, ciphersuite)))
+        goto end;
+
+    /*
+     * Send the server's first flight. At this point the server has created the
+     * temporary DH key but hasn't finished using it yet. Once used it is
+     * removed, so we cannot test it.
+     */
+    if (!TEST_int_le(SSL_connect(clientssl), 0)
+            || !TEST_int_le(SSL_accept(serverssl), 0))
+        goto end;
+
+    if (!TEST_int_gt(SSL_get_tmp_key(serverssl, &tmpkey), 0))
+        goto end;
+    if (!TEST_size_t_eq(EVP_PKEY_bits(tmpkey), expdhsize))
+        goto end;
+
+    if (!TEST_true(create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE)))
+        goto end;
+
+    testresult = 1;
+
+ end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    EVP_PKEY_free(tmpkey);
+
+    return testresult;
+
+}
+# endif /* OPENSSL_NO_DH */
+#endif /* OPENSSL_NO_TLS1_2 */
+
+#ifndef OPENSSL_NO_TLS1_3
+/*
+ * Test that setting an SNI callback works with TLSv1.3. Specifically we check
+ * that it works even without a certificate configured for the original
+ * SSL_CTX
+ */
+static int test_sni_tls13(void)
+{
+    SSL_CTX *cctx = NULL, *sctx = NULL, *sctx2 = NULL;
+    SSL *clientssl = NULL, *serverssl = NULL;
+    int testresult = 0;
+
+    /* Reset callback counter */
+    snicb = 0;
+
+    /* Create an initial SSL_CTX with no certificate configured */
+    sctx = SSL_CTX_new_ex(libctx, NULL, TLS_server_method());
+    if (!TEST_ptr(sctx))
+        goto end;
+    /* Require TLSv1.3 as a minimum */
+    if (!TEST_true(create_ssl_ctx_pair(libctx, TLS_server_method(),
+                                       TLS_client_method(), TLS1_3_VERSION, 0,
+                                       &sctx2, &cctx, cert, privkey)))
+        goto end;
+
+    /* Set up SNI */
+    if (!TEST_true(SSL_CTX_set_tlsext_servername_callback(sctx, sni_cb))
+            || !TEST_true(SSL_CTX_set_tlsext_servername_arg(sctx, sctx2)))
+        goto end;
+
+    /*
+     * Connection should still succeed because the final SSL_CTX has the right
+     * certificates configured.
+     */
+    if (!TEST_true(create_ssl_objects(sctx, cctx, &serverssl,
+                                      &clientssl, NULL, NULL))
+            || !TEST_true(create_ssl_connection(serverssl, clientssl,
+                                                SSL_ERROR_NONE)))
+        goto end;
+
+    /* We should have had the SNI callback called exactly once */
+    if (!TEST_int_eq(snicb, 1))
+        goto end;
+
+    testresult = 1;
+
+end:
+    SSL_free(serverssl);
+    SSL_free(clientssl);
+    SSL_CTX_free(sctx2);
+    SSL_CTX_free(sctx);
+    SSL_CTX_free(cctx);
+    return testresult;
+}
 #endif
 
 OPT_TEST_DECLARE_USAGE("certfile privkeyfile srpvfile tmpfile provider config\n")
@@ -8053,7 +8444,7 @@ int setup_tests(void)
     char *modulename;
     char *configfile;
 
-    libctx = OPENSSL_CTX_new();
+    libctx = OSSL_LIB_CTX_new();
     if (!TEST_ptr(libctx))
         return 0;
 
@@ -8079,7 +8470,7 @@ int setup_tests(void)
             || !TEST_ptr(configfile = test_get_argument(4)))
         return 0;
 
-    if (!TEST_true(OPENSSL_CTX_load_config(libctx, configfile)))
+    if (!TEST_true(OSSL_LIB_CTX_load_config(libctx, configfile)))
         return 0;
 
     /* Check we have the expected provider available */
@@ -8135,11 +8526,43 @@ int setup_tests(void)
     if (privkey2 == NULL)
         goto err;
 
+    cert1024 = test_mk_file_path(certsdir, "ee-cert-1024.pem");
+    if (cert1024 == NULL)
+        goto err;
+
+    privkey1024 = test_mk_file_path(certsdir, "ee-key-1024.pem");
+    if (privkey1024 == NULL)
+        goto err;
+
+    cert3072 = test_mk_file_path(certsdir, "ee-cert-3072.pem");
+    if (cert3072 == NULL)
+        goto err;
+
+    privkey3072 = test_mk_file_path(certsdir, "ee-key-3072.pem");
+    if (privkey3072 == NULL)
+        goto err;
+
+    cert4096 = test_mk_file_path(certsdir, "ee-cert-4096.pem");
+    if (cert4096 == NULL)
+        goto err;
+
+    privkey4096 = test_mk_file_path(certsdir, "ee-key-4096.pem");
+    if (privkey4096 == NULL)
+        goto err;
+
+    cert8192 = test_mk_file_path(certsdir, "ee-cert-8192.pem");
+    if (cert8192 == NULL)
+        goto err;
+
+    privkey8192 = test_mk_file_path(certsdir, "ee-key-8192.pem");
+    if (privkey8192 == NULL)
+        goto err;
+
 #if !defined(OPENSSL_NO_KTLS) && !defined(OPENSSL_NO_SOCK)
-#if !defined(OPENSSL_NO_TLS1_2) || !defined(OPENSSL_NO_TLS1_3)
+# if !defined(OPENSSL_NO_TLS1_2) || !defined(OPENSSL_NO_TLS1_3)
     ADD_ALL_TESTS(test_ktls, 32);
     ADD_ALL_TESTS(test_ktls_sendfile_anytls, 6);
-#endif
+# endif
 #endif
     ADD_TEST(test_large_message_tls);
     ADD_TEST(test_large_message_tls_read_ahead);
@@ -8243,14 +8666,22 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_multiblock_write, OSSL_NELEM(multiblock_cipherlist_data));
 #endif
     ADD_ALL_TESTS(test_servername, 10);
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) \
+    && (!defined(OPENSSL_NO_TLS1_3) || !defined(OPENSSL_NO_TLS1_2))
     ADD_ALL_TESTS(test_sigalgs_available, 6);
 #endif
 #ifndef OPENSSL_NO_TLS1_3
-    ADD_TEST(test_pluggable_group);
+    ADD_ALL_TESTS(test_pluggable_group, 2);
 #endif
 #ifndef OPENSSL_NO_TLS1_2
     ADD_TEST(test_ssl_dup);
+# ifndef OPENSSL_NO_DH
+    ADD_ALL_TESTS(test_set_tmp_dh, 11);
+    ADD_ALL_TESTS(test_dh_auto, 7);
+# endif
+#endif
+#ifndef OPENSSL_NO_TLS1_3
+    ADD_TEST(test_sni_tls13);
 #endif
     return 1;
 
@@ -8264,12 +8695,23 @@ int setup_tests(void)
 
 void cleanup_tests(void)
 {
+# if !defined(OPENSSL_NO_TLS1_2) && !defined(OPENSSL_NO_DH)
+    EVP_PKEY_free(tmp_dh_params);
+#endif
     OPENSSL_free(cert);
     OPENSSL_free(privkey);
     OPENSSL_free(cert2);
     OPENSSL_free(privkey2);
+    OPENSSL_free(cert1024);
+    OPENSSL_free(privkey1024);
+    OPENSSL_free(cert3072);
+    OPENSSL_free(privkey3072);
+    OPENSSL_free(cert4096);
+    OPENSSL_free(privkey4096);
+    OPENSSL_free(cert8192);
+    OPENSSL_free(privkey8192);
     bio_s_mempacket_test_free();
     bio_s_always_retry_free();
     OSSL_PROVIDER_unload(defctxnull);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }

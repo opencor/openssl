@@ -59,7 +59,7 @@ enum kdf_type {
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     DH *dh;
     DH *dhpeer;
     unsigned int pad : 1;
@@ -87,7 +87,7 @@ static void *dh_newctx(void *provctx)
     pdhctx = OPENSSL_zalloc(sizeof(PROV_DH_CTX));
     if (pdhctx == NULL)
         return NULL;
-    pdhctx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    pdhctx->libctx = PROV_LIBCTX_OF(provctx);
     pdhctx->kdf_type = PROV_DH_KDF_NONE;
     return pdhctx;
 }
@@ -297,7 +297,7 @@ static int dh_set_ctx_params(void *vpdhctx, const OSSL_PARAM params[])
 
         if (name[0] == '\0')
             pdhctx->kdf_type = PROV_DH_KDF_NONE;
-        else if (strcmp(name, OSSL_KDF_NAME_X942KDF) == 0)
+        else if (strcmp(name, OSSL_KDF_NAME_X942KDF_ASN1) == 0)
             pdhctx->kdf_type = PROV_DH_KDF_X9_42_ASN1;
         else
             return 0;
@@ -421,7 +421,7 @@ static int dh_get_ctx_params(void *vpdhctx, OSSL_PARAM params[])
                 kdf_type = "";
                 break;
             case PROV_DH_KDF_X9_42_ASN1:
-                kdf_type = OSSL_KDF_NAME_X942KDF;
+                kdf_type = OSSL_KDF_NAME_X942KDF_ASN1;
                 break;
             default:
                 return 0;
@@ -460,7 +460,7 @@ static int dh_get_ctx_params(void *vpdhctx, OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH dh_keyexch_functions[] = {
+const OSSL_DISPATCH ossl_dh_keyexch_functions[] = {
     { OSSL_FUNC_KEYEXCH_NEWCTX, (void (*)(void))dh_newctx },
     { OSSL_FUNC_KEYEXCH_INIT, (void (*)(void))dh_init },
     { OSSL_FUNC_KEYEXCH_DERIVE, (void (*)(void))dh_derive },

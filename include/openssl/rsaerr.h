@@ -14,12 +14,9 @@
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
+# include <openssl/cryptoerr_legacy.h>
 
 
-# ifdef  __cplusplus
-extern "C"
-# endif
-int ERR_load_RSA_strings(void);
 
 /*
  * RSA function codes.
@@ -41,7 +38,6 @@ int ERR_load_RSA_strings(void);
 #  define RSA_F_RSA_CHECK_KEY_EX                           0
 #  define RSA_F_RSA_CMS_DECRYPT                            0
 #  define RSA_F_RSA_CMS_VERIFY                             0
-#  define RSA_F_RSA_FIPS186_4_GEN_PROB_PRIMES              0
 #  define RSA_F_RSA_ITEM_VERIFY                            0
 #  define RSA_F_RSA_METH_DUP                               0
 #  define RSA_F_RSA_METH_NEW                               0
@@ -85,10 +81,6 @@ int ERR_load_RSA_strings(void);
 #  define RSA_F_RSA_SETUP_BLINDING                         0
 #  define RSA_F_RSA_SIGN                                   0
 #  define RSA_F_RSA_SIGN_ASN1_OCTET_STRING                 0
-#  define RSA_F_RSA_SP800_56B_CHECK_KEYPAIR                0
-#  define RSA_F_RSA_SP800_56B_CHECK_PUBLIC                 0
-#  define RSA_F_RSA_SP800_56B_PAIRWISE_TEST                0
-#  define RSA_F_RSA_SP800_56B_VALIDATE_STRENGTH            0
 #  define RSA_F_RSA_VERIFY                                 0
 #  define RSA_F_RSA_VERIFY_ASN1_OCTET_STRING               0
 #  define RSA_F_RSA_VERIFY_PKCS1_PSS_MGF1                  0

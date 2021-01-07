@@ -7,9 +7,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -28,9 +25,7 @@
 #include <openssl/pem.h>
 #include <openssl/bn.h>
 #include <openssl/lhash.h>
-#ifndef OPENSSL_NO_RSA
-# include <openssl/rsa.h>
-#endif
+#include <openssl/rsa.h>
 #ifndef OPENSSL_NO_DSA
 # include <openssl/dsa.h>
 #endif
@@ -288,7 +283,7 @@ int req_main(int argc, char **argv)
             break;
         case OPT_KEYGEN_ENGINE:
 #ifndef OPENSSL_NO_ENGINE
-            gen_eng = ENGINE_by_id(opt_arg());
+            gen_eng = setup_engine(opt_arg(), 0);
             if (gen_eng == NULL) {
                 BIO_printf(bio_err, "Can't find keygen engine %s\n", *argv);
                 goto opthelp;
@@ -429,9 +424,11 @@ int req_main(int argc, char **argv)
                     goto end;
             }
             i = duplicated(addexts, p);
-            if (i == 1)
+            if (i == 1) {
+                BIO_printf(bio_err, "Duplicate extension: %s\n", p);
                 goto opthelp;
-            if (i < 0 || BIO_printf(addext_bio, "%s\n", opt_arg()) < 0)
+            }
+            if (i < 0 || BIO_printf(addext_bio, "%s\n", p) < 0)
                 goto end;
             break;
         case OPT_EXTENSIONS:
@@ -450,6 +447,8 @@ int req_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -474,7 +473,7 @@ int req_main(int argc, char **argv)
     if (addext_bio != NULL) {
         if (verbose)
             BIO_printf(bio_err,
-                       "Using additional configuration from command line\n");
+                       "Using additional configuration from -addext options\n");
         if ((addext_conf = app_load_config_bio(addext_bio, NULL)) == NULL)
             goto end;
     }
@@ -526,7 +525,7 @@ int req_main(int argc, char **argv)
         X509V3_set_nconf(&ctx, req_conf);
         if (!X509V3_EXT_add_nconf(req_conf, &ctx, extensions, NULL)) {
             BIO_printf(bio_err,
-                       "Error Loading extension section %s\n", extensions);
+                       "Error checking x509 extension section %s\n", extensions);
             goto end;
         }
     }
@@ -536,7 +535,7 @@ int req_main(int argc, char **argv)
         X509V3_set_ctx_test(&ctx);
         X509V3_set_nconf(&ctx, addext_conf);
         if (!X509V3_EXT_add_nconf(addext_conf, &ctx, "default", NULL)) {
-            BIO_printf(bio_err, "Error Loading command line extensions\n");
+            BIO_printf(bio_err, "Error checking extensions defined using -addext\n");
             goto end;
         }
     }
@@ -584,14 +583,14 @@ int req_main(int argc, char **argv)
         X509V3_set_nconf(&ctx, req_conf);
         if (!X509V3_EXT_add_nconf(req_conf, &ctx, req_exts, NULL)) {
             BIO_printf(bio_err,
-                       "Error Loading request extension section %s\n",
+                       "Error checking request extension section %s\n",
                        req_exts);
             goto end;
         }
     }
 
     if (keyfile != NULL) {
-        pkey = load_key(keyfile, keyform, 0, passin, e, "Private Key");
+        pkey = load_key(keyfile, keyform, 0, passin, e, "private key");
         if (pkey == NULL)
             goto end;
         app_RAND_load_conf(req_conf, section);
@@ -662,7 +661,7 @@ int req_main(int argc, char **argv)
         EVP_PKEY_CTX_set_app_data(genctx, bio_err);
 
         if (EVP_PKEY_keygen(genctx, &pkey) <= 0) {
-            BIO_puts(bio_err, "Error Generating Key\n");
+            BIO_puts(bio_err, "Error generating key\n");
             goto end;
         }
 
@@ -741,14 +740,10 @@ int req_main(int argc, char **argv)
         if (x509) {
             EVP_PKEY *tmppkey;
             X509V3_CTX ext_ctx;
-            if ((x509ss = X509_new_with_libctx(app_get0_libctx(),
-                                               app_get0_propq())) == NULL)
+            if ((x509ss = X509_new_ex(app_get0_libctx(), app_get0_propq())) == NULL)
                 goto end;
 
             /* Set version to V3 */
-            if ((extensions != NULL || addext_conf != NULL)
-                && !X509_set_version(x509ss, 2))
-                goto end;
             if (serial != NULL) {
                 if (!X509_set_serialNumber(x509ss, serial))
                     goto end;
@@ -774,21 +769,21 @@ int req_main(int argc, char **argv)
 
             /* Set up V3 context struct */
 
-            X509V3_set_ctx(&ext_ctx, x509ss, x509ss, NULL, NULL, 0);
+            X509V3_set_ctx(&ext_ctx, x509ss, x509ss, NULL, NULL, X509V3_CTX_REPLACE);
             X509V3_set_nconf(&ext_ctx, req_conf);
 
             /* Add extensions */
             if (extensions != NULL && !X509V3_EXT_add_nconf(req_conf,
                                                             &ext_ctx, extensions,
                                                             x509ss)) {
-                BIO_printf(bio_err, "Error Loading extension section %s\n",
+                BIO_printf(bio_err, "Error adding x509 extensions from section %s\n",
                            extensions);
                 goto end;
             }
             if (addext_conf != NULL
                 && !X509V3_EXT_add_nconf(addext_conf, &ext_ctx, "default",
                                          x509ss)) {
-                BIO_printf(bio_err, "Error Loading command line extensions\n");
+                BIO_printf(bio_err, "Error adding extensions defined via -addext\n");
                 goto end;
             }
 
@@ -818,14 +813,14 @@ int req_main(int argc, char **argv)
             if (req_exts != NULL
                 && !X509V3_EXT_REQ_add_nconf(req_conf, &ext_ctx,
                                              req_exts, req)) {
-                BIO_printf(bio_err, "Error Loading extension section %s\n",
+                BIO_printf(bio_err, "Error adding request extensions from section %s\n",
                            req_exts);
                 goto end;
             }
             if (addext_conf != NULL
                 && !X509V3_EXT_REQ_add_nconf(addext_conf, &ext_ctx, "default",
                                              req)) {
-                BIO_printf(bio_err, "Error Loading command line extensions\n");
+                BIO_printf(bio_err, "Error adding extensions defined via -addext\n");
                 goto end;
             }
             i = do_X509_REQ_sign(req, pkey, digest, sigopts);
@@ -942,14 +937,16 @@ int req_main(int argc, char **argv)
             goto end;
         }
         fprintf(stdout, "Modulus=");
-#ifndef OPENSSL_NO_RSA
-        if (EVP_PKEY_base_id(tpubkey) == EVP_PKEY_RSA) {
-            const BIGNUM *n;
-            RSA_get0_key(EVP_PKEY_get0_RSA(tpubkey), &n, NULL, NULL);
+        if (EVP_PKEY_is_a(tpubkey, "RSA")) {
+            BIGNUM *n;
+
+            /* Every RSA key has an 'n' */
+            EVP_PKEY_get_bn_param(pkey, "n", &n);
             BN_print(out, n);
-        } else
-#endif
+            BN_free(n);
+        } else {
             fprintf(stdout, "Wrong Algorithm type");
+        }
         fprintf(stdout, "\n");
     }
 
@@ -992,7 +989,7 @@ int req_main(int argc, char **argv)
     lh_OPENSSL_STRING_doall(addexts, exts_cleanup);
     lh_OPENSSL_STRING_free(addexts);
 #ifndef OPENSSL_NO_ENGINE
-    ENGINE_free(gen_eng);
+    release_engine(gen_eng);
 #endif
     OPENSSL_free(keyalgstr);
     X509_REQ_free(req);
@@ -1511,7 +1508,7 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
 
         EVP_PKEY_asn1_get0_info(NULL, pkey_type, NULL, NULL, NULL, ameth);
 #ifndef OPENSSL_NO_ENGINE
-        ENGINE_finish(tmpeng);
+        finish_engine(tmpeng);
 #endif
         if (*pkey_type == EVP_PKEY_RSA) {
             if (p != NULL) {
@@ -1572,7 +1569,7 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
         EVP_PKEY_asn1_get0_info(NULL, NULL, NULL, NULL, &anam, ameth);
         *palgnam = OPENSSL_strdup(anam);
 #ifndef OPENSSL_NO_ENGINE
-        ENGINE_finish(tmpeng);
+        finish_engine(tmpeng);
 #endif
     }
 
@@ -1596,7 +1593,6 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
         EVP_PKEY_CTX_free(gctx);
         return NULL;
     }
-#ifndef OPENSSL_NO_RSA
     if ((*pkey_type == EVP_PKEY_RSA) && (keylen != -1)) {
         if (EVP_PKEY_CTX_set_rsa_keygen_bits(gctx, keylen) <= 0) {
             BIO_puts(bio_err, "Error setting RSA keysize\n");
@@ -1605,7 +1601,6 @@ static EVP_PKEY_CTX *set_keygen_ctx(const char *gstr,
             return NULL;
         }
     }
-#endif
 
     return gctx;
 }
@@ -1627,137 +1622,4 @@ static int genpkey_cb(EVP_PKEY_CTX *ctx)
     BIO_write(b, &c, 1);
     (void)BIO_flush(b);
     return 1;
-}
-
-static int do_pkey_ctx_init(EVP_PKEY_CTX *pkctx, STACK_OF(OPENSSL_STRING) *opts)
-{
-    int i;
-
-    if (opts == NULL)
-        return 1;
-
-    for (i = 0; i < sk_OPENSSL_STRING_num(opts); i++) {
-        char *opt = sk_OPENSSL_STRING_value(opts, i);
-        if (pkey_ctrl_string(pkctx, opt) <= 0) {
-            BIO_printf(bio_err, "parameter error \"%s\"\n", opt);
-            ERR_print_errors(bio_err);
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
-static int do_x509_init(X509 *x, STACK_OF(OPENSSL_STRING) *opts)
-{
-    int i;
-
-    if (opts == NULL)
-        return 1;
-
-    for (i = 0; i < sk_OPENSSL_STRING_num(opts); i++) {
-        char *opt = sk_OPENSSL_STRING_value(opts, i);
-        if (x509_ctrl_string(x, opt) <= 0) {
-            BIO_printf(bio_err, "parameter error \"%s\"\n", opt);
-            ERR_print_errors(bio_err);
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
-static int do_x509_req_init(X509_REQ *x, STACK_OF(OPENSSL_STRING) *opts)
-{
-    int i;
-
-    if (opts == NULL)
-        return 1;
-
-    for (i = 0; i < sk_OPENSSL_STRING_num(opts); i++) {
-        char *opt = sk_OPENSSL_STRING_value(opts, i);
-        if (x509_req_ctrl_string(x, opt) <= 0) {
-            BIO_printf(bio_err, "parameter error \"%s\"\n", opt);
-            ERR_print_errors(bio_err);
-            return 0;
-        }
-    }
-
-    return 1;
-}
-
-static int do_sign_init(EVP_MD_CTX *ctx, EVP_PKEY *pkey,
-                        const EVP_MD *md, STACK_OF(OPENSSL_STRING) *sigopts)
-{
-    EVP_PKEY_CTX *pkctx = NULL;
-    int def_nid;
-
-    if (ctx == NULL)
-        return 0;
-    /*
-     * EVP_PKEY_get_default_digest_nid() returns 2 if the digest is mandatory
-     * for this algorithm.
-     */
-    if (EVP_PKEY_get_default_digest_nid(pkey, &def_nid) == 2
-            && def_nid == NID_undef) {
-        /* The signing algorithm requires there to be no digest */
-        md = NULL;
-    }
-    return EVP_DigestSignInit(ctx, &pkctx, md, NULL, pkey)
-        && do_pkey_ctx_init(pkctx, sigopts);
-}
-
-int do_X509_sign(X509 *x, EVP_PKEY *pkey, const EVP_MD *md,
-                 STACK_OF(OPENSSL_STRING) *sigopts)
-{
-    int rv = 0;
-    EVP_MD_CTX *mctx = EVP_MD_CTX_new();
-
-    if (do_sign_init(mctx, pkey, md, sigopts) > 0)
-        rv = (X509_sign_ctx(x, mctx) > 0);
-    EVP_MD_CTX_free(mctx);
-    return rv;
-}
-
-int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md,
-                     STACK_OF(OPENSSL_STRING) *sigopts)
-{
-    int rv = 0;
-    EVP_MD_CTX *mctx = EVP_MD_CTX_new();
-
-    if (do_sign_init(mctx, pkey, md, sigopts) > 0)
-        rv = (X509_REQ_sign_ctx(x, mctx) > 0);
-    EVP_MD_CTX_free(mctx);
-    return rv;
-}
-
-int do_X509_verify(X509 *x, EVP_PKEY *pkey, STACK_OF(OPENSSL_STRING) *vfyopts)
-{
-    int rv = 0;
-
-    if (do_x509_init(x, vfyopts) > 0)
-        rv = (X509_verify(x, pkey) > 0);
-    return rv;
-}
-
-int do_X509_REQ_verify(X509_REQ *x, EVP_PKEY *pkey,
-                       STACK_OF(OPENSSL_STRING) *vfyopts)
-{
-    int rv = 0;
-
-    if (do_x509_req_init(x, vfyopts) > 0)
-        rv = (X509_REQ_verify(x, pkey) > 0);
-    return rv;
-}
-
-int do_X509_CRL_sign(X509_CRL *x, EVP_PKEY *pkey, const EVP_MD *md,
-                     STACK_OF(OPENSSL_STRING) *sigopts)
-{
-    int rv = 0;
-    EVP_MD_CTX *mctx = EVP_MD_CTX_new();
-
-    if (do_sign_init(mctx, pkey, md, sigopts) > 0)
-        rv = (X509_CRL_sign_ctx(x, mctx) > 0);
-    EVP_MD_CTX_free(mctx);
-    return rv;
 }

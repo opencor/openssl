@@ -1168,7 +1168,6 @@ RSA_F_RSA_CHECK_KEY:123:RSA_check_key
 RSA_F_RSA_CHECK_KEY_EX:160:RSA_check_key_ex
 RSA_F_RSA_CMS_DECRYPT:159:rsa_cms_decrypt
 RSA_F_RSA_CMS_VERIFY:158:rsa_cms_verify
-RSA_F_RSA_FIPS186_4_GEN_PROB_PRIMES:168:rsa_fips186_4_gen_prob_primes
 RSA_F_RSA_ITEM_VERIFY:148:rsa_item_verify
 RSA_F_RSA_METH_DUP:161:RSA_meth_dup
 RSA_F_RSA_METH_NEW:162:RSA_meth_new
@@ -1212,10 +1211,6 @@ RSA_F_RSA_PUB_DECODE:139:rsa_pub_decode
 RSA_F_RSA_SETUP_BLINDING:136:RSA_setup_blinding
 RSA_F_RSA_SIGN:117:RSA_sign
 RSA_F_RSA_SIGN_ASN1_OCTET_STRING:118:RSA_sign_ASN1_OCTET_STRING
-RSA_F_RSA_SP800_56B_CHECK_KEYPAIR:169:rsa_sp800_56b_check_keypair
-RSA_F_RSA_SP800_56B_CHECK_PUBLIC:170:rsa_sp800_56b_check_public
-RSA_F_RSA_SP800_56B_PAIRWISE_TEST:171:rsa_sp800_56b_pairwise_test
-RSA_F_RSA_SP800_56B_VALIDATE_STRENGTH:172:rsa_sp800_56b_validate_strength
 RSA_F_RSA_VERIFY:119:RSA_verify
 RSA_F_RSA_VERIFY_ASN1_OCTET_STRING:120:RSA_verify_ASN1_OCTET_STRING
 RSA_F_RSA_VERIFY_PKCS1_PSS_MGF1:126:RSA_verify_PKCS1_PSS_mgf1
@@ -1406,11 +1401,13 @@ SSL_F_SSL_CTX_USE_SERVERINFO_EX:543:SSL_CTX_use_serverinfo_ex
 SSL_F_SSL_CTX_USE_SERVERINFO_FILE:337:SSL_CTX_use_serverinfo_file
 SSL_F_SSL_DANE_DUP:403:ssl_dane_dup
 SSL_F_SSL_DANE_ENABLE:395:SSL_dane_enable
+SSL_F_SSL_DECAPSULATE:643:
 SSL_F_SSL_DERIVE:590:ssl_derive
 SSL_F_SSL_DO_CONFIG:391:ssl_do_config
 SSL_F_SSL_DO_HANDSHAKE:180:SSL_do_handshake
 SSL_F_SSL_DUP_CA_LIST:408:SSL_dup_CA_list
 SSL_F_SSL_ENABLE_CT:402:SSL_enable_ct
+SSL_F_SSL_ENCAPSULATE:644:
 SSL_F_SSL_GENERATE_PKEY_GROUP:559:ssl_generate_pkey_group
 SSL_F_SSL_GENERATE_SESSION_ID:547:ssl_generate_session_id
 SSL_F_SSL_GET_NEW_SESSION:181:ssl_get_new_session
@@ -1904,6 +1901,7 @@ ASN1_R_ASN1_PARSE_ERROR:203:asn1 parse error
 ASN1_R_ASN1_SIG_PARSE_ERROR:204:asn1 sig parse error
 ASN1_R_AUX_ERROR:100:aux error
 ASN1_R_BAD_OBJECT_HEADER:102:bad object header
+ASN1_R_BAD_TEMPLATE:230:bad template
 ASN1_R_BMPSTRING_IS_WRONG_LENGTH:214:bmpstring is wrong length
 ASN1_R_BN_LIB:105:bn lib
 ASN1_R_BOOLEAN_IS_WRONG_LENGTH:106:boolean is wrong length
@@ -1999,6 +1997,7 @@ ASN1_R_TYPE_NOT_CONSTRUCTED:156:type not constructed
 ASN1_R_TYPE_NOT_PRIMITIVE:195:type not primitive
 ASN1_R_UNEXPECTED_EOC:159:unexpected eoc
 ASN1_R_UNIVERSALSTRING_IS_WRONG_LENGTH:215:universalstring is wrong length
+ASN1_R_UNKNOWN_DIGEST:229:unknown digest
 ASN1_R_UNKNOWN_FORMAT:160:unknown format
 ASN1_R_UNKNOWN_MESSAGE_DIGEST_ALGORITHM:161:unknown message digest algorithm
 ASN1_R_UNKNOWN_OBJECT_TYPE:162:unknown object type
@@ -2184,6 +2183,7 @@ CMS_R_CONTENT_TYPE_NOT_SIGNED_DATA:108:content type not signed data
 CMS_R_CONTENT_VERIFY_ERROR:109:content verify error
 CMS_R_CTRL_ERROR:110:ctrl error
 CMS_R_CTRL_FAILURE:111:ctrl failure
+CMS_R_DECODE_ERROR:187:decode error
 CMS_R_DECRYPT_ERROR:112:decrypt error
 CMS_R_ERROR_GETTING_PUBLIC_KEY:113:error getting public key
 CMS_R_ERROR_READING_MESSAGEDIGEST_ATTRIBUTE:114:\
@@ -2195,6 +2195,9 @@ CMS_R_ESS_SIGNING_CERTID_MISMATCH_ERROR:183:ess signing certid mismatch error
 CMS_R_INVALID_ENCRYPTED_KEY_LENGTH:117:invalid encrypted key length
 CMS_R_INVALID_KEY_ENCRYPTION_PARAMETER:176:invalid key encryption parameter
 CMS_R_INVALID_KEY_LENGTH:118:invalid key length
+CMS_R_INVALID_LABEL:190:invalid label
+CMS_R_INVALID_OAEP_PARAMETERS:191:invalid oaep parameters
+CMS_R_KDF_PARAMETER_ERROR:186:kdf parameter error
 CMS_R_MD_BIO_INIT_ERROR:119:md bio init error
 CMS_R_MESSAGEDIGEST_ATTRIBUTE_WRONG_LENGTH:120:\
 	messagedigest attribute wrong length
@@ -2226,10 +2229,12 @@ CMS_R_NO_PRIVATE_KEY:133:no private key
 CMS_R_NO_PUBLIC_KEY:134:no public key
 CMS_R_NO_RECEIPT_REQUEST:168:no receipt request
 CMS_R_NO_SIGNERS:135:no signers
+CMS_R_PEER_KEY_ERROR:188:peer key error
 CMS_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE:136:\
 	private key does not match certificate
 CMS_R_RECEIPT_DECODE_ERROR:169:receipt decode error
 CMS_R_RECIPIENT_ERROR:137:recipient error
+CMS_R_SHARED_INFO_ERROR:189:shared info error
 CMS_R_SIGNER_CERTIFICATE_NOT_FOUND:138:signer certificate not found
 CMS_R_SIGNFINAL_ERROR:139:signfinal error
 CMS_R_SMIME_TEXT_ERROR:140:smime text error
@@ -2245,9 +2250,11 @@ CMS_R_UNKNOWN_DIGEST_ALGORITHM:149:unknown digest algorithm
 CMS_R_UNKNOWN_ID:150:unknown id
 CMS_R_UNSUPPORTED_COMPRESSION_ALGORITHM:151:unsupported compression algorithm
 CMS_R_UNSUPPORTED_CONTENT_TYPE:152:unsupported content type
+CMS_R_UNSUPPORTED_ENCRYPTION_TYPE:192:unsupported encryption type
 CMS_R_UNSUPPORTED_KEK_ALGORITHM:153:unsupported kek algorithm
 CMS_R_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM:179:\
 	unsupported key encryption algorithm
+CMS_R_UNSUPPORTED_LABEL_SOURCE:193:unsupported label source
 CMS_R_UNSUPPORTED_RECIPIENTINFO_TYPE:155:unsupported recipientinfo type
 CMS_R_UNSUPPORTED_RECIPIENT_TYPE:154:unsupported recipient type
 CMS_R_UNSUPPORTED_TYPE:156:unsupported type
@@ -2311,6 +2318,7 @@ CRMF_R_UNSUPPORTED_POPO_METHOD:116:unsupported popo method
 CRYPTO_R_BAD_ALGORITHM_NAME:117:bad algorithm name
 CRYPTO_R_CONFLICTING_NAMES:118:conflicting names
 CRYPTO_R_FIPS_MODE_NOT_SUPPORTED:101:fips mode not supported
+CRYPTO_R_HEX_STRING_TOO_SHORT:121:hex string too short
 CRYPTO_R_ILLEGAL_HEX_DIGIT:102:illegal hex digit
 CRYPTO_R_INSUFFICIENT_DATA_SPACE:106:insufficient data space
 CRYPTO_R_INSUFFICIENT_PARAM_SIZE:107:insufficient param size
@@ -2320,11 +2328,13 @@ CRYPTO_R_INVALID_OSSL_PARAM_TYPE:110:invalid ossl param type
 CRYPTO_R_ODD_NUMBER_OF_DIGITS:103:odd number of digits
 CRYPTO_R_PROVIDER_ALREADY_EXISTS:104:provider already exists
 CRYPTO_R_PROVIDER_SECTION_ERROR:105:provider section error
+CRYPTO_R_RANDOM_SECTION_ERROR:119:random section error
 CRYPTO_R_SECURE_MALLOC_FAILURE:111:secure malloc failure
 CRYPTO_R_STRING_TOO_LONG:112:string too long
 CRYPTO_R_TOO_MANY_BYTES:113:too many bytes
 CRYPTO_R_TOO_MANY_RECORDS:114:too many records
 CRYPTO_R_TOO_SMALL_BUFFER:116:too small buffer
+CRYPTO_R_UNKNOWN_NAME_IN_RANDOM_SECTION:120:unknown name in random section
 CRYPTO_R_ZERO_LENGTH_NUMBER:115:zero length number
 CT_R_BASE64_DECODE_ERROR:108:base64 decode error
 CT_R_INVALID_LOG_ID_LENGTH:100:invalid log id length
@@ -2410,7 +2420,6 @@ EC_R_COORDINATES_OUT_OF_RANGE:146:coordinates out of range
 EC_R_CURVE_DOES_NOT_SUPPORT_ECDH:160:curve does not support ecdh
 EC_R_CURVE_DOES_NOT_SUPPORT_ECDSA:170:curve does not support ecdsa
 EC_R_CURVE_DOES_NOT_SUPPORT_SIGNING:159:curve does not support signing
-EC_R_D2I_ECPKPARAMETERS_FAILURE:117:d2i ecpkparameters failure
 EC_R_DECODE_ERROR:142:decode error
 EC_R_DISCRIMINANT_IS_ZERO:118:discriminant is zero
 EC_R_EC_GROUP_NEW_BY_NAME_FAILURE:119:ec group new by name failure
@@ -2460,7 +2469,6 @@ EC_R_NO_PRIVATE_VALUE:154:no private value
 EC_R_OPERATION_NOT_SUPPORTED:152:operation not supported
 EC_R_PASSED_NULL_PARAMETER:134:passed null parameter
 EC_R_PEER_KEY_ERROR:149:peer key error
-EC_R_PKPARAMETERS2GROUP_FAILURE:127:pkparameters2group failure
 EC_R_POINT_ARITHMETIC_FAILURE:155:point arithmetic failure
 EC_R_POINT_AT_INFINITY:106:point at infinity
 EC_R_POINT_COORDINATES_BLIND_FAILURE:163:point coordinates blind failure
@@ -2520,6 +2528,7 @@ EVP_R_BAD_ALGORITHM_NAME:200:bad algorithm name
 EVP_R_BAD_DECRYPT:100:bad decrypt
 EVP_R_BAD_KEY_LENGTH:195:bad key length
 EVP_R_BUFFER_TOO_SMALL:155:buffer too small
+EVP_R_CACHE_CONSTANTS_FAILED:225:cache constants failed
 EVP_R_CAMELLIA_KEY_SETUP_FAILED:157:camellia key setup failed
 EVP_R_CANNOT_GET_PARAMETERS:197:cannot get parameters
 EVP_R_CANNOT_SET_PARAMETERS:198:cannot set parameters
@@ -2569,7 +2578,6 @@ EVP_R_INVALID_SALT_LENGTH:186:invalid salt length
 EVP_R_INVALID_SECRET_LENGTH:223:invalid secret length
 EVP_R_INVALID_SEED_LENGTH:220:invalid seed length
 EVP_R_INVALID_VALUE:222:invalid value
-EVP_R_KEYGEN_FAILURE:120:keygen failure
 EVP_R_KEYMGMT_EXPORT_FAILURE:205:keymgmt export failure
 EVP_R_KEY_SETUP_FAILED:180:key setup failed
 EVP_R_LOCKING_NOT_SUPPORTED:213:locking not supported
@@ -2618,6 +2626,7 @@ EVP_R_UNSUPPORTED_KEYLENGTH:123:unsupported keylength
 EVP_R_UNSUPPORTED_KEY_DERIVATION_FUNCTION:124:\
 	unsupported key derivation function
 EVP_R_UNSUPPORTED_KEY_SIZE:108:unsupported key size
+EVP_R_UNSUPPORTED_KEY_TYPE:224:unsupported key type
 EVP_R_UNSUPPORTED_NUMBER_OF_ROUNDS:135:unsupported number of rounds
 EVP_R_UNSUPPORTED_PRF:125:unsupported prf
 EVP_R_UNSUPPORTED_PRIVATE_KEY_ALGORITHM:118:unsupported private key algorithm
@@ -2653,34 +2662,6 @@ HTTP_R_STATUS_CODE_UNSUPPORTED:114:status code unsupported
 HTTP_R_TLS_NOT_ENABLED:107:tls not enabled
 HTTP_R_TOO_MANY_REDIRECTIONS:115:too many redirections
 HTTP_R_UNEXPECTED_CONTENT_TYPE:118:unexpected content type
-KDF_R_BAD_ENCODING:122:bad encoding
-KDF_R_BAD_LENGTH:123:bad length
-KDF_R_BOTH_MODE_AND_MODE_INT:127:both mode and mode int
-KDF_R_INVALID_DIGEST:100:invalid digest
-KDF_R_INVALID_ITERATION_COUNT:119:invalid iteration count
-KDF_R_INVALID_KEY_LEN:120:invalid key len
-KDF_R_INVALID_MAC_TYPE:116:invalid mac type
-KDF_R_INVALID_MODE:128:invalid mode
-KDF_R_INVALID_MODE_INT:129:invalid mode int
-KDF_R_MISSING_CEK_ALG:125:missing cek alg
-KDF_R_MISSING_ITERATION_COUNT:109:missing iteration count
-KDF_R_MISSING_KEY:104:missing key
-KDF_R_MISSING_MESSAGE_DIGEST:105:missing message digest
-KDF_R_MISSING_PARAMETER:101:missing parameter
-KDF_R_MISSING_PASS:110:missing pass
-KDF_R_MISSING_SALT:111:missing salt
-KDF_R_MISSING_SECRET:107:missing secret
-KDF_R_MISSING_SEED:106:missing seed
-KDF_R_MISSING_SESSION_ID:113:missing session id
-KDF_R_MISSING_TYPE:114:missing type
-KDF_R_MISSING_XCGHASH:115:missing xcghash
-KDF_R_NOT_SUPPORTED:118:not supported
-KDF_R_UNKNOWN_PARAMETER_TYPE:103:unknown parameter type
-KDF_R_UNSUPPORTED_CEK_ALG:126:unsupported cek alg
-KDF_R_UNSUPPORTED_MAC_TYPE:117:unsupported mac type
-KDF_R_VALUE_ERROR:108:value error
-KDF_R_VALUE_MISSING:102:value missing
-KDF_R_WRONG_OUTPUT_BUFFER_SIZE:112:wrong output buffer size
 OBJ_R_OID_EXISTS:102:oid exists
 OBJ_R_UNKNOWN_NID:101:unknown nid
 OBJ_R_UNKNOWN_OBJECT_NAME:103:unknown object name
@@ -2789,9 +2770,7 @@ PKCS12_R_MAC_SETUP_ERROR:110:mac setup error
 PKCS12_R_MAC_STRING_SET_ERROR:111:mac string set error
 PKCS12_R_MAC_VERIFY_FAILURE:113:mac verify failure
 PKCS12_R_PARSE_ERROR:114:parse error
-PKCS12_R_PKCS12_ALGOR_CIPHERINIT_ERROR:115:pkcs12 algor cipherinit error
 PKCS12_R_PKCS12_CIPHERFINAL_ERROR:116:pkcs12 cipherfinal error
-PKCS12_R_PKCS12_PBE_CRYPT_ERROR:117:pkcs12 pbe crypt error
 PKCS12_R_UNKNOWN_DIGEST_ALGORITHM:118:unknown digest algorithm
 PKCS12_R_UNSUPPORTED_PKCS12_MODE:119:unsupported pkcs12 mode
 PKCS7_R_CERTIFICATE_VERIFY_ERROR:117:certificate verify error
@@ -2904,6 +2883,7 @@ PROV_R_INVALID_MODE:125:invalid mode
 PROV_R_INVALID_MODE_INT:126:invalid mode int
 PROV_R_INVALID_PADDING_MODE:168:invalid padding mode
 PROV_R_INVALID_PSS_SALTLEN:169:invalid pss saltlen
+PROV_R_INVALID_PUBINFO:198:invalid pubinfo
 PROV_R_INVALID_RSA_KEY:217:invalid rsa key
 PROV_R_INVALID_SALT_LENGTH:112:invalid salt length
 PROV_R_INVALID_SEED_LENGTH:154:invalid seed length
@@ -2911,6 +2891,7 @@ PROV_R_INVALID_SIGNATURE_SIZE:179:invalid signature size
 PROV_R_INVALID_STATE:212:invalid state
 PROV_R_INVALID_TAG:110:invalid tag
 PROV_R_INVALID_TAGLEN:118:invalid taglen
+PROV_R_INVALID_UKM_LENGTH:200:invalid ukm length
 PROV_R_INVALID_X931_DIGEST:170:invalid x931 digest
 PROV_R_IN_ERROR_STATE:192:in error state
 PROV_R_KEY_SIZE_TOO_SMALL:171:key size too small
@@ -2941,6 +2922,8 @@ PROV_R_NO_PARAMETERS_SET:177:no parameters set
 PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE:178:\
 	operation not supported for this keytype
 PROV_R_OUTPUT_BUFFER_TOO_SMALL:106:output buffer too small
+PROV_R_PARENT_CANNOT_GENERATE_RANDOM_NUMBERS:228:\
+	parent cannot generate random numbers
 PROV_R_PARENT_LOCKING_NOT_ENABLED:182:parent locking not enabled
 PROV_R_PARENT_STRENGTH_TOO_WEAK:194:parent strength too weak
 PROV_R_PATH_MUST_BE_ABSOLUTE:219:path must be absolute
@@ -2952,6 +2935,8 @@ PROV_R_REQUIRE_CTR_MODE_CIPHER:206:require ctr mode cipher
 PROV_R_RESEED_ERROR:197:reseed error
 PROV_R_SEARCH_ONLY_SUPPORTED_FOR_DIRECTORIES:222:\
 	search only supported for directories
+PROV_R_SEED_SOURCES_MUST_NOT_HAVE_A_PARENT:229:\
+	seed sources must not have a parent
 PROV_R_SELF_TEST_KAT_FAILURE:215:self test kat failure
 PROV_R_SELF_TEST_POST_FAILURE:216:self test post failure
 PROV_R_TAG_NOTSET:119:tag notset
@@ -2959,10 +2944,7 @@ PROV_R_TAG_NOT_NEEDED:120:tag not needed
 PROV_R_UNABLE_TO_FIND_CIPHERS:207:unable to find ciphers
 PROV_R_UNABLE_TO_GET_ENTROPY:202:unable to get entropy
 PROV_R_UNABLE_TO_GET_NONCE:203:unable to get nonce
-PROV_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER:198:\
-	unable to get parent reseed prop counter
 PROV_R_UNABLE_TO_GET_PARENT_STRENGTH:199:unable to get parent strength
-PROV_R_UNABLE_TO_GET_RESEED_PROP_CTR:200:unable to get reseed prop ctr
 PROV_R_UNABLE_TO_INITIALISE_CIPHERS:208:unable to initialise ciphers
 PROV_R_UNABLE_TO_LOAD_SHA1:143:unable to load sha1
 PROV_R_UNABLE_TO_LOAD_SHA256:147:unable to load sha256
@@ -3024,7 +3006,6 @@ RAND_R_UNABLE_TO_FETCH_DRBG:144:unable to fetch drbg
 RAND_R_UNABLE_TO_GET_PARENT_RESEED_PROP_COUNTER:141:\
 	unable to get parent reseed prop counter
 RAND_R_UNABLE_TO_GET_PARENT_STRENGTH:138:unable to get parent strength
-RAND_R_UNABLE_TO_GET_RESEED_PROP_CTR:142:unable to get reseed prop ctr
 RAND_R_UNABLE_TO_LOCK_PARENT:140:unable to lock parent
 RAND_R_UNSUPPORTED_DRBG_FLAGS:132:unsupported drbg flags
 RAND_R_UNSUPPORTED_DRBG_TYPE:120:unsupported drbg type

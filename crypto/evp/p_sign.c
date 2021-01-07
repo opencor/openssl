@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,9 +14,9 @@
 #include <openssl/x509.h>
 #include "crypto/evp.h"
 
-int EVP_SignFinal_with_libctx(EVP_MD_CTX *ctx, unsigned char *sigret,
-                              unsigned int *siglen, EVP_PKEY *pkey,
-                              OPENSSL_CTX *libctx, const char *propq)
+int EVP_SignFinal_ex(EVP_MD_CTX *ctx, unsigned char *sigret,
+                     unsigned int *siglen, EVP_PKEY *pkey, OSSL_LIB_CTX *libctx,
+                     const char *propq)
 {
     unsigned char m[EVP_MAX_MD_SIZE];
     unsigned int m_len = 0;
@@ -33,7 +33,7 @@ int EVP_SignFinal_with_libctx(EVP_MD_CTX *ctx, unsigned char *sigret,
         EVP_MD_CTX *tmp_ctx = EVP_MD_CTX_new();
 
         if (tmp_ctx == NULL) {
-            EVPerr(0, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
             return 0;
         }
         rv = EVP_MD_CTX_copy_ex(tmp_ctx, ctx);
@@ -65,5 +65,5 @@ int EVP_SignFinal_with_libctx(EVP_MD_CTX *ctx, unsigned char *sigret,
 int EVP_SignFinal(EVP_MD_CTX *ctx, unsigned char *sigret,
                   unsigned int *siglen, EVP_PKEY *pkey)
 {
-    return EVP_SignFinal_with_libctx(ctx, sigret, siglen, pkey, NULL, NULL);
+    return EVP_SignFinal_ex(ctx, sigret, siglen, pkey, NULL, NULL);
 }

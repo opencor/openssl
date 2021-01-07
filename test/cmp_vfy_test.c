@@ -9,7 +9,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "cmp_testlib.h"
+#include "helpers/cmp_testlib.h"
 #include "../crypto/crmf/crmf_local.h" /* for manipulating POPO signature */
 
 static const char *server_f;
@@ -37,7 +37,7 @@ typedef struct test_fixture {
     int additional_arg;
 } CMP_VFY_TEST_FIXTURE;
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
 
 static void tear_down(CMP_VFY_TEST_FIXTURE *fixture)
@@ -549,7 +549,7 @@ void cleanup_tests(void)
     X509_free(instaca_cert);
     OSSL_CMP_MSG_free(ir_unprotected);
     OSSL_CMP_MSG_free(ir_rmprotection);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
     return;
 }
 
@@ -600,7 +600,7 @@ int setup_tests(void)
         return 0;
     }
 
-    if (!test_get_libctx(&libctx, &default_null_provider, &provider, 14, USAGE))
+    if (!test_arg_libctx(&libctx, &default_null_provider, &provider, 14, USAGE))
         return 0;
 
     /* Load certificates for cert chain */

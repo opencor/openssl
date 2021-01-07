@@ -10,6 +10,7 @@
 
 #include <openssl/err.h>
 #include <openssl/evperr.h>
+#include "crypto/evperr.h"
 
 #ifndef OPENSSL_NO_ERR
 
@@ -22,6 +23,8 @@ static const ERR_STRING_DATA EVP_str_reasons[] = {
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_BAD_DECRYPT), "bad decrypt"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_BAD_KEY_LENGTH), "bad key length"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_BUFFER_TOO_SMALL), "buffer too small"},
+    {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_CACHE_CONSTANTS_FAILED),
+    "cache constants failed"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_CAMELLIA_KEY_SETUP_FAILED),
     "camellia key setup failed"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_CANNOT_GET_PARAMETERS),
@@ -103,7 +106,6 @@ static const ERR_STRING_DATA EVP_str_reasons[] = {
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_INVALID_SEED_LENGTH),
     "invalid seed length"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_INVALID_VALUE), "invalid value"},
-    {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_KEYGEN_FAILURE), "keygen failure"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_KEYMGMT_EXPORT_FAILURE),
     "keymgmt export failure"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_KEY_SETUP_FAILED), "key setup failed"},
@@ -176,6 +178,8 @@ static const ERR_STRING_DATA EVP_str_reasons[] = {
     "unsupported key derivation function"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_UNSUPPORTED_KEY_SIZE),
     "unsupported key size"},
+    {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_UNSUPPORTED_KEY_TYPE),
+    "unsupported key type"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_UNSUPPORTED_NUMBER_OF_ROUNDS),
     "unsupported number of rounds"},
     {ERR_PACK(ERR_LIB_EVP, 0, EVP_R_UNSUPPORTED_PRF), "unsupported prf"},
@@ -197,7 +201,7 @@ static const ERR_STRING_DATA EVP_str_reasons[] = {
 
 #endif
 
-int ERR_load_EVP_strings(void)
+int err_load_EVP_strings_int(void)
 {
 #ifndef OPENSSL_NO_ERR
     if (ERR_reason_error_string(EVP_str_reasons[0].error) == NULL)

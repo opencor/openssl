@@ -57,7 +57,7 @@ static int pkey_dh_init(EVP_PKEY_CTX *ctx)
     DH_PKEY_CTX *dctx;
 
     if ((dctx = OPENSSL_zalloc(sizeof(*dctx))) == NULL) {
-        DHerr(DH_F_PKEY_DH_INIT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_DH, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     dctx->prime_len = 2048;
@@ -245,7 +245,7 @@ static int pkey_dh_ctrl_str(EVP_PKEY_CTX *ctx,
         int nid = OBJ_sn2nid(value);
 
         if (nid == NID_undef) {
-            DHerr(DH_F_PKEY_DH_CTRL_STR, DH_R_INVALID_PARAMETER_NAME);
+            ERR_raise(ERR_LIB_DH, DH_R_INVALID_PARAMETER_NAME);
             return -2;
         }
         dctx->param_nid = nid;
@@ -274,7 +274,7 @@ static int pkey_dh_ctrl_str(EVP_PKEY_CTX *ctx,
     return -2;
 }
 
-static DH *ffc_params_generate(OPENSSL_CTX *libctx, DH_PKEY_CTX *dctx,
+static DH *ffc_params_generate(OSSL_LIB_CTX *libctx, DH_PKEY_CTX *dctx,
                                BN_GENCB *pcb)
 {
     DH *ret;
@@ -297,20 +297,22 @@ static DH *ffc_params_generate(OPENSSL_CTX *libctx, DH_PKEY_CTX *dctx,
     }
 
     if (dctx->md != NULL)
-        ffc_set_digest(&ret->params, EVP_MD_name(dctx->md), NULL);
+        ossl_ffc_set_digest(&ret->params, EVP_MD_name(dctx->md), NULL);
 
 # ifndef FIPS_MODULE
     if (dctx->paramgen_type == DH_PARAMGEN_TYPE_FIPS_186_2)
-        rv = ffc_params_FIPS186_2_generate(libctx, &ret->params,
-                                           FFC_PARAM_TYPE_DH,
-                                           prime_len, subprime_len, &res, pcb);
+        rv = ossl_ffc_params_FIPS186_2_generate(libctx, &ret->params,
+                                                FFC_PARAM_TYPE_DH,
+                                                prime_len, subprime_len, &res,
+                                                pcb);
     else
 # endif
     /* For FIPS we always use the DH_PARAMGEN_TYPE_FIPS_186_4 generator */
     if (dctx->paramgen_type >= DH_PARAMGEN_TYPE_FIPS_186_2)
-        rv = ffc_params_FIPS186_4_generate(libctx, &ret->params,
-                                           FFC_PARAM_TYPE_DH,
-                                           prime_len, subprime_len, &res, pcb);
+        rv = ossl_ffc_params_FIPS186_4_generate(libctx, &ret->params,
+                                                FFC_PARAM_TYPE_DH,
+                                                prime_len, subprime_len, &res,
+                                                pcb);
     if (rv <= 0) {
         DH_free(ret);
         return NULL;
@@ -398,7 +400,7 @@ static int pkey_dh_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     DH *dh = NULL;
 
     if (ctx->pkey == NULL && dctx->param_nid == NID_undef) {
-        DHerr(DH_F_PKEY_DH_KEYGEN, DH_R_NO_PARAMETERS_SET);
+        ERR_raise(ERR_LIB_DH, DH_R_NO_PARAMETERS_SET);
         return 0;
     }
     if (dctx->param_nid != NID_undef)
@@ -422,7 +424,7 @@ static int pkey_dh_derive(EVP_PKEY_CTX *ctx, unsigned char *key,
     DH_PKEY_CTX *dctx = ctx->data;
     BIGNUM *dhpub;
     if (!ctx->pkey || !ctx->peerkey) {
-        DHerr(DH_F_PKEY_DH_DERIVE, DH_R_KEYS_NOT_SET);
+        ERR_raise(ERR_LIB_DH, DH_R_KEYS_NOT_SET);
         return 0;
     }
     dh = ctx->pkey->pkey.dh;

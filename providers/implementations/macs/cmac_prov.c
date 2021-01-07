@@ -173,7 +173,7 @@ static const OSSL_PARAM *cmac_settable_ctx_params(ossl_unused void *provctx)
 static int cmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
 {
     struct cmac_data_st *macctx = vmacctx;
-    OPENSSL_CTX *ctx = PROV_LIBRARY_CONTEXT_OF(macctx->provctx);
+    OSSL_LIB_CTX *ctx = PROV_LIBCTX_OF(macctx->provctx);
     const OSSL_PARAM *p;
 
     if (!ossl_prov_cipher_load_from_params(&macctx->cipher, params, ctx))
@@ -193,7 +193,7 @@ static int cmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH cmac_functions[] = {
+const OSSL_DISPATCH ossl_cmac_functions[] = {
     { OSSL_FUNC_MAC_NEWCTX, (void (*)(void))cmac_new },
     { OSSL_FUNC_MAC_DUPCTX, (void (*)(void))cmac_dup },
     { OSSL_FUNC_MAC_FREECTX, (void (*)(void))cmac_free },

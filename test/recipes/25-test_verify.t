@@ -27,7 +27,7 @@ sub verify {
     run(app([@args]));
 }
 
-plan tests => 148;
+plan tests => 153;
 
 # Canonical success
 ok(verify("ee-cert", "sslserver", ["root-cert"], ["ca-cert"]),
@@ -44,6 +44,15 @@ ok(!verify("ee-cert", "sslserver", [qw(root-cert2)], [qw(ca-cert)]),
    "fail wrong root key");
 ok(!verify("ee-cert", "sslserver", [qw(root-name2)], [qw(ca-cert)]),
    "fail wrong root DN");
+
+# Critical extensions
+
+ok(verify("ee-cert-noncrit-unknown-ext", "sslserver", [qw(root-cert)], [qw(ca-cert)]),
+   "accept non-critical unknown extension");
+ok(!verify("ee-cert-crit-unknown-ext", "sslserver", [qw(root-cert)], [qw(ca-cert)]),
+   "reject critical unknown extension");
+ok(verify("ee-cert-ocsp-nocheck", "sslserver", [qw(root-cert)], [qw(ca-cert)]),
+   "accept critical OCSP No Check");
 
 # Explicit trust/purpose combinations
 #
@@ -132,6 +141,10 @@ ok(!verify("ee-cert", "sslserver", [], [qw(ca-cert)], "-partial_chain"),
    "fail untrusted partial chain");
 ok(verify("ee-cert", "sslserver", [qw(ca-cert)], [], "-partial_chain"),
    "accept trusted partial chain");
+ok(!verify("ee-cert", "sslserver", [qw(ca-expired)], [], "-partial_chain"),
+   "reject expired trusted partial chain"); # this check is beyond RFC 5280
+ok(!verify("ee-cert", "sslserver", [qw(root-expired)], [qw(ca-cert)]),
+   "reject expired trusted root"); # this check is beyond RFC 5280
 ok(verify("ee-cert", "sslserver", [qw(sca-cert)], [], "-partial_chain"),
    "accept partial chain with server purpose");
 ok(!verify("ee-cert", "sslserver", [qw(cca-cert)], [], "-partial_chain"),

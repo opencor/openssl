@@ -25,7 +25,7 @@ B<openssl> B<req>
 [B<-pkeyopt> I<opt>:I<value>]
 [B<-noenc>]
 [B<-nodes>]
-[B<-key> I<filename>]
+[B<-key> I<filename>|I<uri>]
 [B<-keyform> B<DER>|B<PEM>|B<P12>|B<ENGINE>]
 [B<-keyout> I<filename>]
 [B<-keygen_engine> I<id>]
@@ -51,8 +51,7 @@ B<openssl> B<req>
 [B<-verbose>]
 {- $OpenSSL::safe::opt_name_synopsis -}
 {- $OpenSSL::safe::opt_r_synopsis -}
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- $OpenSSL::safe::opt_provider_synopsis -}
+{- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_provider_synopsis -}
 
 =for openssl ifdef engine keygen_engine
 
@@ -73,7 +72,7 @@ Print out a usage message.
 =item B<-inform> B<DER>|B<PEM>, B<-outform> B<DER>|B<PEM>
 
 The input and formats; the default is B<PEM>.
-See L<openssl(1)/Format Options> for details.
+See L<openssl-format-options(1)> for details.
 
 The data is a PKCS#10 object.
 
@@ -105,7 +104,7 @@ which supports both options for good reasons.
 
 The password source for the input and output file.
 For more information about the format of B<arg>
-see L<openssl(1)/Pass Phrase Options>.
+see L<openssl-passphrase-options(1)>.
 
 =item B<-out> I<filename>
 
@@ -182,16 +181,16 @@ options supported depends on the public key algorithm used and its
 implementation.
 See L<openssl-genpkey(1)/KEY GENERATION OPTIONS> for more details.
 
-=item B<-key> I<filename>
+=item B<-key> I<filename>|I<uri>
 
-This specifies the file to read the private key from. It also
+This specifies the private key to use. It also
 accepts PKCS#8 format private keys for PEM format files.
 
 =item B<-keyform> B<DER>|B<PEM>|B<P12>|B<ENGINE>
 
 The format of the private key; the default is B<PEM>.
 The only value with effect is B<ENGINE>; all others have become obsolete.
-See L<openssl(1)/Format Options> for details.
+See L<openssl-format-options(1)> for details.
 
 =item B<-keyout> I<filename>
 

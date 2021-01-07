@@ -26,7 +26,8 @@ static int ocsp_req_find_signer(X509 **psigner, OCSP_REQUEST *req,
                                 unsigned long flags);
 
 /* Returns 1 on success, 0 on failure, or -1 on fatal error */
-static int ocsp_verify_signer(X509 *signer, X509_STORE *st, unsigned long flags,
+static int ocsp_verify_signer(X509 *signer, int response,
+                              X509_STORE *st, unsigned long flags,
                               STACK_OF(X509) *untrusted, STACK_OF(X509) **chain)
 {
     X509_STORE_CTX *ctx = X509_STORE_CTX_new();
@@ -34,16 +35,24 @@ static int ocsp_verify_signer(X509 *signer, X509_STORE *st, unsigned long flags,
     int ret = -1;
 
     if (ctx == NULL) {
-        OCSPerr(0, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_OCSP, ERR_R_MALLOC_FAILURE);
         goto end;
     }
     if (!X509_STORE_CTX_init(ctx, st, signer, untrusted)) {
-        OCSPerr(0, ERR_R_X509_LIB);
+        ERR_raise(ERR_LIB_OCSP, ERR_R_X509_LIB);
         goto end;
     }
-    if ((flags & OCSP_PARTIAL_CHAIN) != 0
-            && (vp = X509_STORE_CTX_get0_param(ctx)) != NULL)
+    if ((vp = X509_STORE_CTX_get0_param(ctx)) == NULL)
+        goto end;
+    if ((flags & OCSP_PARTIAL_CHAIN) != 0)
         X509_VERIFY_PARAM_set_flags(vp, X509_V_FLAG_PARTIAL_CHAIN);
+    if (response
+            && X509_get_ext_by_NID(signer, NID_id_pkix_OCSP_noCheck, -1) >= 0)
+        /*
+         * Locally disable revocation status checking for OCSP responder cert.
+         * Done here for CRLs; TODO should be done also for OCSP-based checks.
+         */
+        X509_VERIFY_PARAM_clear_flags(vp, X509_V_FLAG_CRL_CHECK);
     X509_STORE_CTX_set_purpose(ctx, X509_PURPOSE_OCSP_HELPER);
     X509_STORE_CTX_set_trust(ctx, X509_TRUST_OCSP_REQUEST);
     /* TODO: why is X509_TRUST_OCSP_REQUEST set? Seems to get ignored. */
@@ -51,9 +60,8 @@ static int ocsp_verify_signer(X509 *signer, X509_STORE *st, unsigned long flags,
     ret = X509_verify_cert(ctx);
     if (ret <= 0) {
         ret = X509_STORE_CTX_get_error(ctx);
-        OCSPerr(0, OCSP_R_CERTIFICATE_VERIFY_ERROR);
-        ERR_add_error_data(2, "Verify error:",
-                           X509_verify_cert_error_string(ret));
+        ERR_raise_data(ERR_LIB_OCSP, OCSP_R_CERTIFICATE_VERIFY_ERROR,
+                       "Verify error: %s", X509_verify_cert_error_string(ret));
         goto end;
     }
     if (chain != NULL)
@@ -72,7 +80,7 @@ static int ocsp_verify(OCSP_REQUEST *req, OCSP_BASICRESP *bs,
 
     if ((flags & OCSP_NOSIGS) == 0) {
         if ((skey = X509_get0_pubkey(signer)) == NULL) {
-            OCSPerr(0, OCSP_R_NO_SIGNER_KEY);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_NO_SIGNER_KEY);
             return -1;
         }
         if (req != NULL)
@@ -80,7 +88,7 @@ static int ocsp_verify(OCSP_REQUEST *req, OCSP_BASICRESP *bs,
         else
             ret = OCSP_BASICRESP_verify(bs, skey);
         if (ret <= 0)
-            OCSPerr(0, OCSP_R_SIGNATURE_FAILURE);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_SIGNATURE_FAILURE);
     }
     return ret;
 }
@@ -95,8 +103,7 @@ int OCSP_basic_verify(OCSP_BASICRESP *bs, STACK_OF(X509) *certs,
     int ret = ocsp_find_signer(&signer, bs, certs, flags);
 
     if (ret == 0) {
-        OCSPerr(OCSP_F_OCSP_BASIC_VERIFY,
-                OCSP_R_SIGNER_CERTIFICATE_NOT_FOUND);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_SIGNER_CERTIFICATE_NOT_FOUND);
         goto end;
     }
     if ((ret == 2) && (flags & OCSP_TRUSTOTHER) != 0)
@@ -117,7 +124,7 @@ int OCSP_basic_verify(OCSP_BASICRESP *bs, STACK_OF(X509) *certs,
         } else {
             untrusted = bs->certs;
         }
-        ret = ocsp_verify_signer(signer, st, flags, untrusted, &chain);
+        ret = ocsp_verify_signer(signer, 1, st, flags, untrusted, &chain);
         if (ret <= 0)
             goto end;
         if ((flags & OCSP_NOCHECKS) != 0) {
@@ -143,7 +150,7 @@ int OCSP_basic_verify(OCSP_BASICRESP *bs, STACK_OF(X509) *certs,
 
         x = sk_X509_value(chain, sk_X509_num(chain) - 1);
         if (X509_check_trust(x, NID_OCSP_sign, 0) != X509_TRUST_TRUSTED) {
-            OCSPerr(OCSP_F_OCSP_BASIC_VERIFY, OCSP_R_ROOT_CA_NOT_TRUSTED);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_ROOT_CA_NOT_TRUSTED);
             ret = 0;
             goto end;
         }
@@ -219,7 +226,7 @@ static int ocsp_check_issuer(OCSP_BASICRESP *bs, STACK_OF(X509) *chain)
     int ret;
 
     if (sk_X509_num(chain) <= 0) {
-        OCSPerr(OCSP_F_OCSP_CHECK_ISSUER, OCSP_R_NO_CERTIFICATES_IN_CHAIN);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_NO_CERTIFICATES_IN_CHAIN);
         return -1;
     }
 
@@ -263,8 +270,7 @@ static int ocsp_check_ids(STACK_OF(OCSP_SINGLERESP) *sresp, OCSP_CERTID **ret)
 
     idcount = sk_OCSP_SINGLERESP_num(sresp);
     if (idcount <= 0) {
-        OCSPerr(OCSP_F_OCSP_CHECK_IDS,
-                OCSP_R_RESPONSE_CONTAINS_NO_REVOCATION_DATA);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_RESPONSE_CONTAINS_NO_REVOCATION_DATA);
         return -1;
     }
 
@@ -304,13 +310,13 @@ static int ocsp_match_issuerid(X509 *cert, OCSP_CERTID *cid,
         unsigned char md[EVP_MAX_MD_SIZE];
 
         if (dgst == NULL) {
-            OCSPerr(0, OCSP_R_UNKNOWN_MESSAGE_DIGEST);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_UNKNOWN_MESSAGE_DIGEST);
             return -1;
         }
 
         mdlen = EVP_MD_size(dgst);
         if (mdlen < 0) {
-            OCSPerr(0, OCSP_R_DIGEST_SIZE_ERR);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_DIGEST_SIZE_ERR);
             return -1;
         }
         if (cid->issuerNameHash.length != mdlen ||
@@ -318,13 +324,13 @@ static int ocsp_match_issuerid(X509 *cert, OCSP_CERTID *cid,
             return 0;
         iname = X509_get_subject_name(cert);
         if (!X509_NAME_digest(iname, dgst, md, NULL)) {
-            OCSPerr(0, OCSP_R_DIGEST_NAME_ERR);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_DIGEST_NAME_ERR);
             return -1;
         }
         if (memcmp(md, cid->issuerNameHash.data, mdlen) != 0)
             return 0;
         if (!X509_pubkey_digest(cert, dgst, md, NULL)) {
-            OCSPerr(0, OCSP_R_DIGEST_ERR);
+            ERR_raise(ERR_LIB_OCSP, OCSP_R_DIGEST_ERR);
             return -1;
         }
         if (memcmp(md, cid->issuerKeyHash.data, mdlen) != 0)
@@ -349,7 +355,7 @@ static int ocsp_check_delegated(X509 *x)
     if ((X509_get_extension_flags(x) & EXFLAG_XKUSAGE)
         && (X509_get_extended_key_usage(x) & XKU_OCSP_SIGN))
         return 1;
-    OCSPerr(OCSP_F_OCSP_CHECK_DELEGATED, OCSP_R_MISSING_OCSPSIGNING_USAGE);
+    ERR_raise(ERR_LIB_OCSP, OCSP_R_MISSING_OCSPSIGNING_USAGE);
     return 0;
 }
 
@@ -367,20 +373,18 @@ int OCSP_request_verify(OCSP_REQUEST *req, STACK_OF(X509) *certs,
     int ret;
 
     if (!req->optionalSignature) {
-        OCSPerr(OCSP_F_OCSP_REQUEST_VERIFY, OCSP_R_REQUEST_NOT_SIGNED);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_REQUEST_NOT_SIGNED);
         return 0;
     }
     gen = req->tbsRequest.requestorName;
     if (!gen || gen->type != GEN_DIRNAME) {
-        OCSPerr(OCSP_F_OCSP_REQUEST_VERIFY,
-                OCSP_R_UNSUPPORTED_REQUESTORNAME_TYPE);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_UNSUPPORTED_REQUESTORNAME_TYPE);
         return 0; /* not returning -1 here for backward compatibility*/
     }
     nm = gen->d.directoryName;
     ret = ocsp_req_find_signer(&signer, req, nm, certs, flags);
     if (ret <= 0) {
-        OCSPerr(OCSP_F_OCSP_REQUEST_VERIFY,
-                OCSP_R_SIGNER_CERTIFICATE_NOT_FOUND);
+        ERR_raise(ERR_LIB_OCSP, OCSP_R_SIGNER_CERTIFICATE_NOT_FOUND);
         return 0; /* not returning -1 here for backward compatibility*/
     }
     if ((ret == 2) && (flags & OCSP_TRUSTOTHER) != 0)
@@ -390,7 +394,7 @@ int OCSP_request_verify(OCSP_REQUEST *req, STACK_OF(X509) *certs,
         return 0; /* not returning 'ret' here for backward compatibility*/
     if ((flags & OCSP_NOVERIFY) != 0)
         return 1;
-    return ocsp_verify_signer(signer, store, flags,
+    return ocsp_verify_signer(signer, 0, store, flags,
                               (flags & OCSP_NOCHAIN) != 0 ?
                               NULL : req->optionalSignature->certs, NULL) > 0;
     /* using '> 0' here to avoid breaking backward compatibility returning -1 */

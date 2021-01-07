@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/bn.h>
@@ -19,8 +25,8 @@ int dsa_check_params(const DSA *dsa, int *ret)
      * (2b) FFC domain params conform to FIPS-186-4 explicit domain param
      * validity tests.
      */
-    return ffc_params_FIPS186_4_validate(dsa->libctx, &dsa->params,
-                                         FFC_PARAM_TYPE_DSA, ret, NULL);
+    return ossl_ffc_params_FIPS186_4_validate(dsa->libctx, &dsa->params,
+                                              FFC_PARAM_TYPE_DSA, ret, NULL);
 }
 
 /*
@@ -28,7 +34,7 @@ int dsa_check_params(const DSA *dsa, int *ret)
  */
 int dsa_check_pub_key(const DSA *dsa, const BIGNUM *pub_key, int *ret)
 {
-    return ffc_validate_public_key(&dsa->params, pub_key, ret);
+    return ossl_ffc_validate_public_key(&dsa->params, pub_key, ret);
 }
 
 /*
@@ -38,7 +44,7 @@ int dsa_check_pub_key(const DSA *dsa, const BIGNUM *pub_key, int *ret)
  */
 int dsa_check_pub_key_partial(const DSA *dsa, const BIGNUM *pub_key, int *ret)
 {
-    return ffc_validate_public_key_partial(&dsa->params, pub_key, ret);
+    return ossl_ffc_validate_public_key_partial(&dsa->params, pub_key, ret);
 }
 
 int dsa_check_priv_key(const DSA *dsa, const BIGNUM *priv_key, int *ret)
@@ -46,7 +52,7 @@ int dsa_check_priv_key(const DSA *dsa, const BIGNUM *priv_key, int *ret)
     *ret = 0;
 
     return (dsa->params.q != NULL
-            && ffc_validate_private_key(dsa->params.q, priv_key, ret));
+            && ossl_ffc_validate_private_key(dsa->params.q, priv_key, ret));
 }
 
 /*

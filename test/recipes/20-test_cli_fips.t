@@ -23,9 +23,10 @@ use lib srctop_dir('Configurations');
 use lib bldtop_dir('.');
 use platform;
 
-plan skip_all => "Test only supported in a fips build" if disabled("fips");
-
-plan tests => 6;
+my $no_check = disabled('fips-securitychecks');
+plan skip_all => "Test only supported in a fips build with security checks"
+    if disabled("fips") || disabled("fips-securitychecks");
+plan tests => 13;
 
 my $fipsmodule = bldtop_file('providers', platform->dso('fips'));
 my $fipsconf = srctop_file("test", "fips-and-base.cnf");
@@ -46,8 +47,22 @@ ok(run(app(['openssl', 'fipsinstall', '-in', 'fipsmodule.cnf', '-module', $fipsm
 $ENV{OPENSSL_CONF_INCLUDE} = abs2rel(curdir());
 $ENV{OPENSSL_CONF} = $fipsconf;
 
-ok(run(app(['openssl', 'provider', '-v', 'fips'])),
-   "provider listing");
+ok(run(app(['openssl', 'list', '-public-key-methods', '-verbose'])),
+   "provider listing of public key methods");
+ok(run(app(['openssl', 'list', '-public-key-algorithms', '-verbose'])),
+   "provider listing of public key algorithms");
+ok(run(app(['openssl', 'list', '-key-managers', '-verbose'])),
+   "provider listing of keymanagers");
+ok(run(app(['openssl', 'list', '-key-exchange-algorithms', '-verbose'])),
+   "provider listing of key exchange algorithms");
+ok(run(app(['openssl', 'list', '-kem-algorithms', '-verbose'])),
+   "provider listing of key encapsulation algorithms");
+ok(run(app(['openssl', 'list', '-signature-algorithms', '-verbose'])),
+   "provider listing of signature algorithms");
+ok(run(app(['openssl', 'list', '-asymcipher-algorithms', '-verbose'])),
+   "provider listing of encryption algorithms");
+ok(run(app(['openssl', 'list', '-key-managers', '-verbose', '-select', 'DSA' ])),
+   "provider listing of one item in the keymanager");
 
 my $tsignverify_count = 8;
 sub tsignverify {
@@ -222,10 +237,7 @@ SKIP: {
                      '-out', $testtext_prefix.'.fail.priv.pem'])),
            $testtext);
 
-        TODO : {
-             local $TODO = "see issue #12629";
-             tsignverify($testtext_prefix, $fips_key, $nonfips_key);
-        }
+        tsignverify($testtext_prefix, $fips_key, $nonfips_key);
     };
 }
 
@@ -302,9 +314,6 @@ SKIP : {
                      '-out', $testtext_prefix.'.fail.priv.pem'])),
            $testtext);
 
-       TODO : {
-            local $TODO = "see issues #12626, #12627";
-            tsignverify($testtext_prefix, $fips_key, $nonfips_key);
-       }
+        tsignverify($testtext_prefix, $fips_key, $nonfips_key);
     };
 }

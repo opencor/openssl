@@ -71,9 +71,9 @@ typedef enum {
 /* message transfer */
 static char *opt_server = NULL;
 static char server_port[32] = { '\0' };
+static char *opt_path = NULL;
 static char *opt_proxy = NULL;
 static char *opt_no_proxy = NULL;
-static char *opt_path = NULL;
 static int opt_msg_timeout = -1;
 static int opt_total_timeout = -1;
 
@@ -206,7 +206,7 @@ typedef enum OPTION_choice {
 
     OPT_OLDCERT, OPT_REVREASON,
 
-    OPT_SERVER, OPT_PROXY, OPT_NO_PROXY, OPT_PATH,
+    OPT_SERVER, OPT_PATH, OPT_PROXY, OPT_NO_PROXY,
     OPT_MSG_TIMEOUT, OPT_TOTAL_TIMEOUT,
 
     OPT_TRUSTED, OPT_UNTRUSTED, OPT_SRVCERT,
@@ -231,8 +231,9 @@ typedef enum OPTION_choice {
 
     OPT_BATCH, OPT_REPEAT,
     OPT_REQIN, OPT_REQIN_NEW_TID, OPT_REQOUT, OPT_RSPIN, OPT_RSPOUT,
+    OPT_USE_MOCK_SRV,
 
-    OPT_USE_MOCK_SRV, OPT_PORT, OPT_MAX_MSGS,
+    OPT_PORT, OPT_MAX_MSGS,
     OPT_SRV_REF, OPT_SRV_SECRET,
     OPT_SRV_CERT, OPT_SRV_KEY, OPT_SRV_KEYPASS,
     OPT_SRV_TRUSTED, OPT_SRV_UNTRUSTED,
@@ -332,14 +333,14 @@ const OPTIONS cmp_options[] = {
      "[http[s]://]address[:port][/path] of CMP server. Default port 80 or 443."},
     {OPT_MORE_STR, 0, 0,
      "address may be a DNS name or an IP address; path can be overridden by -path"},
+    {"path", OPT_PATH, 's',
+     "HTTP path (aka CMP alias) at the CMP server. Default from -server, else \"/\""},
     {"proxy", OPT_PROXY, 's',
      "[http[s]://]address[:port][/path] of HTTP(S) proxy to use; path is ignored"},
     {"no_proxy", OPT_NO_PROXY, 's',
      "List of addresses of servers not to use HTTP(S) proxy for"},
     {OPT_MORE_STR, 0, 0,
      "Default from environment variable 'no_proxy', else 'NO_PROXY', else none"},
-    {"path", OPT_PATH, 's',
-     "HTTP path (aka CMP alias) at the CMP server. Default from -server, else \"/\""},
     {"msg_timeout", OPT_MSG_TIMEOUT, 'n',
      "Timeout per CMP message round trip (or 0 for none). Default 120 seconds"},
     {"total_timeout", OPT_TOTAL_TIMEOUT, 'n',
@@ -408,11 +409,7 @@ const OPTIONS cmp_options[] = {
     {"engine", OPT_ENGINE, 's',
      "Use crypto engine with given identifier, possibly a hardware device."},
     {OPT_MORE_STR, 0, 0,
-     "Engines may be defined in OpenSSL config file engine section."},
-    {OPT_MORE_STR, 0, 0,
-     "Options like -key specifying keys held in the engine can give key IDs"},
-    {OPT_MORE_STR, 0, 0,
-     "prefixed by 'engine:', e.g. '-key engine:pkcs11:object=mykey;pin-value=1234'"},
+     "Engines may also be defined in OpenSSL config file engine section."},
 #endif
     OPT_PROV_OPTIONS,
 
@@ -530,7 +527,7 @@ static varref cmp_vars[] = { /* must be in same order as enumerated above! */
 
     {&opt_oldcert}, {(char **)&opt_revreason},
 
-    {&opt_server}, {&opt_proxy}, {&opt_no_proxy}, {&opt_path},
+    {&opt_server}, {&opt_path}, {&opt_proxy}, {&opt_no_proxy},
     {(char **)&opt_msg_timeout}, {(char **)&opt_total_timeout},
 
     {&opt_trusted}, {&opt_untrusted}, {&opt_srvcert},
@@ -724,7 +721,7 @@ static int load_cert_certs(const char *uri,
         return ret;
     }
     pass_string = get_passwd(pass, desc);
-    ret = load_key_certs_crls(uri, 0, pass_string, desc, NULL, NULL,
+    ret = load_key_certs_crls(uri, 0, pass_string, desc, NULL, NULL, NULL,
                               pcert, pcerts, NULL, NULL);
     clear_free(pass_string);
 
@@ -1071,7 +1068,7 @@ static int transform_opts(void)
         return 0;
     }
 
-#ifdef OPENSSL_NO_ENGINE
+#ifndef OPENSSL_NO_ENGINE
 # define FORMAT_OPTIONS (OPT_FMT_PEMDER | OPT_FMT_PKCS12 | OPT_FMT_ENGINE)
 #else
 # define FORMAT_OPTIONS (OPT_FMT_PEMDER | OPT_FMT_PKCS12)
@@ -1608,12 +1605,13 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         const char *file = opt_newkey;
         const int format = opt_keyform;
         const char *pass = opt_newkeypass;
-        const char *desc = "new private or public key for cert to be enrolled";
-        EVP_PKEY *pkey = load_key_pwd(file, format, pass, engine, NULL);
+        const char *desc = "new private key for cert to be enrolled";
+        EVP_PKEY *pkey = load_key_pwd(file, format, pass, engine, desc);
         int priv = 1;
 
         if (pkey == NULL) {
             ERR_clear_error();
+            desc = "fallback public key for cert to be enrolled";
             pkey = load_pubkey(file, format, 0, pass, engine, desc);
             priv = 0;
         }
@@ -1833,8 +1831,10 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         CMP_err("missing -server option");
         goto err;
     }
-    if (!OSSL_HTTP_parse_url(opt_server, &server, &port, &portnum, &path, &ssl))
+    if (!OSSL_HTTP_parse_url(opt_server, &server, &port, &portnum, &path, &ssl)) {
+        CMP_err1("cannot parse -server URL: %s", opt_server);
         goto err;
+    }
     if (ssl && !opt_tls_used) {
         CMP_err("missing -tls_used option since -server URL indicates https");
         goto err;
@@ -2289,7 +2289,9 @@ static int get_opts(int argc, char **argv)
         switch (o) {
         case OPT_EOF:
         case OPT_ERR:
-            goto opt_err;
+ opthelp:
+            BIO_printf(bio_err, "%s: Use -help for summary.\n", prog);
+            return 0;
         case OPT_HELP:
             opt_help(cmp_options);
             return -1;
@@ -2311,11 +2313,11 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_MSG_TIMEOUT:
             if ((opt_msg_timeout = opt_nat()) < 0)
-                goto opt_err;
+                goto opthelp;
             break;
         case OPT_TOTAL_TIMEOUT:
             if ((opt_total_timeout = opt_nat()) < 0)
-                goto opt_err;
+                goto opthelp;
             break;
         case OPT_TLS_USED:
             opt_tls_used = 1;
@@ -2399,7 +2401,7 @@ static int get_opts(int argc, char **argv)
 
         case OPT_V_CASES:
             if (!opt_verify(o, vpm))
-                goto opt_err;
+                goto opthelp;
             break;
         case OPT_CMD:
             opt_cmd_s = opt_str("cmd");
@@ -2425,7 +2427,7 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_DAYS:
             if ((opt_days = opt_nat()) < 0)
-                goto opt_err;
+                goto opthelp;
             break;
         case OPT_REQEXTS:
             opt_reqexts = opt_str("reqexts");
@@ -2450,7 +2452,7 @@ static int get_opts(int argc, char **argv)
                     || opt_popo < OSSL_CRMF_POPO_NONE
                     || opt_popo > OSSL_CRMF_POPO_KEYENC) {
                 CMP_err("invalid popo spec. Valid values are -1 .. 2");
-                goto opt_err;
+                goto opthelp;
             }
             break;
         case OPT_CSR:
@@ -2480,7 +2482,7 @@ static int get_opts(int argc, char **argv)
                     || opt_revreason > CRL_REASON_AA_COMPROMISE
                     || opt_revreason == 7) {
                 CMP_err("invalid revreason. Valid values are -1 .. 6, 8 .. 10");
-                goto opt_err;
+                goto opthelp;
             }
             break;
         case OPT_CERTFORM:
@@ -2499,7 +2501,7 @@ static int get_opts(int argc, char **argv)
 #endif
         case OPT_PROV_CASES:
             if (!opt_provider(o))
-                goto opt_err;
+                goto opthelp;
             break;
 
         case OPT_BATCH:
@@ -2531,7 +2533,7 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_MAX_MSGS:
             if ((opt_max_msgs = opt_nat()) < 0)
-                goto opt_err;
+                goto opthelp;
             break;
         case OPT_SRV_REF:
             opt_srv_ref = opt_str("srv_ref");
@@ -2604,17 +2606,13 @@ static int get_opts(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra args. */
     argc = opt_num_rest();
     argv = opt_rest();
-    if (argc != 0) {
-        CMP_err1("unknown parameter %s", argv[0]);
-        goto opt_err;
-    }
+    if (argc != 0)
+        goto opthelp;
     return 1;
-
- opt_err:
-    CMP_err1("use -help for summary of '%s' options", prog);
-    return 0;
 }
 
 int cmp_main(int argc, char **argv)
@@ -2626,7 +2624,6 @@ int cmp_main(int argc, char **argv)
     char mock_server[] = "mock server:1";
     int ret = 0; /* default: failure */
 
-    ERR_clear_error(); /* clear leftover errors on loading libengines.so etc. */
     if (argc <= 1) {
         opt_help(cmp_options);
         goto err;
@@ -2660,10 +2657,10 @@ int cmp_main(int argc, char **argv)
 
     /* read default values for options from config file */
     configfile = opt_config != NULL ? opt_config : default_config_file;
-    if (configfile && configfile[0] != '\0' /* non-empty string */
-            && (configfile != default_config_file
-                    || access(configfile, F_OK) != -1)) {
-        CMP_info1("using OpenSSL configuration file '%s'", configfile);
+    if (configfile != NULL && configfile[0] != '\0' /* non-empty string */
+            && (configfile != default_config_file || access(configfile, F_OK) != -1)) {
+        CMP_info2("using section(s) '%s' of OpenSSL configuration file '%s'",
+                  opt_section, configfile);
         conf = app_load_config(configfile);
         if (conf == NULL) {
             goto err;
@@ -2694,15 +2691,8 @@ int cmp_main(int argc, char **argv)
         goto err;
     ret = 0;
 
-    if (opt_batch) {
-        UI_METHOD *ui_fallback_method;
-#ifndef OPENSSL_NO_UI_CONSOLE
-        ui_fallback_method = UI_OpenSSL();
-#else
-        ui_fallback_method = (UI_METHOD *)UI_null();
-#endif
-        UI_method_set_reader(ui_fallback_method, NULL);
-    }
+    if (opt_batch)
+        set_base_ui_method(UI_null());
 
     if (opt_engine != NULL)
         engine = setup_engine_methods(opt_engine, 0 /* not: ENGINE_METHOD_ALL */, 0);
@@ -2868,6 +2858,8 @@ int cmp_main(int argc, char **argv)
         default:
             break;
         }
+        if (OSSL_CMP_CTX_get_status(cmp_ctx) < 0)
+            goto err; /* we got no response, maybe even did not send request */
 
         {
             /* print PKIStatusInfo */

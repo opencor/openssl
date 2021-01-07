@@ -99,25 +99,23 @@ int ess_check_signing_certs(CMS_SignerInfo *si, STACK_OF(X509) *chain)
             }
         }
     } else {
-        CMSerr(CMS_F_ESS_CHECK_SIGNING_CERTS,
-               CMS_R_ESS_NO_SIGNING_CERTID_ATTRIBUTE);
+        ERR_raise(ERR_LIB_CMS, CMS_R_ESS_NO_SIGNING_CERTID_ATTRIBUTE);
         return 0;
     }
     ret = 1;
  err:
     if (!ret)
-        CMSerr(CMS_F_ESS_CHECK_SIGNING_CERTS,
-               CMS_R_ESS_SIGNING_CERTID_MISMATCH_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_ESS_SIGNING_CERTID_MISMATCH_ERROR);
 
     ESS_SIGNING_CERT_free(ss);
     ESS_SIGNING_CERT_V2_free(ssv2);
     return ret;
 }
 
-CMS_ReceiptRequest *CMS_ReceiptRequest_create0_with_libctx(
+CMS_ReceiptRequest *CMS_ReceiptRequest_create0_ex(
     unsigned char *id, int idlen, int allorfirst,
     STACK_OF(GENERAL_NAMES) *receiptList, STACK_OF(GENERAL_NAMES) *receiptsTo,
-    OPENSSL_CTX *libctx, const char *propq)
+    OSSL_LIB_CTX *libctx, const char *propq)
 {
     CMS_ReceiptRequest *rr;
 
@@ -147,7 +145,7 @@ CMS_ReceiptRequest *CMS_ReceiptRequest_create0_with_libctx(
     return rr;
 
  merr:
-    CMSerr(0, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_CMS, ERR_R_MALLOC_FAILURE);
 
  err:
     CMS_ReceiptRequest_free(rr);
@@ -159,9 +157,8 @@ CMS_ReceiptRequest *CMS_ReceiptRequest_create0(
     unsigned char *id, int idlen, int allorfirst,
     STACK_OF(GENERAL_NAMES) *receiptList, STACK_OF(GENERAL_NAMES) *receiptsTo)
 {
-    return CMS_ReceiptRequest_create0_with_libctx(id, idlen, allorfirst,
-                                                  receiptList, receiptsTo,
-                                                  NULL, NULL);
+    return CMS_ReceiptRequest_create0_ex(id, idlen, allorfirst, receiptList,
+                                         receiptsTo, NULL, NULL);
 }
 
 int CMS_add1_ReceiptRequest(CMS_SignerInfo *si, CMS_ReceiptRequest *rr)
@@ -181,7 +178,7 @@ int CMS_add1_ReceiptRequest(CMS_SignerInfo *si, CMS_ReceiptRequest *rr)
 
  merr:
     if (!r)
-        CMSerr(CMS_F_CMS_ADD1_RECEIPTREQUEST, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CMS, ERR_R_MALLOC_FAILURE);
 
     OPENSSL_free(rrder);
 
@@ -221,9 +218,9 @@ static int cms_msgSigDigest(CMS_SignerInfo *si,
 
     if (md == NULL)
         return 0;
-    if (!asn1_item_digest_with_libctx(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
-                                      si->signedAttrs, dig, diglen,
-                                      si->cms_ctx->libctx, si->cms_ctx->propq))
+    if (!asn1_item_digest_ex(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
+                             si->signedAttrs, dig, diglen, si->cms_ctx->libctx,
+                             si->cms_ctx->propq))
         return 0;
     return 1;
 }
@@ -236,12 +233,12 @@ int cms_msgSigDigest_add1(CMS_SignerInfo *dest, CMS_SignerInfo *src)
     unsigned int diglen;
 
     if (!cms_msgSigDigest(src, dig, &diglen)) {
-        CMSerr(CMS_F_CMS_MSGSIGDIGEST_ADD1, CMS_R_MSGSIGDIGEST_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_MSGSIGDIGEST_ERROR);
         return 0;
     }
     if (!CMS_signed_add1_attr_by_NID(dest, NID_id_smime_aa_msgSigDigest,
                                      V_ASN1_OCTET_STRING, dig, diglen)) {
-        CMSerr(CMS_F_CMS_MSGSIGDIGEST_ADD1, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CMS, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     return 1;
@@ -268,27 +265,27 @@ int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
         goto err;
 
     if (sk_CMS_SignerInfo_num(sis) != 1) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NEED_ONE_SIGNER);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NEED_ONE_SIGNER);
         goto err;
     }
 
     /* Check receipt content type */
     if (OBJ_obj2nid(CMS_get0_eContentType(cms)) != NID_id_smime_ct_receipt) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NOT_A_SIGNED_RECEIPT);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NOT_A_SIGNED_RECEIPT);
         goto err;
     }
 
     /* Extract and decode receipt content */
     pcont = CMS_get0_content(cms);
     if (pcont == NULL || *pcont == NULL) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NO_CONTENT);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_CONTENT);
         goto err;
     }
 
     rct = ASN1_item_unpack(*pcont, ASN1_ITEM_rptr(CMS_Receipt));
 
     if (!rct) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_RECEIPT_DECODE_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_RECEIPT_DECODE_ERROR);
         goto err;
     }
 
@@ -301,7 +298,7 @@ int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
     }
 
     if (i == sk_CMS_SignerInfo_num(osis)) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NO_MATCHING_SIGNATURE);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_MATCHING_SIGNATURE);
         goto err;
     }
 
@@ -315,23 +312,22 @@ int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
                                        V_ASN1_OCTET_STRING);
 
     if (!msig) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NO_MSGSIGDIGEST);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_MSGSIGDIGEST);
         goto err;
     }
 
     if (!cms_msgSigDigest(osi, dig, &diglen)) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_MSGSIGDIGEST_ERROR);
+        ERR_raise(ERR_LIB_CMS, CMS_R_MSGSIGDIGEST_ERROR);
         goto err;
     }
 
     if (diglen != (unsigned int)msig->length) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_MSGSIGDIGEST_WRONG_LENGTH);
+        ERR_raise(ERR_LIB_CMS, CMS_R_MSGSIGDIGEST_WRONG_LENGTH);
         goto err;
     }
 
     if (memcmp(dig, msig->data, diglen)) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY,
-               CMS_R_MSGSIGDIGEST_VERIFICATION_FAILURE);
+        ERR_raise(ERR_LIB_CMS, CMS_R_MSGSIGDIGEST_VERIFICATION_FAILURE);
         goto err;
     }
 
@@ -341,27 +337,27 @@ int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
                                          OBJ_nid2obj(NID_pkcs9_contentType),
                                          -3, V_ASN1_OBJECT);
     if (!octype) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NO_CONTENT_TYPE);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_CONTENT_TYPE);
         goto err;
     }
 
     /* Compare details in receipt request */
 
     if (OBJ_cmp(octype, rct->contentType)) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_CONTENT_TYPE_MISMATCH);
+        ERR_raise(ERR_LIB_CMS, CMS_R_CONTENT_TYPE_MISMATCH);
         goto err;
     }
 
     /* Get original receipt request details */
 
     if (CMS_get1_ReceiptRequest(osi, &rr) <= 0) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_NO_RECEIPT_REQUEST);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_RECEIPT_REQUEST);
         goto err;
     }
 
     if (ASN1_STRING_cmp(rr->signedContentIdentifier,
                         rct->signedContentIdentifier)) {
-        CMSerr(CMS_F_CMS_RECEIPT_VERIFY, CMS_R_CONTENTIDENTIFIER_MISMATCH);
+        ERR_raise(ERR_LIB_CMS, CMS_R_CONTENTIDENTIFIER_MISMATCH);
         goto err;
     }
 
@@ -391,7 +387,7 @@ ASN1_OCTET_STRING *cms_encode_Receipt(CMS_SignerInfo *si)
     /* Get original receipt request details */
 
     if (CMS_get1_ReceiptRequest(si, &rr) <= 0) {
-        CMSerr(CMS_F_CMS_ENCODE_RECEIPT, CMS_R_NO_RECEIPT_REQUEST);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_RECEIPT_REQUEST);
         goto err;
     }
 
@@ -401,7 +397,7 @@ ASN1_OCTET_STRING *cms_encode_Receipt(CMS_SignerInfo *si)
                                         OBJ_nid2obj(NID_pkcs9_contentType),
                                         -3, V_ASN1_OBJECT);
     if (!ctype) {
-        CMSerr(CMS_F_CMS_ENCODE_RECEIPT, CMS_R_NO_CONTENT_TYPE);
+        ERR_raise(ERR_LIB_CMS, CMS_R_NO_CONTENT_TYPE);
         goto err;
     }
 
@@ -443,7 +439,7 @@ int cms_add1_signing_cert_v2(CMS_SignerInfo *si, ESS_SIGNING_CERT_V2 *sc)
     ASN1_STRING_free(seq);
     return 1;
  err:
-    CMSerr(CMS_F_CMS_ADD1_SIGNING_CERT_V2, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_CMS, ERR_R_MALLOC_FAILURE);
     ASN1_STRING_free(seq);
     OPENSSL_free(pp);
     return 0;
@@ -475,7 +471,7 @@ int cms_add1_signing_cert(CMS_SignerInfo *si, ESS_SIGNING_CERT *sc)
     ASN1_STRING_free(seq);
     return 1;
  err:
-    CMSerr(CMS_F_CMS_ADD1_SIGNING_CERT, ERR_R_MALLOC_FAILURE);
+    ERR_raise(ERR_LIB_CMS, ERR_R_MALLOC_FAILURE);
     ASN1_STRING_free(seq);
     OPENSSL_free(pp);
     return 0;

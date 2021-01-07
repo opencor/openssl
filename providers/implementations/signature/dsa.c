@@ -63,7 +63,7 @@ static OSSL_FUNC_signature_settable_ctx_md_params_fn dsa_settable_ctx_md_params;
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     char *propq;
     DSA *dsa;
 
@@ -85,7 +85,6 @@ typedef struct {
     /* main digest */
     EVP_MD *md;
     EVP_MD_CTX *mdctx;
-    size_t mdsize;
     int operation;
 } PROV_DSA_CTX;
 
@@ -108,7 +107,7 @@ static void *dsa_newctx(void *provctx, const char *propq)
     if (pdsactx == NULL)
         return NULL;
 
-    pdsactx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    pdsactx->libctx = PROV_LIBCTX_OF(provctx);
     pdsactx->flag_allow_md = 1;
     if (propq != NULL && (pdsactx->propq = OPENSSL_strdup(propq)) == NULL) {
         OPENSSL_free(pdsactx);
@@ -157,8 +156,8 @@ static int dsa_setup_md(PROV_DSA_CTX *ctx,
          */
         ctx->aid_len = 0;
         if (WPACKET_init_der(&pkt, ctx->aid_buf, sizeof(ctx->aid_buf))
-            && DER_w_algorithmIdentifier_DSA_with_MD(&pkt, -1, ctx->dsa,
-                                                     md_nid)
+            && ossl_DER_w_algorithmIdentifier_DSA_with_MD(&pkt, -1, ctx->dsa,
+                                                          md_nid)
             && WPACKET_finish(&pkt)) {
             WPACKET_get_total_written(&pkt, &ctx->aid_len);
             ctx->aid = WPACKET_get_curr(&pkt);
@@ -361,7 +360,6 @@ static void dsa_freectx(void *vpdsactx)
     ctx->propq = NULL;
     ctx->mdctx = NULL;
     ctx->md = NULL;
-    ctx->mdsize = 0;
     DSA_free(ctx->dsa);
     OPENSSL_free(ctx);
 }
@@ -382,6 +380,7 @@ static void *dsa_dupctx(void *vpdsactx)
     dstctx->dsa = NULL;
     dstctx->md = NULL;
     dstctx->mdctx = NULL;
+    dstctx->propq = NULL;
 
     if (srcctx->dsa != NULL && !DSA_up_ref(srcctx->dsa))
         goto err;
@@ -395,6 +394,11 @@ static void *dsa_dupctx(void *vpdsactx)
         dstctx->mdctx = EVP_MD_CTX_new();
         if (dstctx->mdctx == NULL
                 || !EVP_MD_CTX_copy_ex(dstctx->mdctx, srcctx->mdctx))
+            goto err;
+    }
+    if (srcctx->propq != NULL) {
+        dstctx->propq = OPENSSL_strdup(srcctx->propq);
+        if (dstctx->propq == NULL)
             goto err;
     }
 
@@ -529,7 +533,7 @@ static const OSSL_PARAM *dsa_settable_ctx_md_params(void *vpdsactx)
     return EVP_MD_settable_ctx_params(pdsactx->md);
 }
 
-const OSSL_DISPATCH dsa_signature_functions[] = {
+const OSSL_DISPATCH ossl_dsa_signature_functions[] = {
     { OSSL_FUNC_SIGNATURE_NEWCTX, (void (*)(void))dsa_newctx },
     { OSSL_FUNC_SIGNATURE_SIGN_INIT, (void (*)(void))dsa_sign_init },
     { OSSL_FUNC_SIGNATURE_SIGN, (void (*)(void))dsa_sign },

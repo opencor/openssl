@@ -60,15 +60,21 @@ extern "C" {
 # define OSSL_SELF_TEST_DESC_KA_ECDH        "ECDH"
 # define OSSL_SELF_TEST_DESC_KDF_HKDF       "HKDF"
 # define OSSL_SELF_TEST_DESC_KDF_SSKDF      "SSKDF"
+# define OSSL_SELF_TEST_DESC_KDF_X963KDF    "X963KDF"
+# define OSSL_SELF_TEST_DESC_KDF_X942KDF    "X942KDF"
+# define OSSL_SELF_TEST_DESC_KDF_PBKDF2     "PBKDF2"
+# define OSSL_SELF_TEST_DESC_KDF_SSHKDF     "SSHKDF"
+# define OSSL_SELF_TEST_DESC_KDF_TLS12_PRF  "TLS12_PRF"
+# define OSSL_SELF_TEST_DESC_KDF_KBKDF      "KBKDF"
 # define OSSL_SELF_TEST_DESC_RNG            "RNG"
 
 # ifdef __cplusplus
 }
 # endif
 
-void OSSL_SELF_TEST_set_callback(OPENSSL_CTX *libctx, OSSL_CALLBACK *cb,
+void OSSL_SELF_TEST_set_callback(OSSL_LIB_CTX *libctx, OSSL_CALLBACK *cb,
                                  void *cbarg);
-void OSSL_SELF_TEST_get_callback(OPENSSL_CTX *libctx, OSSL_CALLBACK **cb,
+void OSSL_SELF_TEST_get_callback(OSSL_LIB_CTX *libctx, OSSL_CALLBACK **cb,
                                  void **cbarg);
 
 OSSL_SELF_TEST *OSSL_SELF_TEST_new(OSSL_CALLBACK *cb, void *cbarg);

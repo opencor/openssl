@@ -9,7 +9,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "cmp_testlib.h"
+#include "helpers/cmp_testlib.h"
 
 static const char *ir_protected_f;
 static const char *ir_unprotected_f;
@@ -31,7 +31,7 @@ typedef struct test_fixture {
     int expected;
 } CMP_PROTECT_TEST_FIXTURE;
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
 
 static void tear_down(CMP_PROTECT_TEST_FIXTURE *fixture)
@@ -500,7 +500,7 @@ void cleanup_tests(void)
     X509_free(intermediate);
     OSSL_CMP_MSG_free(ir_protected);
     OSSL_CMP_MSG_free(ir_unprotected);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
 }
 
 #define USAGE "server.pem IR_protected.der IR_unprotected.der IP_PBM.der " \
@@ -538,7 +538,7 @@ int setup_tests(void)
         return 0;
     }
 
-    if (!test_get_libctx(&libctx, &default_null_provider, &provider, 10, USAGE))
+    if (!test_arg_libctx(&libctx, &default_null_provider, &provider, 10, USAGE))
         return 0;
 
     if (!TEST_ptr(loadedkey = load_pem_key(server_key_f, libctx))

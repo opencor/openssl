@@ -31,7 +31,7 @@ plan tests =>
     + 1;
 
 unless ($no_fips) {
-    @test_args = ("-config", srctop_file("test","fips.cnf"),
+    @test_args = ("-config", srctop_file("test","fips-and-base.cnf"),
                   "-provider", "fips");
 
     ok(run(app(['openssl', 'fipsinstall',
@@ -42,5 +42,5 @@ unless ($no_fips) {
 }
 
 ok(run(test(["evp_libctx_test",
-             "-config", srctop_file("test","default-and-legacy.cnf"),])),
+             "-config", srctop_file("test","default.cnf"),])),
    "running default-and-legacy evp_libctx_test");

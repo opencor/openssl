@@ -14,21 +14,16 @@
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
+# include <openssl/cryptoerr_legacy.h>
 
-
-# include <openssl/opensslconf.h>
 
 # ifndef OPENSSL_NO_EC
 
-#  ifdef  __cplusplus
-extern "C"
-#  endif
-int ERR_load_EC_strings(void);
 
 /*
  * EC function codes.
  */
-# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
 #   define EC_F_BN_TO_FELEM                                 0
 #   define EC_F_D2I_ECPARAMETERS                            0
 #   define EC_F_D2I_ECPKPARAMETERS                          0
@@ -219,7 +214,7 @@ int ERR_load_EC_strings(void);
 #   define EC_F_S390X_PKEY_ECX_KEYGEN25519                  0
 #   define EC_F_S390X_PKEY_ECX_KEYGEN448                    0
 #   define EC_F_VALIDATE_ECX_DERIVE                         0
-# endif
+#  endif
 
 /*
  * EC reason codes.
@@ -233,7 +228,6 @@ int ERR_load_EC_strings(void);
 #  define EC_R_CURVE_DOES_NOT_SUPPORT_ECDH                 160
 #  define EC_R_CURVE_DOES_NOT_SUPPORT_ECDSA                170
 #  define EC_R_CURVE_DOES_NOT_SUPPORT_SIGNING              159
-#  define EC_R_D2I_ECPKPARAMETERS_FAILURE                  117
 #  define EC_R_DECODE_ERROR                                142
 #  define EC_R_DISCRIMINANT_IS_ZERO                        118
 #  define EC_R_EC_GROUP_NEW_BY_NAME_FAILURE                119
@@ -283,7 +277,6 @@ int ERR_load_EC_strings(void);
 #  define EC_R_OPERATION_NOT_SUPPORTED                     152
 #  define EC_R_PASSED_NULL_PARAMETER                       134
 #  define EC_R_PEER_KEY_ERROR                              149
-#  define EC_R_PKPARAMETERS2GROUP_FAILURE                  127
 #  define EC_R_POINT_ARITHMETIC_FAILURE                    155
 #  define EC_R_POINT_AT_INFINITY                           106
 #  define EC_R_POINT_COORDINATES_BLIND_FAILURE             163

@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -28,7 +28,7 @@ int PKCS12_key_gen_asc(const char *pass, int passlen, unsigned char *salt,
         unipass = NULL;
         uniplen = 0;
     } else if (!OPENSSL_asc2uni(pass, passlen, &unipass, &uniplen)) {
-        PKCS12err(PKCS12_F_PKCS12_KEY_GEN_ASC, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_PKCS12, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     ret = PKCS12_key_gen_uni(unipass, uniplen, salt, saltlen,
@@ -49,7 +49,7 @@ int PKCS12_key_gen_utf8(const char *pass, int passlen, unsigned char *salt,
         unipass = NULL;
         uniplen = 0;
     } else if (!OPENSSL_utf82uni(pass, passlen, &unipass, &uniplen)) {
-        PKCS12err(PKCS12_F_PKCS12_KEY_GEN_UTF8, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_PKCS12, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     ret = PKCS12_key_gen_uni(unipass, uniplen, salt, saltlen,
@@ -74,7 +74,7 @@ int PKCS12_key_gen_uni(unsigned char *pass, int passlen, unsigned char *salt,
      * The parameter query isn't available but the library context can be
      * extracted from the passed digest.
      */
-    kdf = EVP_KDF_fetch(ossl_provider_library_context(EVP_MD_provider(md_type)),
+    kdf = EVP_KDF_fetch(ossl_provider_libctx(EVP_MD_provider(md_type)),
                         "PKCS12KDF", NULL);
     if (kdf == NULL)
         return 0;

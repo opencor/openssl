@@ -7,9 +7,6 @@
  * https://www.openssl.org/source/license.html
  */
 
-/* We need to use some engine deprecated APIs */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <stdio.h>
 #include <string.h>
 #include "apps.h"
@@ -17,12 +14,9 @@
 #include <openssl/pem.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
-#ifndef OPENSSL_NO_ENGINE
-# include <openssl/engine.h>
-#endif
 
 static int init_keygen_file(EVP_PKEY_CTX **pctx, const char *file, ENGINE *e,
-                            OPENSSL_CTX *libctx, const char *propq);
+                            OSSL_LIB_CTX *libctx, const char *propq);
 static int genpkey_cb(EVP_PKEY_CTX *ctx);
 
 typedef enum OPTION_choice {
@@ -73,7 +67,7 @@ int genpkey_main(int argc, char **argv)
     OPTION_CHOICE o;
     int outformat = FORMAT_PEM, text = 0, ret = 1, rv, do_param = 0;
     int private = 0;
-    OPENSSL_CTX *libctx = app_get0_libctx();
+    OSSL_LIB_CTX *libctx = app_get0_libctx();
     const char *propq = app_get0_propq();
 
     prog = opt_init(argc, argv, genpkey_options);
@@ -159,6 +153,8 @@ int genpkey_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -240,7 +236,7 @@ int genpkey_main(int argc, char **argv)
 }
 
 static int init_keygen_file(EVP_PKEY_CTX **pctx, const char *file, ENGINE *e,
-                            OPENSSL_CTX *libctx, const char *propq)
+                            OSSL_LIB_CTX *libctx, const char *propq)
 {
     BIO *pbio;
     EVP_PKEY *pkey = NULL;
@@ -287,11 +283,9 @@ static int init_keygen_file(EVP_PKEY_CTX **pctx, const char *file, ENGINE *e,
 
 int init_gen_str(EVP_PKEY_CTX **pctx,
                  const char *algname, ENGINE *e, int do_param,
-                 OPENSSL_CTX *libctx, const char *propq)
+                 OSSL_LIB_CTX *libctx, const char *propq)
 {
     EVP_PKEY_CTX *ctx = NULL;
-    const EVP_PKEY_ASN1_METHOD *ameth;
-    ENGINE *tmpeng = NULL;
     int pkey_id;
 
     if (*pctx) {
@@ -299,29 +293,13 @@ int init_gen_str(EVP_PKEY_CTX **pctx,
         return 0;
     }
 
-    if (libctx == NULL || e != NULL) {
-        ameth = EVP_PKEY_asn1_find_str(&tmpeng, algname, -1);
-
-#if !defined(OPENSSL_NO_ENGINE) && !defined(OPENSSL_NO_DEPRECATED_3_0)
-        if (ameth == NULL && e != NULL)
-            ameth = ENGINE_get_pkey_asn1_meth_str(e, algname, -1);
-#endif
-        if (ameth == NULL) {
-            BIO_printf(bio_err, "Algorithm %s not found\n", algname);
-            return 0;
-        }
-        ERR_clear_error();
-
-        EVP_PKEY_asn1_get0_info(&pkey_id, NULL, NULL, NULL, NULL, ameth);
-#if !defined(OPENSSL_NO_ENGINE) && !defined(OPENSSL_NO_DEPRECATED_3_0)
-        ENGINE_finish(tmpeng);
-#endif
+    pkey_id = get_legacy_pkey_id(libctx, algname, e);
+    if (pkey_id != NID_undef)
         ctx = EVP_PKEY_CTX_new_id(pkey_id, e);
-    } else {
+    else
         ctx = EVP_PKEY_CTX_new_from_name(libctx, algname, propq);
-    }
 
-    if (!ctx)
+    if (ctx == NULL)
         goto err;
     if (do_param) {
         if (EVP_PKEY_paramgen_init(ctx) <= 0)

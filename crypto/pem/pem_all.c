@@ -25,9 +25,7 @@
 #include <openssl/dh.h>
 #include "pem_local.h"
 
-#ifndef OPENSSL_NO_RSA
 static RSA *pkey_get_rsa(EVP_PKEY *key, RSA **rsa);
-#endif
 #ifndef OPENSSL_NO_DSA
 static DSA *pkey_get_dsa(EVP_PKEY *key, DSA **dsa);
 #endif
@@ -45,7 +43,7 @@ IMPLEMENT_PEM_rw(PKCS7, PKCS7, PEM_STRING_PKCS7, PKCS7)
 
 IMPLEMENT_PEM_rw(NETSCAPE_CERT_SEQUENCE, NETSCAPE_CERT_SEQUENCE,
                  PEM_STRING_X509, NETSCAPE_CERT_SEQUENCE)
-#ifndef OPENSSL_NO_RSA
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 /*
  * We treat RSA or DSA private keys as a special case. For private keys we
  * read in an EVP_PKEY structure with PEM_read_bio_PrivateKey() and extract
@@ -179,5 +177,49 @@ EC_KEY *PEM_read_ECPrivateKey(FILE *fp, EC_KEY **eckey, pem_password_cb *cb,
 
 IMPLEMENT_PEM_write(DHparams, DH, PEM_STRING_DHPARAMS, DHparams)
 IMPLEMENT_PEM_write(DHxparams, DH, PEM_STRING_DHXPARAMS, DHxparams)
+
+/* Transparently read in PKCS#3 or X9.42 DH parameters */
+
+DH *PEM_read_bio_DHparams(BIO *bp, DH **x, pem_password_cb *cb, void *u)
+{
+    char *nm = NULL;
+    const unsigned char *p = NULL;
+    unsigned char *data = NULL;
+    long len;
+    DH *ret = NULL;
+
+    if (!PEM_bytes_read_bio(&data, &len, &nm, PEM_STRING_DHPARAMS, bp, cb, u))
+        return NULL;
+    p = data;
+
+    if (strcmp(nm, PEM_STRING_DHXPARAMS) == 0)
+        ret = d2i_DHxparams(x, &p, len);
+    else
+        ret = d2i_DHparams(x, &p, len);
+
+    if (ret == NULL)
+        ERR_raise(ERR_LIB_PEM, ERR_R_ASN1_LIB);
+    OPENSSL_free(nm);
+    OPENSSL_free(data);
+    return ret;
+}
+
+# ifndef OPENSSL_NO_STDIO
+DH *PEM_read_DHparams(FILE *fp, DH **x, pem_password_cb *cb, void *u)
+{
+    BIO *b;
+    DH *ret;
+
+    if ((b = BIO_new(BIO_s_file())) == NULL) {
+        ERR_raise(ERR_LIB_PEM, ERR_R_BUF_LIB);
+        return 0;
+    }
+    BIO_set_fp(b, fp, BIO_NOCLOSE);
+    ret = PEM_read_bio_DHparams(b, x, cb, u);
+    BIO_free(b);
+    return ret;
+}
+# endif
+
 #endif
 IMPLEMENT_PEM_provided_write(PUBKEY, EVP_PKEY, PEM_STRING_PUBLIC, PUBKEY)

@@ -19,7 +19,7 @@
 static int process(const char *uri, const UI_METHOD *uimeth, PW_CB_DATA *uidata,
                    int expected, int criterion, OSSL_STORE_SEARCH *search,
                    int text, int noout, int recursive, int indent, BIO *out,
-                   const char *prog, OPENSSL_CTX *libctx, const char *propq);
+                   const char *prog, OSSL_LIB_CTX *libctx, const char *propq);
 
 typedef enum OPTION_choice {
     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP, OPT_ENGINE, OPT_OUT, OPT_PASSIN,
@@ -84,7 +84,7 @@ int storeutl_main(int argc, char *argv[])
     char *alias = NULL;
     OSSL_STORE_SEARCH *search = NULL;
     const EVP_MD *digest = NULL;
-    OPENSSL_CTX *libctx = app_get0_libctx();
+    OSSL_LIB_CTX *libctx = app_get0_libctx();
     const char *propq = app_get0_propq();
 
     while ((o = opt_next()) != OPT_EOF) {
@@ -256,17 +256,12 @@ int storeutl_main(int argc, char *argv[])
             break;
         }
     }
+
+    /* One argument, the URI */
     argc = opt_num_rest();
     argv = opt_rest();
-
-    if (argc == 0) {
-        BIO_printf(bio_err, "%s: No URI given, nothing to do...\n", prog);
+    if (argc != 1)
         goto opthelp;
-    }
-    if (argc > 1) {
-        BIO_printf(bio_err, "%s: Unknown extra parameters after URI\n", prog);
-        goto opthelp;
-    }
 
     if (criterion != 0) {
         switch (criterion) {
@@ -351,13 +346,13 @@ static int indent_printf(int indent, BIO *bio, const char *format, ...)
 static int process(const char *uri, const UI_METHOD *uimeth, PW_CB_DATA *uidata,
                    int expected, int criterion, OSSL_STORE_SEARCH *search,
                    int text, int noout, int recursive, int indent, BIO *out,
-                   const char *prog, OPENSSL_CTX *libctx, const char *propq)
+                   const char *prog, OSSL_LIB_CTX *libctx, const char *propq)
 {
     OSSL_STORE_CTX *store_ctx = NULL;
     int ret = 1, items = 0;
 
-    if ((store_ctx = OSSL_STORE_open_with_libctx(uri, libctx, propq,
-                                                 uimeth, uidata, NULL, NULL))
+    if ((store_ctx = OSSL_STORE_open_ex(uri, libctx, propq, uimeth, uidata,
+                                        NULL, NULL))
         == NULL) {
         BIO_printf(bio_err, "Couldn't open file or uri %s\n", uri);
         ERR_print_errors(bio_err);
@@ -395,17 +390,19 @@ static int process(const char *uri, const UI_METHOD *uimeth, PW_CB_DATA *uidata,
             info == NULL ? NULL : OSSL_STORE_INFO_type_string(type);
 
         if (info == NULL) {
-            if (OSSL_STORE_eof(store_ctx))
-                break;
-
             if (OSSL_STORE_error(store_ctx)) {
                 if (recursive)
                     ERR_clear_error();
                 else
                     ERR_print_errors(bio_err);
+                if (OSSL_STORE_eof(store_ctx))
+                    break;
                 ret++;
                 continue;
             }
+
+            if (OSSL_STORE_eof(store_ctx))
+                break;
 
             BIO_printf(bio_err,
                        "ERROR: OSSL_STORE_load() returned NULL without "

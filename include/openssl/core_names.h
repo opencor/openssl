@@ -42,11 +42,12 @@ extern "C" {
  * This set of parameter names is explained in detail in provider-object(7)
  * (doc/man7/provider-object.pod)
  */
-#define OSSL_OBJECT_PARAM_TYPE       "type"      /* INTEGER */
-#define OSSL_OBJECT_PARAM_DATA_TYPE  "data-type" /* UTF8_STRING */
-#define OSSL_OBJECT_PARAM_REFERENCE  "reference" /* OCTET_STRING */
-#define OSSL_OBJECT_PARAM_DATA       "data" /* OCTET_STRING or UTF8_STRING */
-#define OSSL_OBJECT_PARAM_DESC       "desc"      /* UTF8_STRING */
+#define OSSL_OBJECT_PARAM_TYPE              "type"      /* INTEGER */
+#define OSSL_OBJECT_PARAM_DATA_TYPE         "data-type" /* UTF8_STRING */
+#define OSSL_OBJECT_PARAM_DATA_STRUCTURE    "data-structure" /* UTF8_STRING */
+#define OSSL_OBJECT_PARAM_REFERENCE         "reference" /* OCTET_STRING */
+#define OSSL_OBJECT_PARAM_DATA              "data" /* OCTET_STRING or UTF8_STRING */
+#define OSSL_OBJECT_PARAM_DESC              "desc"      /* UTF8_STRING */
 
 /*
  * Algorithm parameters
@@ -200,36 +201,44 @@ extern "C" {
 #define OSSL_KDF_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER     /* utf8 string */
 #define OSSL_KDF_PARAM_CONSTANT     "constant"  /* octet string */
 #define OSSL_KDF_PARAM_PKCS12_ID    "id"        /* int */
+#define OSSL_KDF_PARAM_KBKDF_USE_L  "use-l"             /* int */
+#define OSSL_KDF_PARAM_KBKDF_USE_SEPARATOR  "use-separator"     /* int */
+#define OSSL_KDF_PARAM_X942_PARTYUINFO      "partyu-info"
+#define OSSL_KDF_PARAM_X942_PARTYVINFO      "partyv-info"
+#define OSSL_KDF_PARAM_X942_SUPP_PUBINFO    "supp-pubinfo"
+#define OSSL_KDF_PARAM_X942_SUPP_PRIVINFO   "supp-privinfo"
+#define OSSL_KDF_PARAM_X942_USE_KEYBITS     "use-keybits"
 
 /* Known KDF names */
-#define OSSL_KDF_NAME_HKDF          "HKDF"
-#define OSSL_KDF_NAME_PBKDF2        "PBKDF2"
-#define OSSL_KDF_NAME_SCRYPT        "SCRYPT"
-#define OSSL_KDF_NAME_SSHKDF        "SSHKDF"
-#define OSSL_KDF_NAME_SSKDF         "SSKDF"
-#define OSSL_KDF_NAME_TLS1_PRF      "TLS1-PRF"
-#define OSSL_KDF_NAME_X942KDF       "X942KDF"
-#define OSSL_KDF_NAME_X963KDF       "X963KDF"
-#define OSSL_KDF_NAME_KBKDF         "KBKDF"
-#define OSSL_KDF_NAME_KRB5KDF       "KRB5KDF"
+#define OSSL_KDF_NAME_HKDF           "HKDF"
+#define OSSL_KDF_NAME_PBKDF2         "PBKDF2"
+#define OSSL_KDF_NAME_SCRYPT         "SCRYPT"
+#define OSSL_KDF_NAME_SSHKDF         "SSHKDF"
+#define OSSL_KDF_NAME_SSKDF          "SSKDF"
+#define OSSL_KDF_NAME_TLS1_PRF       "TLS1-PRF"
+#define OSSL_KDF_NAME_X942KDF_ASN1   "X942KDF-ASN1"
+#define OSSL_KDF_NAME_X942KDF_CONCAT "X942KDF-CONCAT"
+#define OSSL_KDF_NAME_X963KDF        "X963KDF"
+#define OSSL_KDF_NAME_KBKDF          "KBKDF"
+#define OSSL_KDF_NAME_KRB5KDF        "KRB5KDF"
 
 /* Known RAND names */
 #define OSSL_RAND_PARAM_STATE                   "state"
 #define OSSL_RAND_PARAM_STRENGTH                "strength"
+#define OSSL_RAND_PARAM_MAX_REQUEST             "max_request"
 #define OSSL_RAND_PARAM_TEST_ENTROPY            "test_entropy"
 #define OSSL_RAND_PARAM_TEST_NONCE              "test_nonce"
 
 /* RAND/DRBG names */
 #define OSSL_DRBG_PARAM_RESEED_REQUESTS         "reseed_requests"
 #define OSSL_DRBG_PARAM_RESEED_TIME_INTERVAL    "reseed_time_interval"
-#define OSSL_DRBG_PARAM_MAX_REQUEST             "max_request"
 #define OSSL_DRBG_PARAM_MIN_ENTROPYLEN          "min_entropylen"
 #define OSSL_DRBG_PARAM_MAX_ENTROPYLEN          "max_entropylen"
 #define OSSL_DRBG_PARAM_MIN_NONCELEN            "min_noncelen"
 #define OSSL_DRBG_PARAM_MAX_NONCELEN            "max_noncelen"
 #define OSSL_DRBG_PARAM_MAX_PERSLEN             "max_perslen"
 #define OSSL_DRBG_PARAM_MAX_ADINLEN             "max_adinlen"
-#define OSSL_DRBG_PARAM_RESEED_CTR              "reseed_counter"
+#define OSSL_DRBG_PARAM_RESEED_COUNTER          "reseed_counter"
 #define OSSL_DRBG_PARAM_RESEED_TIME             "reseed_time"
 #define OSSL_DRBG_PARAM_PROPERTIES              OSSL_ALG_PARAM_PROPERTIES
 #define OSSL_DRBG_PARAM_DIGEST                  OSSL_ALG_PARAM_DIGEST
@@ -261,7 +270,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_MASKGENFUNC         "mgf"
 #define OSSL_PKEY_PARAM_MGF1_DIGEST         "mgf1-digest"
 #define OSSL_PKEY_PARAM_MGF1_PROPERTIES     "mgf1-properties"
-#define OSSL_PKEY_PARAM_TLS_ENCODED_PT      "tls-encoded-pt"
+#define OSSL_PKEY_PARAM_ENCODED_PUBLIC_KEY  "encoded-pub-key"
 #define OSSL_PKEY_PARAM_GROUP_NAME          "group"
 #define OSSL_PKEY_PARAM_DIST_ID             "distid"
 #define OSSL_PKEY_PARAM_PUB_KEY             "pub"
@@ -379,6 +388,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_RSA_BITS            OSSL_PKEY_PARAM_BITS
 #define OSSL_PKEY_PARAM_RSA_PRIMES          "primes"
 #define OSSL_PKEY_PARAM_RSA_DIGEST          OSSL_PKEY_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_RSA_DIGEST_PROPS    OSSL_PKEY_PARAM_PROPERTIES
 #define OSSL_PKEY_PARAM_RSA_MASKGENFUNC     OSSL_PKEY_PARAM_MASKGENFUNC
 #define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST     OSSL_PKEY_PARAM_MGF1_DIGEST
 #define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN     "saltlen"
@@ -431,6 +441,9 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_DIGEST_SIZE        OSSL_PKEY_PARAM_DIGEST_SIZE
 
 /* Asym cipher parameters */
+#define OSSL_ASYM_CIPHER_PARAM_DIGEST                   OSSL_PKEY_PARAM_DIGEST
+#define OSSL_ASYM_CIPHER_PARAM_PROPERTIES               OSSL_PKEY_PARAM_PROPERTIES
+#define OSSL_ASYM_CIPHER_PARAM_ENGINE                   OSSL_PKEY_PARAM_ENGINE
 #define OSSL_ASYM_CIPHER_PARAM_PAD_MODE                 OSSL_PKEY_PARAM_PAD_MODE
 #define OSSL_ASYM_CIPHER_PARAM_MGF1_DIGEST              \
     OSSL_PKEY_PARAM_MGF1_DIGEST
@@ -446,13 +459,17 @@ extern "C" {
 /*
  * Encoder / decoder parameters
  */
-#define OSSL_ENCODER_PARAM_CIPHER       OSSL_ALG_PARAM_CIPHER
-#define OSSL_ENCODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_ENCODER_PARAM_INPUT_TYPE   "input-type"
-#define OSSL_ENCODER_PARAM_OUTPUT_TYPE  "output-type"
+#define OSSL_ENCODER_PARAM_CIPHER           OSSL_ALG_PARAM_CIPHER
+#define OSSL_ENCODER_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_ENCODER_PARAM_INPUT_TYPE       "input-type"
+#define OSSL_ENCODER_PARAM_OUTPUT_TYPE      "output-type"
+#define OSSL_ENCODER_PARAM_OUTPUT_STRUCTURE "output-structure"
+/* Currently PVK only, but reusable for others as needed */
+#define OSSL_ENCODER_PARAM_ENCRYPT_LEVEL    "encrypt-level"
 
-#define OSSL_DECODER_PARAM_PROPERTIES   OSSL_ALG_PARAM_PROPERTIES
-#define OSSL_DECODER_PARAM_INPUT_TYPE   "input-type"
+#define OSSL_DECODER_PARAM_PROPERTIES       OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_DECODER_PARAM_INPUT_TYPE       "input-type"
+#define OSSL_DECODER_PARAM_INPUT_STRUCTURE  "input-structure"
 
 /* Passphrase callback parameters */
 #define OSSL_PASSPHRASE_PARAM_INFO      "info"
@@ -488,6 +505,7 @@ extern "C" {
 #define OSSL_CAPABILITY_TLS_GROUP_ID                "tls-group-id"
 #define OSSL_CAPABILITY_TLS_GROUP_ALG               "tls-group-alg"
 #define OSSL_CAPABILITY_TLS_GROUP_SECURITY_BITS     "tls-group-sec-bits"
+#define OSSL_CAPABILITY_TLS_GROUP_IS_KEM            "tls-group-is-kem"
 #define OSSL_CAPABILITY_TLS_GROUP_MIN_TLS           "tls-min-tls"
 #define OSSL_CAPABILITY_TLS_GROUP_MAX_TLS           "tls-max-tls"
 #define OSSL_CAPABILITY_TLS_GROUP_MIN_DTLS          "tls-min-dtls"

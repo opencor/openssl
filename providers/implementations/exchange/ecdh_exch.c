@@ -50,7 +50,7 @@ enum kdf_type {
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
 
     EC_KEY *k;
     EC_KEY *peerk;
@@ -90,7 +90,7 @@ void *ecdh_newctx(void *provctx)
     if (pectx == NULL)
         return NULL;
 
-    pectx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    pectx->libctx = PROV_LIBCTX_OF(provctx);
     pectx->cofactor_mode = -1;
     pectx->kdf_type = PROV_ECDH_KDF_NONE;
 
@@ -534,7 +534,7 @@ int ecdh_derive(void *vpecdhctx, unsigned char *secret,
     return 0;
 }
 
-const OSSL_DISPATCH ecdh_keyexch_functions[] = {
+const OSSL_DISPATCH ecossl_dh_keyexch_functions[] = {
     { OSSL_FUNC_KEYEXCH_NEWCTX, (void (*)(void))ecdh_newctx },
     { OSSL_FUNC_KEYEXCH_INIT, (void (*)(void))ecdh_init },
     { OSSL_FUNC_KEYEXCH_DERIVE, (void (*)(void))ecdh_derive },

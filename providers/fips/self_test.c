@@ -20,8 +20,8 @@
 /*
  * We're cheating here. Normally we don't allow RUN_ONCE usage inside the FIPS
  * module because all such initialisation should be associated with an
- * individual OPENSSL_CTX. That doesn't work with the self test though because
- * it should be run once regardless of the number of OPENSSL_CTXs we have.
+ * individual OSSL_LIB_CTX. That doesn't work with the self test though because
+ * it should be run once regardless of the number of OSSL_LIB_CTXs we have.
  */
 #define ALLOW_RUN_ONCE_IN_FIPS
 #include <internal/thread_once.h>
@@ -160,7 +160,7 @@ DEP_FINI_ATTRIBUTE void cleanup(void)
  */
 static int verify_integrity(OSSL_CORE_BIO *bio, OSSL_FUNC_BIO_read_ex_fn read_ex_cb,
                             unsigned char *expected, size_t expected_len,
-                            OPENSSL_CTX *libctx, OSSL_SELF_TEST *ev,
+                            OSSL_LIB_CTX *libctx, OSSL_SELF_TEST *ev,
                             const char *event_type)
 {
     int ret = 0, status;
@@ -174,8 +174,10 @@ static int verify_integrity(OSSL_CORE_BIO *bio, OSSL_FUNC_BIO_read_ex_fn read_ex
     OSSL_SELF_TEST_onbegin(ev, event_type, OSSL_SELF_TEST_DESC_INTEGRITY_HMAC);
 
     mac = EVP_MAC_fetch(libctx, MAC_NAME, NULL);
+    if (mac == NULL)
+        goto err;
     ctx = EVP_MAC_CTX_new(mac);
-    if (mac == NULL || ctx == NULL)
+    if (ctx == NULL)
         goto err;
 
     *p++ = OSSL_PARAM_construct_utf8_string("digest", DIGEST_NAME,

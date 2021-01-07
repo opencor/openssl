@@ -95,12 +95,22 @@ static int x509_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
         ASIdentifiers_free(ret->rfc3779_asid);
 #endif
         ASN1_OCTET_STRING_free(ret->distinguishing_id);
+        OPENSSL_free(ret->propq);
         break;
 
+    case ASN1_OP_DUP_POST:
+        {
+            X509 *old = exarg;
+
+            if (!x509_set0_libctx(ret, old->libctx, old->propq))
+                return 0;
+        }
+        break;
+    default:
+        break;
     }
 
     return 1;
-
 }
 
 ASN1_SEQUENCE_ref(X509, x509_cb) = {
@@ -132,23 +142,32 @@ int i2d_X509(const X509 *a, unsigned char **out)
 /*
  * This should only be used if the X509 object was embedded inside another
  * asn1 object and it needs a libctx to operate.
- * Use X509_new_with_libctx() instead if possible.
+ * Use X509_new_ex() instead if possible.
  */
-int x509_set0_libctx(X509 *x, OPENSSL_CTX *libctx, const char *propq)
+int x509_set0_libctx(X509 *x, OSSL_LIB_CTX *libctx, const char *propq)
 {
     if (x != NULL) {
         x->libctx = libctx;
-        x->propq = propq;
+        OPENSSL_free(x->propq);
+        x->propq = NULL;
+        if (propq != NULL) {
+            x->propq = OPENSSL_strdup(propq);
+            if (x->propq == NULL)
+                return 0;
+        }
     }
     return 1;
 }
 
-X509 *X509_new_with_libctx(OPENSSL_CTX *libctx, const char *propq)
+X509 *X509_new_ex(OSSL_LIB_CTX *libctx, const char *propq)
 {
     X509 *cert = NULL;
 
     cert = (X509 *)ASN1_item_new((X509_it()));
-    (void)x509_set0_libctx(cert, libctx, propq);
+    if (!x509_set0_libctx(cert, libctx, propq)) {
+        X509_free(cert);
+        cert = NULL;
+    }
     return cert;
 }
 
@@ -255,7 +274,7 @@ int i2d_X509_AUX(const X509 *a, unsigned char **pp)
     /* Allocate requisite combined storage */
     *pp = tmp = OPENSSL_malloc(length);
     if (tmp == NULL) {
-        X509err(X509_F_I2D_X509_AUX, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_X509, ERR_R_MALLOC_FAILURE);
         return -1;
     }
 

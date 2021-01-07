@@ -87,7 +87,10 @@ static AUTHORITY_KEYID *v2i_AUTHORITY_KEYID(X509V3_EXT_METHOD *method,
     ASN1_INTEGER *serial = NULL;
     X509_EXTENSION *ext;
     X509 *cert;
-    AUTHORITY_KEYID *akeyid;
+    AUTHORITY_KEYID *akeyid = AUTHORITY_KEYID_new();
+
+    if (akeyid == NULL)
+        goto err;
 
     for (i = 0; i < sk_CONF_VALUE_num(values); i++) {
         cnf = sk_CONF_VALUE_value(values, i);
@@ -100,18 +103,17 @@ static AUTHORITY_KEYID *v2i_AUTHORITY_KEYID(X509V3_EXT_METHOD *method,
             if (cnf->value && strcmp(cnf->value, "always") == 0)
                 issuer = 2;
         } else {
-            X509V3err(X509V3_F_V2I_AUTHORITY_KEYID, X509V3_R_UNKNOWN_OPTION);
-            ERR_add_error_data(2, "name=", cnf->name);
-            return NULL;
+            ERR_raise_data(ERR_LIB_X509V3, X509V3_R_UNKNOWN_OPTION,
+                           "name=%s", cnf->name);
+            goto err;
         }
     }
 
     if (!ctx || !ctx->issuer_cert) {
         if (ctx && (ctx->flags == CTX_TEST))
-            return AUTHORITY_KEYID_new();
-        X509V3err(X509V3_F_V2I_AUTHORITY_KEYID,
-                  X509V3_R_NO_ISSUER_CERTIFICATE);
-        return NULL;
+            return akeyid;
+        ERR_raise(ERR_LIB_X509V3, X509V3_R_NO_ISSUER_CERTIFICATE);
+        goto err;
     }
 
     cert = ctx->issuer_cert;
@@ -120,10 +122,9 @@ static AUTHORITY_KEYID *v2i_AUTHORITY_KEYID(X509V3_EXT_METHOD *method,
         i = X509_get_ext_by_NID(cert, NID_subject_key_identifier, -1);
         if ((i >= 0) && (ext = X509_get_ext(cert, i)))
             ikeyid = X509V3_EXT_d2i(ext);
-        if (keyid == 2 && !ikeyid) {
-            X509V3err(X509V3_F_V2I_AUTHORITY_KEYID,
-                      X509V3_R_UNABLE_TO_GET_ISSUER_KEYID);
-            return NULL;
+        if ((keyid == 2 || issuer == 0) && ikeyid == NULL) {
+            ERR_raise(ERR_LIB_X509V3, X509V3_R_UNABLE_TO_GET_ISSUER_KEYID);
+            goto err;
         }
     }
 
@@ -131,20 +132,16 @@ static AUTHORITY_KEYID *v2i_AUTHORITY_KEYID(X509V3_EXT_METHOD *method,
         isname = X509_NAME_dup(X509_get_issuer_name(cert));
         serial = ASN1_INTEGER_dup(X509_get0_serialNumber(cert));
         if (!isname || !serial) {
-            X509V3err(X509V3_F_V2I_AUTHORITY_KEYID,
-                      X509V3_R_UNABLE_TO_GET_ISSUER_DETAILS);
+            ERR_raise(ERR_LIB_X509V3, X509V3_R_UNABLE_TO_GET_ISSUER_DETAILS);
             goto err;
         }
     }
-
-    if ((akeyid = AUTHORITY_KEYID_new()) == NULL)
-        goto err;
 
     if (isname) {
         if ((gens = sk_GENERAL_NAME_new_null()) == NULL
             || (gen = GENERAL_NAME_new()) == NULL
             || !sk_GENERAL_NAME_push(gens, gen)) {
-            X509V3err(X509V3_F_V2I_AUTHORITY_KEYID, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_X509V3, ERR_R_MALLOC_FAILURE);
             goto err;
         }
         gen->type = GEN_DIRNAME;
@@ -165,5 +162,6 @@ static AUTHORITY_KEYID *v2i_AUTHORITY_KEYID(X509V3_EXT_METHOD *method,
     X509_NAME_free(isname);
     ASN1_INTEGER_free(serial);
     ASN1_OCTET_STRING_free(ikeyid);
+    AUTHORITY_KEYID_free(akeyid);
     return NULL;
 }

@@ -201,11 +201,13 @@ int crl_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No remaining args. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
 
-    x = load_crl(infile, informat, "CRL");
+    x = load_crl(infile, "CRL");
     if (x == NULL)
         goto end;
 
@@ -250,7 +252,7 @@ int crl_main(int argc, char **argv)
             BIO_puts(bio_err, "Missing CRL signing key\n");
             goto end;
         }
-        newcrl = load_crl(crldiff, informat, "other CRL");
+        newcrl = load_crl(crldiff, "other CRL");
         if (!newcrl)
             goto end;
         pkey = load_key(keyfile, keyformat, 0, NULL, NULL, "CRL signing key");
@@ -288,6 +290,7 @@ int crl_main(int argc, char **argv)
                 crlnum = X509_CRL_get_ext_d2i(x, NID_crl_number, NULL, NULL);
                 BIO_printf(bio_out, "crlNumber=");
                 if (crlnum) {
+                    BIO_puts(bio_out, "0x");
                     i2a_ASN1_INTEGER(bio_out, crlnum);
                     ASN1_INTEGER_free(crlnum);
                 } else

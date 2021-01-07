@@ -24,7 +24,7 @@ static EVP_PKEY_CTX *init_ctx(const char *kdfalg, int *pkeysize,
                               const char *keyfile, int keyform, int key_type,
                               char *passinarg, int pkey_op, ENGINE *e,
                               const int impl, int rawin, EVP_PKEY **ppkey,
-                              OPENSSL_CTX *libctx, const char *propq);
+                              OSSL_LIB_CTX *libctx, const char *propq);
 
 static int setup_peer(EVP_PKEY_CTX *ctx, int peerform, const char *file,
                       ENGINE *e);
@@ -124,7 +124,7 @@ int pkeyutl_main(int argc, char **argv)
     int rawin = 0;
     const EVP_MD *md = NULL;
     int filesize = -1;
-    OPENSSL_CTX *libctx = app_get0_libctx();
+    OSSL_LIB_CTX *libctx = app_get0_libctx();
     const char *propq = NULL;
 
     prog = opt_init(argc, argv, pkeyutl_options);
@@ -250,6 +250,8 @@ int pkeyutl_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -512,7 +514,7 @@ static EVP_PKEY_CTX *init_ctx(const char *kdfalg, int *pkeysize,
                               char *passinarg, int pkey_op, ENGINE *e,
                               const int engine_impl, int rawin,
                               EVP_PKEY **ppkey,
-                              OPENSSL_CTX *libctx, const char *propq)
+                              OSSL_LIB_CTX *libctx, const char *propq)
 {
     EVP_PKEY *pkey = NULL;
     EVP_PKEY_CTX *ctx = NULL;
@@ -532,15 +534,15 @@ static EVP_PKEY_CTX *init_ctx(const char *kdfalg, int *pkeysize,
     }
     switch (key_type) {
     case KEY_PRIVKEY:
-        pkey = load_key(keyfile, keyform, 0, passin, e, "Private Key");
+        pkey = load_key(keyfile, keyform, 0, passin, e, "private key");
         break;
 
     case KEY_PUBKEY:
-        pkey = load_pubkey(keyfile, keyform, 0, NULL, e, "Public Key");
+        pkey = load_pubkey(keyfile, keyform, 0, NULL, e, "public key");
         break;
 
     case KEY_CERT:
-        x = load_cert(keyfile, FORMAT_UNDEF, "Certificate");
+        x = load_cert(keyfile, "Certificate");
         if (x) {
             pkey = X509_get_pubkey(x);
             X509_free(x);
@@ -644,7 +646,7 @@ static int setup_peer(EVP_PKEY_CTX *ctx, int peerform, const char *file,
 
     if (peerform == FORMAT_ENGINE)
         engine = e;
-    peer = load_pubkey(file, peerform, 0, NULL, engine, "Peer Key");
+    peer = load_pubkey(file, peerform, 0, NULL, engine, "peer key");
     if (peer == NULL) {
         BIO_printf(bio_err, "Error reading peer key %s\n", file);
         ERR_print_errors(bio_err);

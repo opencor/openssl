@@ -184,7 +184,7 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
 {
     struct gmac_data_st *macctx = vmacctx;
     EVP_CIPHER_CTX *ctx = macctx->ctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(macctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(macctx->provctx);
     const OSSL_PARAM *p;
 
    if (ctx == NULL
@@ -224,7 +224,7 @@ static int gmac_set_ctx_params(void *vmacctx, const OSSL_PARAM params[])
     return 1;
 }
 
-const OSSL_DISPATCH gmac_functions[] = {
+const OSSL_DISPATCH ossl_gmac_functions[] = {
     { OSSL_FUNC_MAC_NEWCTX, (void (*)(void))gmac_new },
     { OSSL_FUNC_MAC_DUPCTX, (void (*)(void))gmac_dup },
     { OSSL_FUNC_MAC_FREECTX, (void (*)(void))gmac_free },

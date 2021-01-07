@@ -140,8 +140,7 @@ my $guess_patterns = [
     [ 'Paragon.*?:.*',              'i860-intel-osf1' ],
     [ 'Rhapsody:.*',                'ppc-apple-rhapsody' ],
     [ 'Darwin:.*?:.*?:Power.*',     'ppc-apple-darwin' ],
-    [ 'Darwin:.*?:.*?:x86_64',      'x86_64-apple-darwin' ],
-    [ 'Darwin:.*',                  'i686-apple-darwin' ],
+    [ 'Darwin:.*',                  '${MACHINE}-apple-darwin' ],
     [ 'SunOS:5\..*',                '${MACHINE}-whatever-solaris2' ],
     [ 'SunOS:.*',                   '${MACHINE}-sun-sunos4' ],
     [ 'UNIX_System_V:4\..*?:.*',    '${MACHINE}-whatever-sysv4' ],
@@ -159,6 +158,11 @@ my $guess_patterns = [
     [ 'MINGW.*',                    '${MACHINE}-whatever-mingw' ],
     [ 'CYGWIN.*',                   '${MACHINE}-pc-cygwin' ],
     [ 'vxworks.*',                  '${MACHINE}-whatever-vxworks' ],
+
+    # Note: there's also NEO and NSR, but they are old and unsupported
+    [ 'NONSTOP_KERNEL:.*:NSE-.*?',  'nse-tandem-nsk${RELEASE}' ],
+    [ 'NONSTOP_KERNEL:.*:NSV-.*?',  'nsv-tandem-nsk${RELEASE}' ],
+    [ 'NONSTOP_KERNEL:.*:NSX-.*?',  'nsx-tandem-nsk${RELEASE}' ],
 
     [ sub { -d '/usr/apollo' },     'whatever-apollo-whatever' ],
 ];
@@ -197,8 +201,8 @@ sub is_sco_uname {
     }
     close UNAME;
     return "" if $line eq '';
-    my @fields = split($line);
-    return $fields[2];
+    my @fields = split(/\s+/, $line);
+    return $fields[2] // '';
 }
 
 sub get_sco_type {
@@ -478,6 +482,7 @@ EOF
             return { target => "darwin64-x86_64" };
         }
       ],
+      [ 'arm64-apple-darwin.*', { target => "darwin64-arm64" } ],
       [ 'armv6\+7-.*-iphoneos',
         { target => "iphoneos-cross",
           cflags => [ qw(-arch armv6 -arch armv7) ],
@@ -699,13 +704,16 @@ EOF
             my $KERNEL_BITS = $ENV{KERNEL_BITS};
             my $ISA64 = `isainfo 2>/dev/null | grep amd64`;
             my $KB = $KERNEL_BITS // '64';
-            return { target => "solaris64-x86_64" }
-                if $ISA64 ne "" && $KB eq '64';
+            if ($ISA64 ne "" && $KB eq '64') {
+                return { target => "solaris64-x86_64-gcc" } if $CCVENDOR eq "gnu";
+                return { target => "solaris64-x86_64-cc" };
+            }
             my $REL = uname('-r');
             $REL =~ s/5\.//;
             my @tmp_disable = ();
             push @tmp_disable, 'sse2' if int($REL) < 10;
-            return { target => "solaris-x86",
+            #There is no solaris-x86-cc target
+            return { target => "solaris-x86-gcc",
                      disable => [ @tmp_disable ] };
         }
       ],
@@ -859,6 +867,20 @@ EOF
       # we'll get in the upcoming x86_64 port...
       [ '.*Alpha.*?-.*?-OpenVMS', { target => 'vms-alpha' } ],
       [ '.*?-.*?-OpenVMS',        { target => 'vms-ia64'  } ],
+
+      # TODO: There are a few more choices among OpenSSL config targets, but
+      # reaching them involves a bit more than just a host tripet.  Select
+      # environment variables could do the job to cover for more granular
+      # build options such as data model (ILP32 or LP64), thread support
+      # model (PUT, SPT or nothing), target execution environment (OSS or
+      # GUARDIAN).  And still, there must be some kind of default when
+      # nothing else is said.
+      #
+      # nsv is a virtual x86 environment, equivalent to nsx, so we enforce
+      # the latter.
+      [ 'nse-tandem-nsk.*',       { target => 'nonstop-nse' } ],
+      [ 'nsv-tandem-nsk.*',       { target => 'nonstop-nsx' } ],
+      [ 'nsx-tandem-nsk.*',       { target => 'nonstop-nsx' } ],
 
     ];
 

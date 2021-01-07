@@ -330,8 +330,8 @@ static int drbg_ctr_instantiate_wrapper(void *vdrbg, unsigned int strength,
 {
     PROV_DRBG *drbg = (PROV_DRBG *)vdrbg;
 
-    return PROV_DRBG_instantiate(drbg, strength, prediction_resistance,
-                                 pstr, pstr_len);
+    return ossl_prov_drbg_instantiate(drbg, strength, prediction_resistance,
+                                      pstr, pstr_len);
 }
 
 static int drbg_ctr_reseed(PROV_DRBG *drbg,
@@ -355,8 +355,8 @@ static int drbg_ctr_reseed_wrapper(void *vdrbg, int prediction_resistance,
 {
     PROV_DRBG *drbg = (PROV_DRBG *)vdrbg;
 
-    return PROV_DRBG_reseed(drbg, prediction_resistance, ent, ent_len,
-                            adin, adin_len);
+    return ossl_prov_drbg_reseed(drbg, prediction_resistance, ent, ent_len,
+                                 adin, adin_len);
 }
 
 static void ctr96_inc(unsigned char *counter)
@@ -452,8 +452,8 @@ static int drbg_ctr_generate_wrapper
 {
     PROV_DRBG *drbg = (PROV_DRBG *)vdrbg;
 
-    return PROV_DRBG_generate(drbg, out, outlen, strength,
-                              prediction_resistance, adin, adin_len);
+    return ossl_prov_drbg_generate(drbg, out, outlen, strength,
+                                   prediction_resistance, adin, adin_len);
 }
 
 static int drbg_ctr_uninstantiate(PROV_DRBG *drbg)
@@ -465,7 +465,7 @@ static int drbg_ctr_uninstantiate(PROV_DRBG *drbg)
     OPENSSL_cleanse(ctr->bltmp, sizeof(ctr->bltmp));
     OPENSSL_cleanse(ctr->KX, sizeof(ctr->KX));
     ctr->bltmp_pos = 0;
-    return PROV_DRBG_uninstantiate(drbg);
+    return ossl_prov_drbg_uninstantiate(drbg);
 }
 
 static int drbg_ctr_uninstantiate_wrapper(void *vdrbg)
@@ -494,7 +494,7 @@ static int drbg_ctr_init_lengths(PROV_DRBG *drbg)
 
 #ifdef FIPS_MODULE
     if (!ctr->use_df) {
-        PROVerr(0, RAND_R_DERIVATION_FUNCTION_MANDATORY_FOR_FIPS);
+        ERR_raise(ERR_LIB_PROV, RAND_R_DERIVATION_FUNCTION_MANDATORY_FOR_FIPS);
         ctr->use_df = 1;
         res = 0;
     }
@@ -606,7 +606,7 @@ static int drbg_ctr_new(PROV_DRBG *drbg)
 static void *drbg_ctr_new_wrapper(void *provctx, void *parent,
                                    const OSSL_DISPATCH *parent_dispatch)
 {
-    return prov_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_ctr_new,
+    return ossl_rand_drbg_new(provctx, parent, parent_dispatch, &drbg_ctr_new,
                               &drbg_ctr_instantiate, &drbg_ctr_uninstantiate,
                               &drbg_ctr_reseed, &drbg_ctr_generate);
 }
@@ -625,19 +625,34 @@ static void drbg_ctr_free(void *vdrbg)
 
         OPENSSL_secure_clear_free(ctr, sizeof(*ctr));
     }
-    prov_rand_drbg_free(drbg);
+    ossl_rand_drbg_free(drbg);
 }
 
 static int drbg_ctr_get_ctx_params(void *vdrbg, OSSL_PARAM params[])
 {
     PROV_DRBG *drbg = (PROV_DRBG *)vdrbg;
+    PROV_DRBG_CTR *ctr = (PROV_DRBG_CTR *)drbg->data;
+    OSSL_PARAM *p;
 
-    return drbg_get_ctx_params(drbg, params);
+    p = OSSL_PARAM_locate(params, OSSL_DRBG_PARAM_USE_DF);
+    if (p != NULL && !OSSL_PARAM_set_int(p, ctr->use_df))
+        return 0;
+
+    p = OSSL_PARAM_locate(params, OSSL_DRBG_PARAM_CIPHER);
+    if (p != NULL) {
+        if (ctr->cipher_ctr == NULL
+            || !OSSL_PARAM_set_utf8_string(p, EVP_CIPHER_name(ctr->cipher_ctr)))
+            return 0;
+    }
+
+    return ossl_drbg_get_ctx_params(drbg, params);
 }
 
 static const OSSL_PARAM *drbg_ctr_gettable_ctx_params(ossl_unused void *provctx)
 {
     static const OSSL_PARAM known_gettable_ctx_params[] = {
+        OSSL_PARAM_utf8_string(OSSL_DRBG_PARAM_CIPHER, NULL, 0),
+        OSSL_PARAM_int(OSSL_DRBG_PARAM_USE_DF, NULL),
         OSSL_PARAM_DRBG_GETTABLE_CTX_COMMON,
         OSSL_PARAM_END
     };
@@ -648,7 +663,7 @@ static int drbg_ctr_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     PROV_DRBG *ctx = (PROV_DRBG *)vctx;
     PROV_DRBG_CTR *ctr = (PROV_DRBG_CTR *)ctx->data;
-    OPENSSL_CTX *libctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
     const OSSL_PARAM *p;
     char *ecb;
     const char *propquery = NULL;
@@ -698,7 +713,7 @@ static int drbg_ctr_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     if (cipher_init && !drbg_ctr_init(ctx))
         return 0;
 
-    return drbg_set_ctx_params(ctx, params);
+    return ossl_drbg_set_ctx_params(ctx, params);
 }
 
 static const OSSL_PARAM *drbg_ctr_settable_ctx_params(ossl_unused void *provctx)
@@ -720,7 +735,7 @@ static const OSSL_PARAM *drbg_ctr_settable_ctx_params(ossl_unused void *provctx)
     return known_settable_ctx_params;
 }
 
-const OSSL_DISPATCH drbg_ctr_functions[] = {
+const OSSL_DISPATCH ossl_drbg_ctr_functions[] = {
     { OSSL_FUNC_RAND_NEWCTX, (void(*)(void))drbg_ctr_new_wrapper },
     { OSSL_FUNC_RAND_FREECTX, (void(*)(void))drbg_ctr_free },
     { OSSL_FUNC_RAND_INSTANTIATE,
@@ -729,9 +744,9 @@ const OSSL_DISPATCH drbg_ctr_functions[] = {
       (void(*)(void))drbg_ctr_uninstantiate_wrapper },
     { OSSL_FUNC_RAND_GENERATE, (void(*)(void))drbg_ctr_generate_wrapper },
     { OSSL_FUNC_RAND_RESEED, (void(*)(void))drbg_ctr_reseed_wrapper },
-    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))drbg_enable_locking },
-    { OSSL_FUNC_RAND_LOCK, (void(*)(void))drbg_lock },
-    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))drbg_unlock },
+    { OSSL_FUNC_RAND_ENABLE_LOCKING, (void(*)(void))ossl_drbg_enable_locking },
+    { OSSL_FUNC_RAND_LOCK, (void(*)(void))ossl_drbg_lock },
+    { OSSL_FUNC_RAND_UNLOCK, (void(*)(void))ossl_drbg_unlock },
     { OSSL_FUNC_RAND_SETTABLE_CTX_PARAMS,
       (void(*)(void))drbg_ctr_settable_ctx_params },
     { OSSL_FUNC_RAND_SET_CTX_PARAMS, (void(*)(void))drbg_ctr_set_ctx_params },

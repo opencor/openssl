@@ -80,19 +80,19 @@ static int rsa_ossl_public_encrypt(int flen, const unsigned char *from,
     BN_CTX *ctx = NULL;
 
     if (BN_num_bits(rsa->n) > OPENSSL_RSA_MAX_MODULUS_BITS) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT, RSA_R_MODULUS_TOO_LARGE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_MODULUS_TOO_LARGE);
         return -1;
     }
 
     if (BN_ucmp(rsa->n, rsa->e) <= 0) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT, RSA_R_BAD_E_VALUE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_BAD_E_VALUE);
         return -1;
     }
 
     /* for large moduli, enforce exponent limit */
     if (BN_num_bits(rsa->n) > OPENSSL_RSA_SMALL_MODULUS_BITS) {
         if (BN_num_bits(rsa->e) > OPENSSL_RSA_MAX_PUBEXP_BITS) {
-            RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT, RSA_R_BAD_E_VALUE);
+            ERR_raise(ERR_LIB_RSA, RSA_R_BAD_E_VALUE);
             return -1;
         }
     }
@@ -105,31 +105,30 @@ static int rsa_ossl_public_encrypt(int flen, const unsigned char *from,
     num = BN_num_bytes(rsa->n);
     buf = OPENSSL_malloc(num);
     if (ret == NULL || buf == NULL) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
     switch (padding) {
     case RSA_PKCS1_PADDING:
-        i = rsa_padding_add_PKCS1_type_2_with_libctx(rsa->libctx, buf, num,
-                                                     from, flen);
+        i = ossl_rsa_padding_add_PKCS1_type_2_ex(rsa->libctx, buf, num,
+                                                 from, flen);
         break;
     case RSA_PKCS1_OAEP_PADDING:
-        i = rsa_padding_add_PKCS1_OAEP_mgf1_with_libctx(rsa->libctx, buf, num,
-                                                        from, flen, NULL, 0,
-                                                        NULL, NULL);
+        i = ossl_rsa_padding_add_PKCS1_OAEP_mgf1_ex(rsa->libctx, buf, num,
+                                                    from, flen, NULL, 0,
+                                                    NULL, NULL);
         break;
 #ifndef FIPS_MODULE
     case RSA_SSLV23_PADDING:
-        i = rsa_padding_add_SSLv23_with_libctx(rsa->libctx, buf, num, from,
-                                               flen);
+        i = ossl_rsa_padding_add_SSLv23_ex(rsa->libctx, buf, num, from, flen);
         break;
 #endif
     case RSA_NO_PADDING:
         i = RSA_padding_add_none(buf, num, from, flen);
         break;
     default:
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT, RSA_R_UNKNOWN_PADDING_TYPE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_PADDING_TYPE);
         goto err;
     }
     if (i <= 0)
@@ -140,8 +139,7 @@ static int rsa_ossl_public_encrypt(int flen, const unsigned char *from,
 
     if (BN_ucmp(f, rsa->n) >= 0) {
         /* usually the padding functions would catch this */
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_ENCRYPT,
-               RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
         goto err;
     }
 
@@ -266,7 +264,7 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
     num = BN_num_bytes(rsa->n);
     buf = OPENSSL_malloc(num);
     if (ret == NULL || buf == NULL) {
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
@@ -282,7 +280,7 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
         break;
     case RSA_SSLV23_PADDING:
     default:
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, RSA_R_UNKNOWN_PADDING_TYPE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_PADDING_TYPE);
         goto err;
     }
     if (i <= 0)
@@ -293,8 +291,7 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
 
     if (BN_ucmp(f, rsa->n) >= 0) {
         /* usually the padding functions would catch this */
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT,
-               RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
         goto err;
     }
 
@@ -306,14 +303,14 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
     if (!(rsa->flags & RSA_FLAG_NO_BLINDING)) {
         blinding = rsa_get_blinding(rsa, &local_blinding, ctx);
         if (blinding == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, ERR_R_INTERNAL_ERROR);
+            ERR_raise(ERR_LIB_RSA, ERR_R_INTERNAL_ERROR);
             goto err;
         }
     }
 
     if (blinding != NULL) {
         if (!local_blinding && ((unblind = BN_CTX_get(ctx)) == NULL)) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
             goto err;
         }
         if (!rsa_blinding_convert(blinding, f, unblind, ctx))
@@ -330,11 +327,11 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
     } else {
         BIGNUM *d = BN_new();
         if (d == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
             goto err;
         }
         if (rsa->d == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_ENCRYPT, RSA_R_MISSING_PRIVATE_KEY);
+            ERR_raise(ERR_LIB_RSA, RSA_R_MISSING_PRIVATE_KEY);
             BN_free(d);
             goto err;
         }
@@ -400,7 +397,7 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
     num = BN_num_bytes(rsa->n);
     buf = OPENSSL_malloc(num);
     if (ret == NULL || buf == NULL) {
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
@@ -409,8 +406,7 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
      * top '0' bytes
      */
     if (flen > num) {
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT,
-               RSA_R_DATA_GREATER_THAN_MOD_LEN);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_GREATER_THAN_MOD_LEN);
         goto err;
     }
 
@@ -419,22 +415,21 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
         goto err;
 
     if (BN_ucmp(f, rsa->n) >= 0) {
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT,
-               RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
         goto err;
     }
 
     if (!(rsa->flags & RSA_FLAG_NO_BLINDING)) {
         blinding = rsa_get_blinding(rsa, &local_blinding, ctx);
         if (blinding == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, ERR_R_INTERNAL_ERROR);
+            ERR_raise(ERR_LIB_RSA, ERR_R_INTERNAL_ERROR);
             goto err;
         }
     }
 
     if (blinding != NULL) {
         if (!local_blinding && ((unblind = BN_CTX_get(ctx)) == NULL)) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
             goto err;
         }
         if (!rsa_blinding_convert(blinding, f, unblind, ctx))
@@ -452,11 +447,11 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
     } else {
         BIGNUM *d = BN_new();
         if (d == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
             goto err;
         }
         if (rsa->d == NULL) {
-            RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, RSA_R_MISSING_PRIVATE_KEY);
+            ERR_raise(ERR_LIB_RSA, RSA_R_MISSING_PRIVATE_KEY);
             BN_free(d);
             goto err;
         }
@@ -501,7 +496,7 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
         memcpy(to, buf, (r = j));
         break;
     default:
-        RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, RSA_R_UNKNOWN_PADDING_TYPE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_PADDING_TYPE);
         goto err;
     }
 #ifndef FIPS_MODULE
@@ -510,7 +505,7 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
      * the error stack. Instead we opt not to put an error on the stack at all
      * in case of padding failure in the FIPS provider.
      */
-    RSAerr(RSA_F_RSA_OSSL_PRIVATE_DECRYPT, RSA_R_PADDING_CHECK_FAILED);
+    ERR_raise(ERR_LIB_RSA, RSA_R_PADDING_CHECK_FAILED);
     err_clear_last_constant_time(1 & ~constant_time_msb(r));
 #endif
 
@@ -531,19 +526,19 @@ static int rsa_ossl_public_decrypt(int flen, const unsigned char *from,
     BN_CTX *ctx = NULL;
 
     if (BN_num_bits(rsa->n) > OPENSSL_RSA_MAX_MODULUS_BITS) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_MODULUS_TOO_LARGE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_MODULUS_TOO_LARGE);
         return -1;
     }
 
     if (BN_ucmp(rsa->n, rsa->e) <= 0) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_BAD_E_VALUE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_BAD_E_VALUE);
         return -1;
     }
 
     /* for large moduli, enforce exponent limit */
     if (BN_num_bits(rsa->n) > OPENSSL_RSA_SMALL_MODULUS_BITS) {
         if (BN_num_bits(rsa->e) > OPENSSL_RSA_MAX_PUBEXP_BITS) {
-            RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_BAD_E_VALUE);
+            ERR_raise(ERR_LIB_RSA, RSA_R_BAD_E_VALUE);
             return -1;
         }
     }
@@ -556,7 +551,7 @@ static int rsa_ossl_public_decrypt(int flen, const unsigned char *from,
     num = BN_num_bytes(rsa->n);
     buf = OPENSSL_malloc(num);
     if (ret == NULL || buf == NULL) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
@@ -565,7 +560,7 @@ static int rsa_ossl_public_decrypt(int flen, const unsigned char *from,
      * top '0' bytes
      */
     if (flen > num) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_DATA_GREATER_THAN_MOD_LEN);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_GREATER_THAN_MOD_LEN);
         goto err;
     }
 
@@ -573,8 +568,7 @@ static int rsa_ossl_public_decrypt(int flen, const unsigned char *from,
         goto err;
 
     if (BN_ucmp(f, rsa->n) >= 0) {
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT,
-               RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
+        ERR_raise(ERR_LIB_RSA, RSA_R_DATA_TOO_LARGE_FOR_MODULUS);
         goto err;
     }
 
@@ -606,11 +600,11 @@ static int rsa_ossl_public_decrypt(int flen, const unsigned char *from,
         memcpy(to, buf, (r = i));
         break;
     default:
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_UNKNOWN_PADDING_TYPE);
+        ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_PADDING_TYPE);
         goto err;
     }
     if (r < 0)
-        RSAerr(RSA_F_RSA_OSSL_PUBLIC_DECRYPT, RSA_R_PADDING_CHECK_FAILED);
+        ERR_raise(ERR_LIB_RSA, RSA_R_PADDING_CHECK_FAILED);
 
  err:
     BN_CTX_end(ctx);

@@ -166,6 +166,8 @@ int ec_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No extra arguments. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -194,9 +196,9 @@ int ec_main(int argc, char **argv)
     } else if (informat == FORMAT_ENGINE) {
         EVP_PKEY *pkey;
         if (pubin)
-            pkey = load_pubkey(infile, informat, 1, passin, e, "Public Key");
+            pkey = load_pubkey(infile, informat, 1, passin, e, "public key");
         else
-            pkey = load_key(infile, informat, 1, passin, e, "Private Key");
+            pkey = load_key(infile, informat, 1, passin, e, "private key");
         if (pkey != NULL) {
             eckey = EVP_PKEY_get1_EC_KEY(pkey);
             EVP_PKEY_free(pkey);

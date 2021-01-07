@@ -155,9 +155,9 @@ int evp_cipher_param_to_asn1_ex(EVP_CIPHER_CTX *c, ASN1_TYPE *type,
 
  err:
     if (ret == -2)
-        EVPerr(0, EVP_R_UNSUPPORTED_CIPHER);
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNSUPPORTED_CIPHER);
     else if (ret <= 0)
-        EVPerr(0, EVP_R_CIPHER_PARAMETER_ERROR);
+        ERR_raise(ERR_LIB_EVP, EVP_R_CIPHER_PARAMETER_ERROR);
     if (ret < -1)
         ret = -1;
     return ret;
@@ -225,9 +225,9 @@ int evp_cipher_asn1_to_param_ex(EVP_CIPHER_CTX *c, ASN1_TYPE *type,
     }
 
     if (ret == -2)
-        EVPerr(0, EVP_R_UNSUPPORTED_CIPHER);
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNSUPPORTED_CIPHER);
     else if (ret <= 0)
-        EVPerr(0, EVP_R_CIPHER_PARAMETER_ERROR);
+        ERR_raise(ERR_LIB_EVP, EVP_R_CIPHER_PARAMETER_ERROR);
     if (ret < -1)
         ret = -1;
     return ret;
@@ -688,19 +688,7 @@ const OSSL_PROVIDER *EVP_MD_provider(const EVP_MD *md)
 
 int EVP_MD_block_size(const EVP_MD *md)
 {
-    int ok;
-    size_t v;
-    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
-
-    if (md == NULL) {
-        EVPerr(EVP_F_EVP_MD_BLOCK_SIZE, EVP_R_MESSAGE_DIGEST_IS_NULL);
-        return -1;
-    }
-    v = md->block_size;
-    params[0] = OSSL_PARAM_construct_size_t(OSSL_DIGEST_PARAM_BLOCK_SIZE, &v);
-    ok = evp_do_md_getparams(md, params);
-
-    return ok != 0 ? (int)v : -1;
+    return md->block_size;
 }
 
 int EVP_MD_type(const EVP_MD *md)
@@ -715,31 +703,16 @@ int EVP_MD_pkey_type(const EVP_MD *md)
 
 int EVP_MD_size(const EVP_MD *md)
 {
-    int ok;
-    size_t v;
-    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
-
     if (md == NULL) {
-        EVPerr(EVP_F_EVP_MD_SIZE, EVP_R_MESSAGE_DIGEST_IS_NULL);
+        ERR_raise(ERR_LIB_EVP, EVP_R_MESSAGE_DIGEST_IS_NULL);
         return -1;
     }
-    v = md->md_size;
-    params[0] = OSSL_PARAM_construct_size_t(OSSL_DIGEST_PARAM_SIZE, &v);
-    ok = evp_do_md_getparams(md, params);
-
-    return ok != 0 ? (int)v : -1;
+    return md->md_size;
 }
 
 unsigned long EVP_MD_flags(const EVP_MD *md)
 {
-    int ok;
-    unsigned long v = md->flags;
-    OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
-
-    params[0] = OSSL_PARAM_construct_ulong(OSSL_CIPHER_PARAM_FLAGS, &v);
-    ok = evp_do_md_getparams(md, params);
-
-    return ok != 0 ? v : 0;
+    return md->flags;
 }
 
 EVP_MD *EVP_MD_meth_new(int md_type, int pkey_type)
@@ -991,33 +964,6 @@ int EVP_CIPHER_CTX_test_flags(const EVP_CIPHER_CTX *ctx, int flags)
     return (ctx->flags & flags);
 }
 
-int EVP_str2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *value)
-{
-    size_t len;
-
-    len = strlen(value);
-    if (len > INT_MAX)
-        return -1;
-    return cb(ctx, cmd, (void *)value, len);
-}
-
-int EVP_hex2ctrl(int (*cb)(void *ctx, int cmd, void *buf, size_t buflen),
-                 void *ctx, int cmd, const char *hex)
-{
-    unsigned char *bin;
-    long binlen;
-    int rv = -1;
-
-    bin = OPENSSL_hexstr2buf(hex, &binlen);
-    if (bin == NULL)
-        return 0;
-    if (binlen <= INT_MAX)
-        rv = cb(ctx, cmd, bin, binlen);
-    OPENSSL_free(bin);
-    return rv;
-}
-
 int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name)
 {
     OSSL_PARAM params[] = { OSSL_PARAM_END, OSSL_PARAM_END };
@@ -1035,20 +981,16 @@ int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name)
 
         /* Could be a legacy key, try and convert to a ctrl */
         if (ctx->pmeth != NULL && (nid = OBJ_txt2nid(name)) != NID_undef) {
-# ifndef OPENSSL_NO_DH
             if (ctx->pmeth->pkey_id == EVP_PKEY_DH)
                 return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_DH,
                                          EVP_PKEY_OP_PARAMGEN
                                          | EVP_PKEY_OP_KEYGEN,
                                          EVP_PKEY_CTRL_DH_NID, nid, NULL);
-# endif
-# ifndef OPENSSL_NO_EC
             if (ctx->pmeth->pkey_id == EVP_PKEY_EC)
                 return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_EC,
                                          EVP_PKEY_OP_PARAMGEN|EVP_PKEY_OP_KEYGEN,
                                          EVP_PKEY_CTRL_EC_PARAMGEN_CURVE_NID,
                                          nid, NULL);
-# endif
         }
 #endif
         ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);

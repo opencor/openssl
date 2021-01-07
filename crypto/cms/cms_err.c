@@ -10,8 +10,11 @@
 
 #include <openssl/err.h>
 #include <openssl/cmserr.h>
+#include "crypto/cmserr.h"
 
-#ifndef OPENSSL_NO_ERR
+#ifndef OPENSSL_NO_CMS
+
+# ifndef OPENSSL_NO_ERR
 
 static const ERR_STRING_DATA CMS_str_reasons[] = {
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_ADD_SIGNER_ERROR), "add signer error"},
@@ -47,6 +50,7 @@ static const ERR_STRING_DATA CMS_str_reasons[] = {
     "content verify error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_CTRL_ERROR), "ctrl error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_CTRL_FAILURE), "ctrl failure"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_DECODE_ERROR), "decode error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_DECRYPT_ERROR), "decrypt error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_ERROR_GETTING_PUBLIC_KEY),
     "error getting public key"},
@@ -64,6 +68,11 @@ static const ERR_STRING_DATA CMS_str_reasons[] = {
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_INVALID_KEY_ENCRYPTION_PARAMETER),
     "invalid key encryption parameter"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_INVALID_KEY_LENGTH), "invalid key length"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_INVALID_LABEL), "invalid label"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_INVALID_OAEP_PARAMETERS),
+    "invalid oaep parameters"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_KDF_PARAMETER_ERROR),
+    "kdf parameter error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_MD_BIO_INIT_ERROR), "md bio init error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_MESSAGEDIGEST_ATTRIBUTE_WRONG_LENGTH),
     "messagedigest attribute wrong length"},
@@ -102,11 +111,13 @@ static const ERR_STRING_DATA CMS_str_reasons[] = {
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_NO_PUBLIC_KEY), "no public key"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_NO_RECEIPT_REQUEST), "no receipt request"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_NO_SIGNERS), "no signers"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_PEER_KEY_ERROR), "peer key error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE),
     "private key does not match certificate"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_RECEIPT_DECODE_ERROR),
     "receipt decode error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_RECIPIENT_ERROR), "recipient error"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_SHARED_INFO_ERROR), "shared info error"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_SIGNER_CERTIFICATE_NOT_FOUND),
     "signer certificate not found"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_SIGNFINAL_ERROR), "signfinal error"},
@@ -131,10 +142,14 @@ static const ERR_STRING_DATA CMS_str_reasons[] = {
     "unsupported compression algorithm"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_CONTENT_TYPE),
     "unsupported content type"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_ENCRYPTION_TYPE),
+    "unsupported encryption type"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_KEK_ALGORITHM),
     "unsupported kek algorithm"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM),
     "unsupported key encryption algorithm"},
+    {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_LABEL_SOURCE),
+    "unsupported label source"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_RECIPIENTINFO_TYPE),
     "unsupported recipientinfo type"},
     {ERR_PACK(ERR_LIB_CMS, 0, CMS_R_UNSUPPORTED_RECIPIENT_TYPE),
@@ -148,13 +163,16 @@ static const ERR_STRING_DATA CMS_str_reasons[] = {
     {0, NULL}
 };
 
-#endif
+# endif
 
-int ERR_load_CMS_strings(void)
+int err_load_CMS_strings_int(void)
 {
-#ifndef OPENSSL_NO_ERR
+# ifndef OPENSSL_NO_ERR
     if (ERR_reason_error_string(CMS_str_reasons[0].error) == NULL)
         ERR_load_strings_const(CMS_str_reasons);
-#endif
+# endif
     return 1;
 }
+#else
+NON_EMPTY_TRANSLATION_UNIT
+#endif

@@ -189,7 +189,7 @@ SRP_user_pwd *SRP_user_pwd_new(void)
     SRP_user_pwd *ret;
 
     if ((ret = OPENSSL_malloc(sizeof(*ret))) == NULL) {
-        /* SRPerr(SRP_F_SRP_USER_PWD_NEW, ERR_R_MALLOC_FAILURE); */ /*ckerr_ignore*/
+        /* ERR_raise(ERR_LIB_SRP, ERR_R_MALLOC_FAILURE); */ /*ckerr_ignore*/
         return NULL;
     }
     ret->N = NULL;
@@ -596,7 +596,7 @@ SRP_user_pwd *SRP_VBASE_get1_by_user(SRP_VBASE *vb, char *username)
  */
 char *SRP_create_verifier_ex(const char *user, const char *pass, char **salt,
                              char **verifier, const char *N, const char *g,
-                             OPENSSL_CTX *libctx, const char *propq)
+                             OSSL_LIB_CTX *libctx, const char *propq)
 {
     int len;
     char *result = NULL, *vf = NULL;
@@ -702,7 +702,7 @@ char *SRP_create_verifier(const char *user, const char *pass, char **salt,
  */
 int SRP_create_verifier_BN_ex(const char *user, const char *pass, BIGNUM **salt,
                               BIGNUM **verifier, const BIGNUM *N,
-                              const BIGNUM *g, OPENSSL_CTX *libctx,
+                              const BIGNUM *g, OSSL_LIB_CTX *libctx,
                               const char *propq)
 {
     int result = 0;

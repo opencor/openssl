@@ -42,7 +42,7 @@ KDF_DATA *kdf_data_new(void *provctx)
         OPENSSL_free(kdfdata);
         return NULL;
     }
-    kdfdata->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    kdfdata->libctx = PROV_LIBCTX_OF(provctx);
     kdfdata->refcnt = 1;
 
     return kdfdata;
@@ -91,12 +91,12 @@ static void kdf_freedata(void *kdfdata)
     kdf_data_free(kdfdata);
 }
 
-static int kdf_has(void *keydata, int selection)
+static int kdf_has(const void *keydata, int selection)
 {
     return 0;
 }
 
-const OSSL_DISPATCH kdf_keymgmt_functions[] = {
+const OSSL_DISPATCH ossl_kdf_keymgmt_functions[] = {
     { OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))kdf_newdata },
     { OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))kdf_freedata },
     { OSSL_FUNC_KEYMGMT_HAS, (void (*)(void))kdf_has },

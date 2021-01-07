@@ -178,7 +178,7 @@ static void *kmac_fetch_new(void *provctx, const OSSL_PARAM *params)
     if (kctx == NULL)
         return 0;
     if (!ossl_prov_digest_load_from_params(&kctx->digest, params,
-                                      PROV_LIBRARY_CONTEXT_OF(provctx))) {
+                                      PROV_LIBCTX_OF(provctx))) {
         kmac_free(kctx);
         return 0;
     }
@@ -252,7 +252,7 @@ static int kmac_init(void *vmacctx)
 
     /* Check key has been set */
     if (kctx->key_len == 0) {
-        EVPerr(EVP_F_KMAC_INIT, EVP_R_NO_KEY_SET);
+        ERR_raise(ERR_LIB_EVP, EVP_R_NO_KEY_SET);
         return 0;
     }
     if (!EVP_DigestInit_ex(kctx->ctx, ossl_prov_digest_md(&kctx->digest),
@@ -524,7 +524,7 @@ static int kmac_bytepad_encode_key(unsigned char *out, int *out_len,
     return bytepad(out, out_len, tmp, tmp_len, NULL, 0, w);
 }
 
-const OSSL_DISPATCH kmac128_functions[] = {
+const OSSL_DISPATCH ossl_kmac128_functions[] = {
     { OSSL_FUNC_MAC_NEWCTX, (void (*)(void))kmac128_new },
     { OSSL_FUNC_MAC_DUPCTX, (void (*)(void))kmac_dup },
     { OSSL_FUNC_MAC_FREECTX, (void (*)(void))kmac_free },
@@ -540,7 +540,7 @@ const OSSL_DISPATCH kmac128_functions[] = {
     { 0, NULL }
 };
 
-const OSSL_DISPATCH kmac256_functions[] = {
+const OSSL_DISPATCH ossl_kmac256_functions[] = {
     { OSSL_FUNC_MAC_NEWCTX, (void (*)(void))kmac256_new },
     { OSSL_FUNC_MAC_DUPCTX, (void (*)(void))kmac_dup },
     { OSSL_FUNC_MAC_FREECTX, (void (*)(void))kmac_free },

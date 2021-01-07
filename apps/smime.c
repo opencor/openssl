@@ -154,7 +154,7 @@ int smime_main(int argc, char **argv)
     int vpmtouched = 0, rv = 0;
     ENGINE *e = NULL;
     const char *mime_eol = "\n";
-    OPENSSL_CTX *libctx = app_get0_libctx();
+    OSSL_LIB_CTX *libctx = app_get0_libctx();
     const char *propq = app_get0_propq();
 
     if ((vpm = X509_VERIFY_PARAM_new()) == NULL)
@@ -356,11 +356,18 @@ int smime_main(int argc, char **argv)
             break;
         }
     }
+
+    /* Extra arguments are files with recipient keys. */
     argc = opt_num_rest();
     argv = opt_rest();
 
     if (!(operation & SMIME_SIGNERS) && (skkeys != NULL || sksigners != NULL)) {
         BIO_puts(bio_err, "Multiple signers or keys not allowed\n");
+        goto opthelp;
+    }
+    if (!operation) {
+        BIO_puts(bio_err,
+                "No operation (-encrypt|-sign|...) specified\n");
         goto opthelp;
     }
 
@@ -398,8 +405,6 @@ int smime_main(int argc, char **argv)
             BIO_printf(bio_err, "No recipient(s) certificate(s) specified\n");
             goto opthelp;
         }
-    } else if (!operation) {
-        goto opthelp;
     }
 
     if (!app_passwd(passinarg, NULL, &passin, NULL)) {
@@ -435,8 +440,7 @@ int smime_main(int argc, char **argv)
         if (encerts == NULL)
             goto end;
         while (*argv != NULL) {
-            cert = load_cert(*argv, FORMAT_UNDEF,
-                             "recipient certificate file");
+            cert = load_cert(*argv, "recipient certificate file");
             if (cert == NULL)
                 goto end;
             sk_X509_push(encerts, cert);
@@ -453,7 +457,7 @@ int smime_main(int argc, char **argv)
     }
 
     if (recipfile != NULL && (operation == SMIME_DECRYPT)) {
-        if ((recip = load_cert(recipfile, FORMAT_UNDEF,
+        if ((recip = load_cert(recipfile,
                                "recipient certificate file")) == NULL) {
             ERR_print_errors(bio_err);
             goto end;
@@ -471,7 +475,7 @@ int smime_main(int argc, char **argv)
     }
 
     if (keyfile != NULL) {
-        key = load_key(keyfile, keyform, 0, passin, e, "signing key file");
+        key = load_key(keyfile, keyform, 0, passin, e, "signing key");
         if (key == NULL)
             goto end;
 
@@ -491,7 +495,7 @@ int smime_main(int argc, char **argv)
     if (operation & SMIME_IP) {
         PKCS7 *p7_in = NULL;
 
-        p7 = PKCS7_new_with_libctx(libctx, propq);
+        p7 = PKCS7_new_ex(libctx, propq);
         if (p7 == NULL) {
             BIO_printf(bio_err, "Error allocating PKCS7 object\n");
             goto end;
@@ -538,7 +542,7 @@ int smime_main(int argc, char **argv)
     if (operation == SMIME_ENCRYPT) {
         if (indef)
             flags |= PKCS7_STREAM;
-        p7 = PKCS7_encrypt_with_libctx(encerts, in, cipher, flags, libctx, propq);
+        p7 = PKCS7_encrypt_ex(encerts, in, cipher, flags, libctx, propq);
     } else if (operation & SMIME_SIGNERS) {
         int i;
         /*
@@ -553,8 +557,7 @@ int smime_main(int argc, char **argv)
                 flags |= PKCS7_STREAM;
             }
             flags |= PKCS7_PARTIAL;
-            p7 = PKCS7_sign_with_libctx(NULL, NULL, other, in, flags, libctx,
-                                        propq);
+            p7 = PKCS7_sign_ex(NULL, NULL, other, in, flags, libctx, propq);
             if (p7 == NULL)
                 goto end;
             if (flags & PKCS7_NOCERTS) {
@@ -569,11 +572,10 @@ int smime_main(int argc, char **argv)
         for (i = 0; i < sk_OPENSSL_STRING_num(sksigners); i++) {
             signerfile = sk_OPENSSL_STRING_value(sksigners, i);
             keyfile = sk_OPENSSL_STRING_value(skkeys, i);
-            signer = load_cert(signerfile, FORMAT_UNDEF,
-                               "signer certificate");
+            signer = load_cert(signerfile, "signer certificate");
             if (signer == NULL)
                 goto end;
-            key = load_key(keyfile, keyform, 0, passin, e, "signing key file");
+            key = load_key(keyfile, keyform, 0, passin, e, "signing key");
             if (key == NULL)
                 goto end;
 

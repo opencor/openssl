@@ -25,14 +25,16 @@
 #include <openssl/dsa.h>
 #include <openssl/dh.h>
 #include <openssl/safestack.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
 #include <openssl/x509.h>
+#include <openssl/encoder.h>
 #include "testutil.h"
 #include "internal/nelem.h"
 #include "crypto/bn_dh.h"   /* _bignum_ffdhe2048_p */
 #include "../e_os.h"        /* strcasecmp */
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *nullprov = NULL;
 static OSSL_PROVIDER *libprov = NULL;
 static STACK_OF(OPENSSL_CSTRING) *cipher_names = NULL;
@@ -279,7 +281,7 @@ static int dhx_cert_load(void)
     };
 
     if (!TEST_ptr(bio = BIO_new_mem_buf(dhx_cert, sizeof(dhx_cert)))
-        || !TEST_ptr(cert = X509_new_with_libctx(libctx, NULL))
+        || !TEST_ptr(cert = X509_new_ex(libctx, NULL))
         || !TEST_ptr(d2i_X509_bio(bio, &cert)))
         goto err;
     ret = 1;
@@ -448,19 +450,26 @@ static int rsa_keygen(int bits, EVP_PKEY **pub, EVP_PKEY **priv)
     EVP_PKEY_CTX *keygen_ctx = NULL;
     unsigned char *pub_der = NULL;
     const unsigned char *pp = NULL;
-    long len = 0;
+    size_t len = 0;
+    OSSL_ENCODER_CTX *ectx = NULL;
 
     if (!TEST_ptr(keygen_ctx = EVP_PKEY_CTX_new_from_name(libctx, "RSA", NULL))
         || !TEST_int_gt(EVP_PKEY_keygen_init(keygen_ctx), 0)
         || !TEST_true(EVP_PKEY_CTX_set_rsa_keygen_bits(keygen_ctx, bits))
         || !TEST_int_gt(EVP_PKEY_keygen(keygen_ctx, priv), 0)
-        || !TEST_int_gt(len = i2d_PublicKey(*priv, &pub_der), 0))
+        || !TEST_ptr(ectx =
+                     OSSL_ENCODER_CTX_new_by_EVP_PKEY(*priv,
+                                                      EVP_PKEY_PUBLIC_KEY,
+                                                      "DER", "type-specific",
+                                                      NULL))
+        || !TEST_true(OSSL_ENCODER_to_data(ectx, &pub_der, &len)))
         goto err;
     pp = pub_der;
     if (!TEST_ptr(d2i_PublicKey(EVP_PKEY_RSA, pub, &pp, len)))
         goto err;
     ret = 1;
 err:
+    OSSL_ENCODER_CTX_free(ectx);
     OPENSSL_free(pub_der);
     EVP_PKEY_CTX_free(keygen_ctx);
     return ret;
@@ -639,19 +648,7 @@ int setup_tests(void)
         }
     }
 
-    nullprov = OSSL_PROVIDER_load(NULL, "null");
-    if (!TEST_ptr(nullprov))
-        return 0;
-
-    libctx = OPENSSL_CTX_new();
-    if (!TEST_ptr(libctx))
-        return 0;
-    if (config_file != NULL
-        && !TEST_true(OPENSSL_CTX_load_config(libctx, config_file)))
-        return 0;
-
-    libprov = OSSL_PROVIDER_load(libctx, prov_name);
-    if (!TEST_ptr(libprov))
+    if (!test_get_libctx(&libctx, &nullprov, config_file, &libprov, prov_name))
         return 0;
 
 #if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DH)
@@ -681,6 +678,6 @@ void cleanup_tests(void)
 {
     sk_OPENSSL_CSTRING_free(cipher_names);
     OSSL_PROVIDER_unload(libprov);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
     OSSL_PROVIDER_unload(nullprov);
 }

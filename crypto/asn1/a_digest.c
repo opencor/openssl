@@ -33,11 +33,11 @@ int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type, char *data,
 
     inl = i2d(data, NULL);
     if (inl <= 0) {
-        ASN1err(ASN1_F_ASN1_DIGEST, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_ASN1, ERR_R_INTERNAL_ERROR);
         return 0;
     }
     if ((str = OPENSSL_malloc(inl)) == NULL) {
-        ASN1err(ASN1_F_ASN1_DIGEST, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_ASN1, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     p = str;
@@ -53,10 +53,9 @@ int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type, char *data,
 
 #endif
 
-int asn1_item_digest_with_libctx(const ASN1_ITEM *it, const EVP_MD *md,
-                                 void *asn, unsigned char *data,
-                                 unsigned int *len, OPENSSL_CTX *libctx,
-                                 const char *propq)
+int asn1_item_digest_ex(const ASN1_ITEM *it, const EVP_MD *md, void *asn,
+                        unsigned char *data, unsigned int *len,
+                        OSSL_LIB_CTX *libctx, const char *propq)
 {
     int i, ret = 0;
     unsigned char *str = NULL;
@@ -90,6 +89,6 @@ err:
 int ASN1_item_digest(const ASN1_ITEM *it, const EVP_MD *md, void *asn,
                      unsigned char *data, unsigned int *len)
 {
-    return asn1_item_digest_with_libctx(it, md, asn, data, len, NULL, NULL);
+    return asn1_item_digest_ex(it, md, asn, data, len, NULL, NULL);
 }
 

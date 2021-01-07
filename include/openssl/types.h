@@ -18,6 +18,7 @@ extern "C" {
 
 # include <openssl/e_os2.h>
 # include <openssl/safestack.h>
+# include <openssl/macros.h>
 
 typedef struct ossl_provider_st OSSL_PROVIDER; /* Provider Object */
 
@@ -132,11 +133,15 @@ typedef struct hmac_ctx_st HMAC_CTX;
 typedef struct dh_st DH;
 typedef struct dh_method DH_METHOD;
 
+# ifndef OPENSSL_NO_DEPRECATED_3_0
 typedef struct dsa_st DSA;
 typedef struct dsa_method DSA_METHOD;
+# endif
 
+# ifndef OPENSSL_NO_DEPRECATED_3_0
 typedef struct rsa_st RSA;
 typedef struct rsa_meth_st RSA_METHOD;
+# endif
 typedef struct rsa_pss_params_st RSA_PSS_PARAMS;
 
 typedef struct ec_key_st EC_KEY;
@@ -204,7 +209,7 @@ typedef struct ct_policy_eval_ctx_st CT_POLICY_EVAL_CTX;
 typedef struct ossl_store_info_st OSSL_STORE_INFO;
 typedef struct ossl_store_search_st OSSL_STORE_SEARCH;
 
-typedef struct openssl_ctx_st OPENSSL_CTX;
+typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
 
 typedef struct ossl_dispatch_st OSSL_DISPATCH;
 typedef struct ossl_item_st OSSL_ITEM;

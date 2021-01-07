@@ -50,14 +50,14 @@ static OSSL_FUNC_keymgmt_gen_set_params_fn cmac_gen_set_params;
 static OSSL_FUNC_keymgmt_gen_settable_params_fn cmac_gen_settable_params;
 
 struct mac_gen_ctx {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     int selection;
     unsigned char *priv_key;
     size_t priv_key_len;
     PROV_CIPHER cipher;
 };
 
-MAC_KEY *mac_key_new(OPENSSL_CTX *libctx, int cmac)
+MAC_KEY *ossl_mac_key_new(OSSL_LIB_CTX *libctx, int cmac)
 {
     MAC_KEY *mackey;
 
@@ -80,7 +80,7 @@ MAC_KEY *mac_key_new(OPENSSL_CTX *libctx, int cmac)
     return mackey;
 }
 
-void mac_key_free(MAC_KEY *mackey)
+void ossl_mac_key_free(MAC_KEY *mackey)
 {
     int ref = 0;
 
@@ -98,7 +98,7 @@ void mac_key_free(MAC_KEY *mackey)
     OPENSSL_free(mackey);
 }
 
-int mac_key_up_ref(MAC_KEY *mackey)
+int ossl_mac_key_up_ref(MAC_KEY *mackey)
 {
     int ref = 0;
 
@@ -118,22 +118,22 @@ int mac_key_up_ref(MAC_KEY *mackey)
 
 static void *mac_new(void *provctx)
 {
-    return mac_key_new(PROV_LIBRARY_CONTEXT_OF(provctx), 0);
+    return ossl_mac_key_new(PROV_LIBCTX_OF(provctx), 0);
 }
 
 static void *mac_new_cmac(void *provctx)
 {
-    return mac_key_new(PROV_LIBRARY_CONTEXT_OF(provctx), 1);
+    return ossl_mac_key_new(PROV_LIBCTX_OF(provctx), 1);
 }
 
 static void mac_free(void *mackey)
 {
-    mac_key_free(mackey);
+    ossl_mac_key_free(mackey);
 }
 
-static int mac_has(void *keydata, int selection)
+static int mac_has(const void *keydata, int selection)
 {
-    MAC_KEY *key = keydata;
+    const MAC_KEY *key = keydata;
     int ok = 0;
 
     if (ossl_prov_is_running() && key != NULL) {
@@ -372,7 +372,7 @@ static const OSSL_PARAM *mac_settable_params(void *provctx)
 
 static void *mac_gen_init(void *provctx, int selection)
 {
-    OPENSSL_CTX *libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(provctx);
     struct mac_gen_ctx *gctx = NULL;
 
     if (!ossl_prov_is_running())
@@ -454,7 +454,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
     if (!ossl_prov_is_running() || gctx == NULL)
         return NULL;
 
-    if ((key = mac_key_new(gctx->libctx, 0)) == NULL) {
+    if ((key = ossl_mac_key_new(gctx->libctx, 0)) == NULL) {
         ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
@@ -465,7 +465,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
 
     if (gctx->priv_key == NULL) {
         ERR_raise(ERR_LIB_PROV, EVP_R_INVALID_KEY);
-        mac_key_free(key);
+        ossl_mac_key_free(key);
         return NULL;
     }
 
@@ -497,7 +497,7 @@ static void mac_gen_cleanup(void *genctx)
     OPENSSL_free(gctx);
 }
 
-const OSSL_DISPATCH mac_legacy_keymgmt_functions[] = {
+const OSSL_DISPATCH ossl_mac_legacy_keymgmt_functions[] = {
     { OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))mac_new },
     { OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))mac_free },
     { OSSL_FUNC_KEYMGMT_GET_PARAMS, (void (*) (void))mac_get_params },
@@ -519,7 +519,7 @@ const OSSL_DISPATCH mac_legacy_keymgmt_functions[] = {
     { 0, NULL }
 };
 
-const OSSL_DISPATCH cmac_legacy_keymgmt_functions[] = {
+const OSSL_DISPATCH ossl_cossl_mac_legacy_keymgmt_functions[] = {
     { OSSL_FUNC_KEYMGMT_NEW, (void (*)(void))mac_new_cmac },
     { OSSL_FUNC_KEYMGMT_FREE, (void (*)(void))mac_free },
     { OSSL_FUNC_KEYMGMT_GET_PARAMS, (void (*) (void))mac_get_params },

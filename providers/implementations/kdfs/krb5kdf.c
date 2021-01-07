@@ -132,7 +132,7 @@ static int krb5kdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
     const OSSL_PARAM *p;
     KRB5KDF_CTX *ctx = vctx;
-    OPENSSL_CTX *provctx = PROV_LIBRARY_CONTEXT_OF(ctx->provctx);
+    OSSL_LIB_CTX *provctx = PROV_LIBCTX_OF(ctx->provctx);
 
     if (!ossl_prov_cipher_load_from_params(&ctx->cipher, params, provctx))
         return 0;
@@ -188,7 +188,7 @@ static const OSSL_PARAM *krb5kdf_gettable_ctx_params(ossl_unused void *provctx)
     return known_gettable_ctx_params;
 }
 
-const OSSL_DISPATCH kdf_krb5kdf_functions[] = {
+const OSSL_DISPATCH ossl_kdf_krb5kdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))krb5kdf_new },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))krb5kdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))krb5kdf_reset },

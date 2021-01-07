@@ -14,21 +14,16 @@
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
+# include <openssl/cryptoerr_legacy.h>
 
-
-# include <openssl/opensslconf.h>
 
 # ifndef OPENSSL_NO_CMS
 
-#  ifdef  __cplusplus
-extern "C"
-#  endif
-int ERR_load_CMS_strings(void);
 
 /*
  * CMS function codes.
  */
-# ifndef OPENSSL_NO_DEPRECATED_3_0
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
 #   define CMS_F_CHECK_CONTENT                              0
 #   define CMS_F_CMS_ADD0_CERT                              0
 #   define CMS_F_CMS_ADD0_RECIPIENT_KEY                     0
@@ -121,7 +116,7 @@ int ERR_load_CMS_strings(void);
 #   define CMS_F_CMS_VERIFY                                 0
 #   define CMS_F_ESS_CHECK_SIGNING_CERTS                    0
 #   define CMS_F_KEK_UNWRAP_KEY                             0
-# endif
+#  endif
 
 /*
  * CMS reason codes.
@@ -146,6 +141,7 @@ int ERR_load_CMS_strings(void);
 #  define CMS_R_CONTENT_VERIFY_ERROR                       109
 #  define CMS_R_CTRL_ERROR                                 110
 #  define CMS_R_CTRL_FAILURE                               111
+#  define CMS_R_DECODE_ERROR                               187
 #  define CMS_R_DECRYPT_ERROR                              112
 #  define CMS_R_ERROR_GETTING_PUBLIC_KEY                   113
 #  define CMS_R_ERROR_READING_MESSAGEDIGEST_ATTRIBUTE      114
@@ -156,6 +152,9 @@ int ERR_load_CMS_strings(void);
 #  define CMS_R_INVALID_ENCRYPTED_KEY_LENGTH               117
 #  define CMS_R_INVALID_KEY_ENCRYPTION_PARAMETER           176
 #  define CMS_R_INVALID_KEY_LENGTH                         118
+#  define CMS_R_INVALID_LABEL                              190
+#  define CMS_R_INVALID_OAEP_PARAMETERS                    191
+#  define CMS_R_KDF_PARAMETER_ERROR                        186
 #  define CMS_R_MD_BIO_INIT_ERROR                          119
 #  define CMS_R_MESSAGEDIGEST_ATTRIBUTE_WRONG_LENGTH       120
 #  define CMS_R_MESSAGEDIGEST_WRONG_LENGTH                 121
@@ -186,9 +185,11 @@ int ERR_load_CMS_strings(void);
 #  define CMS_R_NO_PUBLIC_KEY                              134
 #  define CMS_R_NO_RECEIPT_REQUEST                         168
 #  define CMS_R_NO_SIGNERS                                 135
+#  define CMS_R_PEER_KEY_ERROR                             188
 #  define CMS_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE     136
 #  define CMS_R_RECEIPT_DECODE_ERROR                       169
 #  define CMS_R_RECIPIENT_ERROR                            137
+#  define CMS_R_SHARED_INFO_ERROR                          189
 #  define CMS_R_SIGNER_CERTIFICATE_NOT_FOUND               138
 #  define CMS_R_SIGNFINAL_ERROR                            139
 #  define CMS_R_SMIME_TEXT_ERROR                           140
@@ -204,8 +205,10 @@ int ERR_load_CMS_strings(void);
 #  define CMS_R_UNKNOWN_ID                                 150
 #  define CMS_R_UNSUPPORTED_COMPRESSION_ALGORITHM          151
 #  define CMS_R_UNSUPPORTED_CONTENT_TYPE                   152
+#  define CMS_R_UNSUPPORTED_ENCRYPTION_TYPE                192
 #  define CMS_R_UNSUPPORTED_KEK_ALGORITHM                  153
 #  define CMS_R_UNSUPPORTED_KEY_ENCRYPTION_ALGORITHM       179
+#  define CMS_R_UNSUPPORTED_LABEL_SOURCE                   193
 #  define CMS_R_UNSUPPORTED_RECIPIENTINFO_TYPE             155
 #  define CMS_R_UNSUPPORTED_RECIPIENT_TYPE                 154
 #  define CMS_R_UNSUPPORTED_TYPE                           156

@@ -74,7 +74,7 @@ static OSSL_ITEM padding_item[] = {
  */
 
 typedef struct {
-    OPENSSL_CTX *libctx;
+    OSSL_LIB_CTX *libctx;
     char *propq;
     RSA *rsa;
     int operation;
@@ -170,7 +170,7 @@ static void *rsa_newctx(void *provctx, const char *propq)
         return NULL;
     }
 
-    prsactx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
+    prsactx->libctx = PROV_LIBCTX_OF(provctx);
     prsactx->flag_allow_md = 1;
     prsactx->propq = propq_copy;
     return prsactx;
@@ -221,8 +221,9 @@ static int rsa_setup_md(PROV_RSA_CTX *ctx, const char *mdname,
          */
         ctx->aid_len = 0;
         if (WPACKET_init_der(&pkt, ctx->aid_buf, sizeof(ctx->aid_buf))
-            && DER_w_algorithmIdentifier_MDWithRSAEncryption(&pkt, -1, ctx->rsa,
-                                                             md_nid)
+            && ossl_DER_w_algorithmIdentifier_MDWithRSAEncryption(&pkt, -1,
+                                                                  ctx->rsa,
+                                                                  md_nid)
             && WPACKET_finish(&pkt)) {
             WPACKET_get_total_written(&pkt, &ctx->aid_len);
             ctx->aid = WPACKET_get_curr(&pkt);
@@ -287,7 +288,7 @@ static int rsa_signverify_init(void *vprsactx, void *vrsa, int operation)
     prsactx->rsa = vrsa;
     prsactx->operation = operation;
 
-    if (!rsa_check_key(vrsa, operation == EVP_PKEY_OP_SIGN)) {
+    if (!ossl_rsa_check_key(vrsa, operation == EVP_PKEY_OP_SIGN)) {
         ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
         return 0;
     }
@@ -305,17 +306,17 @@ static int rsa_signverify_init(void *vprsactx, void *vrsa, int operation)
 
         {
             const RSA_PSS_PARAMS_30 *pss =
-                rsa_get0_pss_params_30(prsactx->rsa);
+                ossl_rsa_get0_pss_params_30(prsactx->rsa);
 
-            if (!rsa_pss_params_30_is_unrestricted(pss)) {
-                int md_nid = rsa_pss_params_30_hashalg(pss);
-                int mgf1md_nid = rsa_pss_params_30_maskgenhashalg(pss);
-                int min_saltlen = rsa_pss_params_30_saltlen(pss);
+            if (!ossl_rsa_pss_params_30_is_unrestricted(pss)) {
+                int md_nid = ossl_rsa_pss_params_30_hashalg(pss);
+                int mgf1md_nid = ossl_rsa_pss_params_30_maskgenhashalg(pss);
+                int min_saltlen = ossl_rsa_pss_params_30_saltlen(pss);
                 const char *mdname, *mgf1mdname;
                 size_t len;
 
-                mdname = rsa_oaeppss_nid2name(md_nid);
-                mgf1mdname = rsa_oaeppss_nid2name(mgf1md_nid);
+                mdname = ossl_rsa_oaeppss_nid2name(md_nid);
+                mgf1mdname = ossl_rsa_oaeppss_nid2name(mgf1md_nid);
                 prsactx->min_saltlen = min_saltlen;
 
                 if (mdname == NULL) {
@@ -869,6 +870,7 @@ static void *rsa_dupctx(void *vprsactx)
     dstctx->md = NULL;
     dstctx->mdctx = NULL;
     dstctx->tbuf = NULL;
+    dstctx->propq = NULL;
 
     if (srcctx->rsa != NULL && !RSA_up_ref(srcctx->rsa))
         goto err;
@@ -886,6 +888,12 @@ static void *rsa_dupctx(void *vprsactx)
         dstctx->mdctx = EVP_MD_CTX_new();
         if (dstctx->mdctx == NULL
                 || !EVP_MD_CTX_copy_ex(dstctx->mdctx, srcctx->mdctx))
+            goto err;
+    }
+
+    if (srcctx->propq != NULL) {
+        dstctx->propq = OPENSSL_strdup(srcctx->propq);
+        if (dstctx->propq == NULL)
             goto err;
     }
 
@@ -1295,7 +1303,7 @@ static const OSSL_PARAM *rsa_settable_ctx_md_params(void *vprsactx)
     return EVP_MD_settable_ctx_params(prsactx->md);
 }
 
-const OSSL_DISPATCH rsa_signature_functions[] = {
+const OSSL_DISPATCH ossl_rsa_signature_functions[] = {
     { OSSL_FUNC_SIGNATURE_NEWCTX, (void (*)(void))rsa_newctx },
     { OSSL_FUNC_SIGNATURE_SIGN_INIT, (void (*)(void))rsa_sign_init },
     { OSSL_FUNC_SIGNATURE_SIGN, (void (*)(void))rsa_sign },

@@ -18,7 +18,7 @@
 #include "self_test_data.inc"
 
 static int self_test_digest(const ST_KAT_DIGEST *t, OSSL_SELF_TEST *st,
-                            OPENSSL_CTX *libctx)
+                            OSSL_LIB_CTX *libctx)
 {
     int ok = 0;
     unsigned char out[EVP_MAX_MD_SIZE];
@@ -83,7 +83,7 @@ static int cipher_init(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *cipher,
 
 /* Test a single KAT for encrypt/decrypt */
 static int self_test_cipher(const ST_KAT_CIPHER *t, OSSL_SELF_TEST *st,
-                            OPENSSL_CTX *libctx)
+                            OSSL_LIB_CTX *libctx)
 {
     int ret = 0, encrypt = 1, len, ct_len = 0, pt_len = 0;
     EVP_CIPHER_CTX *ctx = NULL;
@@ -169,6 +169,11 @@ static int add_params(OSSL_PARAM_BLD *bld, const ST_KAT_PARAM *params,
                 goto err;
             break;
         }
+        case OSSL_PARAM_INTEGER: {
+            if (!OSSL_PARAM_BLD_push_int(bld, p->name, *(int *)p->data))
+                goto err;
+            break;
+        }
         default:
             break;
         }
@@ -179,10 +184,10 @@ err:
 }
 
 static int self_test_kdf(const ST_KAT_KDF *t, OSSL_SELF_TEST *st,
-                         OPENSSL_CTX *libctx)
+                         OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
-    unsigned char out[64];
+    unsigned char out[128];
     EVP_KDF *kdf = NULL;
     EVP_KDF_CTX *ctx = NULL;
     BN_CTX *bnctx = NULL;
@@ -236,7 +241,7 @@ err:
 }
 
 static int self_test_drbg(const ST_KAT_DRBG *t, OSSL_SELF_TEST *st,
-                          OPENSSL_CTX *libctx)
+                          OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
     unsigned char out[256];
@@ -315,7 +320,10 @@ static int self_test_drbg(const ST_KAT_DRBG *t, OSSL_SELF_TEST *st,
     if (!EVP_RAND_set_ctx_params(test, drbg_params))
         goto err;
 
-    /* This calls PROV_DRBG_reseed() internally when prediction_resistance = 1 */
+    /*
+     * This calls ossl_prov_drbg_reseed() internally when
+     * prediction_resistance = 1
+     */
     if (!EVP_RAND_generate(drbg, out, t->expectedlen, strength,
                            prediction_resistance,
                            t->entropyaddin2, t->entropyaddin2len))
@@ -329,7 +337,8 @@ static int self_test_drbg(const ST_KAT_DRBG *t, OSSL_SELF_TEST *st,
     if (!EVP_RAND_uninstantiate(drbg))
         goto err;
     /*
-     * Check that the DRBG data has been zeroized after PROV_DRBG_uninstantiate.
+     * Check that the DRBG data has been zeroized after
+     * ossl_prov_drbg_uninstantiate.
      */
     if (!EVP_RAND_verify_zeroization(drbg))
         goto err;
@@ -342,8 +351,9 @@ err:
     return ret;
 }
 
+#if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_EC)
 static int self_test_ka(const ST_KAT_KAS *t,
-                        OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+                        OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
     EVP_PKEY_CTX *kactx = NULL, *dctx = NULL;
@@ -417,9 +427,10 @@ err:
     OSSL_SELF_TEST_onend(st, ret);
     return ret;
 }
+#endif /* !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_EC) */
 
 static int self_test_sign(const ST_KAT_SIGN *t,
-                         OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+                         OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
     OSSL_PARAM *params = NULL, *params_sig = NULL;
@@ -509,7 +520,7 @@ err:
  * and decrypt..
  */
 static int self_test_asym_cipher(const ST_KAT_ASYM_CIPHER *t, OSSL_SELF_TEST *st,
-                                 OPENSSL_CTX *libctx)
+                                 OSSL_LIB_CTX *libctx)
 {
     int ret = 0;
     OSSL_PARAM *keyparams = NULL, *initparams = NULL;
@@ -594,7 +605,7 @@ err:
  * All tests are run regardless of if they fail or not.
  * Return 0 if any test fails.
  */
-static int self_test_digests(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_digests(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -605,7 +616,7 @@ static int self_test_digests(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
     return ret;
 }
 
-static int self_test_ciphers(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_ciphers(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -616,7 +627,7 @@ static int self_test_ciphers(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
     return ret;
 }
 
-static int self_test_asym_ciphers(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_asym_ciphers(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -627,7 +638,7 @@ static int self_test_asym_ciphers(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
     return ret;
 }
 
-static int self_test_kdfs(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_kdfs(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -638,7 +649,7 @@ static int self_test_kdfs(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
     return ret;
 }
 
-static int self_test_drbgs(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_drbgs(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -649,18 +660,22 @@ static int self_test_drbgs(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
     return ret;
 }
 
-static int self_test_kas(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_kas(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
-    int i, ret = 1;
+    int ret = 1;
+#if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_EC)
+    int i;
 
     for (i = 0; i < (int)OSSL_NELEM(st_kat_kas_tests); ++i) {
         if (!self_test_ka(&st_kat_kas_tests[i], st, libctx))
             ret = 0;
     }
+#endif
+
     return ret;
 }
 
-static int self_test_signatures(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+static int self_test_signatures(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int i, ret = 1;
 
@@ -676,7 +691,7 @@ static int self_test_signatures(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
  * Return 1 is successful, otherwise return 0.
  * This runs all the tests regardless of if any fail.
  */
-int SELF_TEST_kats(OSSL_SELF_TEST *st, OPENSSL_CTX *libctx)
+int SELF_TEST_kats(OSSL_SELF_TEST *st, OSSL_LIB_CTX *libctx)
 {
     int ret = 1;
 

@@ -21,8 +21,7 @@ B<openssl> B<pkcs7>
 [B<-print_certs>]
 [B<-text>]
 [B<-noout>]
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- $OpenSSL::safe::opt_provider_synopsis -}
+{- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_provider_synopsis -}
 
 =for openssl ifdef engine
 
@@ -43,7 +42,7 @@ Print out a usage message.
 =item B<-inform> B<DER>|B<PEM>, B<-outform> B<DER>|B<PEM>
 
 The input and formats; the default is B<PEM>.
-See L<openssl(1)/Format Options> for details.
+See L<openssl-format-options(1)> for details.
 
 The data is a PKCS#7 Version 1.5 structure.
 

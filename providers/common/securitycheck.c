@@ -25,7 +25,7 @@
  * Set protect = 1 for encryption or signing operations, or 0 otherwise. See
  * https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-131Ar2.pdf.
  */
-int rsa_check_key(const RSA *rsa, int protect)
+int ossl_rsa_check_key(const RSA *rsa, int protect)
 {
 #if !defined(OPENSSL_NO_FIPS_SECURITYCHECKS)
     if (securitycheck_enabled()) {
@@ -129,12 +129,13 @@ int dsa_check_key(const DSA *dsa, int sign)
         N = BN_num_bits(q);
 
         /*
-         * Valid sizes or verification - Note this could be a fips186-2 type
-         * key - so we allow 512 also. When this is no longer suppported the
-         * lower bound should be increased to 1024.
+         * For Digital signature verification DSA keys with < 112 bits of
+         * security strength (i.e L < 2048 bits), are still allowed for legacy
+         * use. The bounds given in SP800 131Ar2 - Table 2 are
+         * (512 <= L < 2048 and 160 <= N < 224)
          */
-        if (!sign)
-            return (L >= 512 && N >= 160);
+        if (!sign && L < 2048)
+            return (L >= 512 && N >= 160 && N < 224);
 
          /* Valid sizes for both sign and verify */
         if (L == 2048 && (N == 224 || N == 256))

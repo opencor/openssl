@@ -9,7 +9,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "cmp_testlib.h"
+#include "helpers/cmp_testlib.h"
 
 #include "apps/cmp_mock_srv.h"
 
@@ -30,7 +30,7 @@ typedef struct test_fixture {
     STACK_OF(X509) *caPubs;
 } CMP_SES_TEST_FIXTURE;
 
-static OPENSSL_CTX *libctx = NULL;
+static OSSL_LIB_CTX *libctx = NULL;
 static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
 
 static EVP_PKEY *server_key = NULL;
@@ -343,7 +343,7 @@ void cleanup_tests(void)
     EVP_PKEY_free(server_key);
     X509_free(client_cert);
     EVP_PKEY_free(client_key);
-    OPENSSL_CTX_free(libctx);
+    OSSL_LIB_CTX_free(libctx);
     return;
 }
 
@@ -366,7 +366,7 @@ int setup_tests(void)
         return 0;
     }
 
-    if (!test_get_libctx(&libctx, &default_null_provider, &provider, 5, USAGE))
+    if (!test_arg_libctx(&libctx, &default_null_provider, &provider, 5, USAGE))
         return 0;
 
     if (!TEST_ptr(server_key = load_pem_key(server_key_f, libctx))

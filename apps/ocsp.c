@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -223,7 +223,7 @@ int ocsp_main(int argc, char **argv)
     X509_STORE *store = NULL;
     X509_VERIFY_PARAM *vpm = NULL;
     const char *CAfile = NULL, *CApath = NULL, *CAstore = NULL;
-    char *header, *value;
+    char *header, *value, *respdigname = NULL;
     char *host = NULL, *port = NULL, *path = "/", *outfile = NULL;
     char *rca_filename = NULL, *reqin = NULL, *respin = NULL;
     char *reqout = NULL, *respout = NULL, *ridx_filename = NULL;
@@ -241,14 +241,10 @@ int ocsp_main(int argc, char **argv)
     unsigned long sign_flags = 0, verify_flags = 0, rflags = 0;
     OPTION_CHOICE o;
 
-    reqnames = sk_OPENSSL_STRING_new_null();
-    if (reqnames == NULL)
+    if ((reqnames = sk_OPENSSL_STRING_new_null()) == NULL
+            || (ids = sk_OCSP_CERTID_new_null()) == NULL
+            || (vpm = X509_VERIFY_PARAM_new()) == NULL)
         goto end;
-    ids = sk_OCSP_CERTID_new_null();
-    if (ids == NULL)
-        goto end;
-    if ((vpm = X509_VERIFY_PARAM_new()) == NULL)
-        return 1;
 
     prog = opt_init(argc, argv, ocsp_options);
     while ((o = opt_next()) != OPT_EOF) {
@@ -275,9 +271,10 @@ int ocsp_main(int argc, char **argv)
             OPENSSL_free(tport);
             OPENSSL_free(tpath);
             thost = tport = tpath = NULL;
-            if (!OSSL_HTTP_parse_url(opt_arg(),
-                                     &host, &port, NULL, &path, &use_ssl)) {
-                BIO_printf(bio_err, "%s Error parsing URL\n", prog);
+            if (!OSSL_HTTP_parse_url(opt_arg(), &use_ssl, NULL /* userinfo */,
+                                     &host, &port, NULL /* port_num */,
+                                     &path, NULL /* qry */, NULL /* frag */)) {
+                BIO_printf(bio_err, "%s Error parsing -url argument\n", prog);
                 goto end;
             }
             thost = host;
@@ -467,8 +464,7 @@ int ocsp_main(int argc, char **argv)
             rcertfile = opt_arg();
             break;
         case OPT_RMD:   /* Response MessageDigest */
-            if (!opt_md(opt_arg(), &rsign_md))
-                goto end;
+            respdigname = opt_arg();
             break;
         case OPT_RSIGOPT:
             if (rsign_sigopts == NULL)
@@ -526,6 +522,11 @@ int ocsp_main(int argc, char **argv)
         goto opthelp;
     }
 
+    if (respdigname != NULL) {
+        if (!opt_md(respdigname, &rsign_md))
+            goto end;
+    }
+
     /* Have we anything to do? */
     if (req == NULL && reqin == NULL
         && respin == NULL && !(port != NULL && ridx_filename != NULL))
@@ -569,10 +570,10 @@ int ocsp_main(int argc, char **argv)
             BIO_printf(bio_err, "Error loading responder certificate\n");
             goto end;
         }
-        if (!load_certs(rca_filename, &rca_cert, NULL, "CA certificates"))
+        if (!load_certs(rca_filename, 0, &rca_cert, NULL, "CA certificates"))
             goto end;
         if (rcertfile != NULL) {
-            if (!load_certs(rcertfile, &rother, NULL,
+            if (!load_certs(rcertfile, 0, &rother, NULL,
                             "responder other certificates"))
                 goto end;
         }
@@ -666,7 +667,7 @@ redo_accept:
             goto end;
         }
         if (sign_certfile != NULL) {
-            if (!load_certs(sign_certfile, &sign_other, NULL,
+            if (!load_certs(sign_certfile, 0, &sign_other, NULL,
                             "signer certificates"))
                 goto end;
         }
@@ -775,7 +776,7 @@ redo_accept:
     if (vpmtouched)
         X509_STORE_set1_param(store, vpm);
     if (verify_certfile != NULL) {
-        if (!load_certs(verify_certfile, &verify_other, NULL,
+        if (!load_certs(verify_certfile, 0, &verify_other, NULL,
                         "validator certificates"))
             goto end;
     }

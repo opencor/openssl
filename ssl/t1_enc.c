@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright 2005 Nokia. All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -69,8 +69,7 @@ static int tls1_PRF(SSL *s,
     *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SEED,
                                              (void *)seed5, (size_t)seed5_len);
     *p = OSSL_PARAM_construct_end();
-    if (EVP_KDF_CTX_set_params(kctx, params)
-            && EVP_KDF_derive(kctx, out, olen)) {
+    if (EVP_KDF_derive(kctx, out, olen, params)) {
         EVP_KDF_CTX_free(kctx);
         return 1;
     }
@@ -379,7 +378,8 @@ int tls1_change_cipher_state(SSL *s, int which)
         }
         if (mac_key == NULL
             || EVP_DigestSignInit_ex(mac_ctx, NULL, EVP_MD_name(m),
-                                     s->ctx->libctx, s->ctx->propq, mac_key) <= 0) {
+                                     s->ctx->libctx, s->ctx->propq, mac_key,
+                                     NULL) <= 0) {
             EVP_PKEY_free(mac_key);
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             goto err;
@@ -539,7 +539,8 @@ int tls1_setup_key_block(SSL *s)
 
     if (!ssl_cipher_get_evp(s->ctx, s->session, &c, &hash, &mac_type,
                             &mac_secret_size, &comp, s->ext.use_etm)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_CIPHER_OR_HASH_UNAVAILABLE);
+        /* Error is already recorded */
+        SSLfatal_alert(s, SSL_AD_INTERNAL_ERROR);
         return 0;
     }
 
@@ -563,7 +564,7 @@ int tls1_setup_key_block(SSL *s)
     s->s3.tmp.key_block = p;
 
     OSSL_TRACE_BEGIN(TLS) {
-        BIO_printf(trc_out, "key block length: %ld\n", num);
+        BIO_printf(trc_out, "key block length: %zu\n", num);
         BIO_printf(trc_out, "client random\n");
         BIO_dump_indent(trc_out, s->s3.client_random, SSL3_RANDOM_SIZE, 4);
         BIO_printf(trc_out, "server random\n");
@@ -596,10 +597,8 @@ int tls1_setup_key_block(SSL *s)
             if (s->session->cipher->algorithm_enc == SSL_eNULL)
                 s->s3.need_empty_fragments = 0;
 
-#ifndef OPENSSL_NO_RC4
             if (s->session->cipher->algorithm_enc == SSL_RC4)
                 s->s3.need_empty_fragments = 0;
-#endif
         }
     }
 

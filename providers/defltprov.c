@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -347,7 +347,7 @@ static const OSSL_ALGORITHM deflt_keyexch[] = {
     { "DH:dhKeyAgreement", "provider=default", ossl_dh_keyexch_functions },
 #endif
 #ifndef OPENSSL_NO_EC
-    { "ECDH", "provider=default", ecossl_dh_keyexch_functions },
+    { "ECDH", "provider=default", ossl_ecdh_keyexch_functions },
     { "X25519", "provider=default", ossl_x25519_keyexch_functions },
     { "X448", "provider=default", ossl_x448_keyexch_functions },
 #endif
@@ -375,9 +375,9 @@ static const OSSL_ALGORITHM deflt_signature[] = {
 #ifndef OPENSSL_NO_EC
     { "ED25519", "provider=default", ossl_ed25519_signature_functions },
     { "ED448", "provider=default", ossl_ed448_signature_functions },
-    { "ECDSA", "provider=default", ecossl_dsa_signature_functions },
+    { "ECDSA", "provider=default", ossl_ecdsa_signature_functions },
 # ifndef OPENSSL_NO_SM2
-    { "SM2", "provider=default", sm2_signature_functions },
+    { "SM2", "provider=default", ossl_sm2_signature_functions },
 # endif
 #endif
     { "HMAC", "provider=default", ossl_mac_legacy_hmac_signature_functions },
@@ -396,7 +396,7 @@ static const OSSL_ALGORITHM deflt_signature[] = {
 static const OSSL_ALGORITHM deflt_asym_cipher[] = {
     { "RSA:rsaEncryption", "provider=default", ossl_rsa_asym_cipher_functions },
 #ifndef OPENSSL_NO_SM2
-    { "SM2", "provider=default", sm2_asym_cipher_functions },
+    { "SM2", "provider=default", ossl_sm2_asym_cipher_functions },
 #endif
     { NULL, NULL, NULL }
 };
@@ -436,7 +436,7 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
     { "CMAC", "provider=default", ossl_cossl_mac_legacy_keymgmt_functions },
 #endif
 #ifndef OPENSSL_NO_SM2
-    { "SM2", "provider=default", sm2_keymgmt_functions },
+    { "SM2", "provider=default", ossl_sm2_keymgmt_functions },
 #endif
     { NULL, NULL, NULL }
 };
@@ -472,7 +472,6 @@ static const OSSL_ALGORITHM *deflt_query(void *provctx, int operation_id,
     case OSSL_OP_DIGEST:
         return deflt_digests;
     case OSSL_OP_CIPHER:
-        ossl_prov_cache_exported_algorithms(deflt_ciphers, exported_ciphers);
         return exported_ciphers;
     case OSSL_OP_MAC:
         return deflt_macs;
@@ -513,7 +512,8 @@ static const OSSL_DISPATCH deflt_dispatch_table[] = {
     { OSSL_FUNC_PROVIDER_GETTABLE_PARAMS, (void (*)(void))deflt_gettable_params },
     { OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))deflt_get_params },
     { OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))deflt_query },
-    { OSSL_FUNC_PROVIDER_GET_CAPABILITIES, (void (*)(void))provider_get_capabilities },
+    { OSSL_FUNC_PROVIDER_GET_CAPABILITIES,
+      (void (*)(void))ossl_prov_get_capabilities },
     { 0, NULL }
 };
 
@@ -559,7 +559,7 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
      * create their own library context.
      */
     if ((*provctx = ossl_prov_ctx_new()) == NULL
-            || (corebiometh = bio_prov_init_bio_method()) == NULL) {
+            || (corebiometh = ossl_bio_prov_init_bio_method()) == NULL) {
         ossl_prov_ctx_free(*provctx);
         *provctx = NULL;
         return 0;
@@ -570,6 +570,7 @@ int ossl_default_provider_init(const OSSL_CORE_HANDLE *handle,
     ossl_prov_ctx_set0_core_bio_method(*provctx, corebiometh);
 
     *out = deflt_dispatch_table;
+    ossl_prov_cache_exported_algorithms(deflt_ciphers, exported_ciphers);
 
     return 1;
 }

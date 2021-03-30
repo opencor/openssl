@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,9 +12,7 @@
 #include <openssl/bio.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/ssl.h>
-#ifndef OPENSSL_NO_SRP
-#include <openssl/srp.h>
-#endif
+#include <openssl/core_names.h>
 
 #include "../../ssl/ssl_local.h"
 #include "internal/sockets.h"
@@ -61,16 +59,6 @@ typedef struct handshake_ex_data_st {
     int session_ticket_do_not_call;
     ssl_servername_t servername;
 } HANDSHAKE_EX_DATA;
-
-typedef struct ctx_data_st {
-    unsigned char *npn_protocols;
-    size_t npn_protocols_len;
-    unsigned char *alpn_protocols;
-    size_t alpn_protocols_len;
-    char *srp_user;
-    char *srp_password;
-    char *session_ticket_app_data;
-} CTX_DATA;
 
 /* |ctx_data| itself is stack-allocated. */
 static void ctx_data_free_data(CTX_DATA *ctx_data)
@@ -313,6 +301,14 @@ static int verify_reject_cb(X509_STORE_CTX *ctx, void *arg) {
     return 0;
 }
 
+static int n_retries = 0;
+static int verify_retry_cb(X509_STORE_CTX *ctx, void *arg) {
+    if (--n_retries < 0)
+        return 1;
+    X509_STORE_CTX_set_error(ctx, X509_V_ERR_APPLICATION_VERIFICATION);
+    return -1;
+}
+
 static int verify_accept_cb(X509_STORE_CTX *ctx, void *arg) {
     return 1;
 }
@@ -440,28 +436,6 @@ static int server_alpn_cb(SSL *s, const unsigned char **out,
         : SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 
-#ifndef OPENSSL_NO_SRP
-static char *client_srp_cb(SSL *s, void *arg)
-{
-    CTX_DATA *ctx_data = (CTX_DATA*)(arg);
-    return OPENSSL_strdup(ctx_data->srp_password);
-}
-
-static int server_srp_cb(SSL *s, int *ad, void *arg)
-{
-    CTX_DATA *ctx_data = (CTX_DATA*)(arg);
-    if (strcmp(ctx_data->srp_user, SSL_get_srp_username(s)) != 0)
-        return SSL3_AL_FATAL;
-    if (SSL_set_srp_server_param_pw(s, ctx_data->srp_user,
-                                    ctx_data->srp_password,
-                                    "2048" /* known group */) < 0) {
-        *ad = SSL_AD_INTERNAL_ERROR;
-        return SSL3_AL_FATAL;
-    }
-    return SSL_ERROR_NONE;
-}
-#endif  /* !OPENSSL_NO_SRP */
-
 static int generate_session_ticket_cb(SSL *s, void *arg)
 {
     CTX_DATA *server_ctx_data = arg;
@@ -525,6 +499,10 @@ static int configure_handshake_ctx(SSL_CTX *server_ctx, SSL_CTX *server2_ctx,
     switch (extra->client.verify_callback) {
     case SSL_TEST_VERIFY_ACCEPT_ALL:
         SSL_CTX_set_cert_verify_callback(client_ctx, &verify_accept_cb, NULL);
+        break;
+    case SSL_TEST_VERIFY_RETRY_ONCE:
+        n_retries = 1;
+        SSL_CTX_set_cert_verify_callback(client_ctx, &verify_retry_cb, NULL);
         break;
     case SSL_TEST_VERIFY_REJECT_ALL:
         SSL_CTX_set_cert_verify_callback(client_ctx, &verify_reject_cb, NULL);
@@ -698,28 +676,10 @@ static int configure_handshake_ctx(SSL_CTX *server_ctx, SSL_CTX *server2_ctx,
     }
 #endif
 #ifndef OPENSSL_NO_SRP
-    if (extra->server.srp_user != NULL) {
-        SSL_CTX_set_srp_username_callback(server_ctx, server_srp_cb);
-        server_ctx_data->srp_user = OPENSSL_strdup(extra->server.srp_user);
-        server_ctx_data->srp_password = OPENSSL_strdup(extra->server.srp_password);
-        SSL_CTX_set_srp_cb_arg(server_ctx, server_ctx_data);
-    }
-    if (extra->server2.srp_user != NULL) {
-        if (!TEST_ptr(server2_ctx))
-            goto err;
-        SSL_CTX_set_srp_username_callback(server2_ctx, server_srp_cb);
-        server2_ctx_data->srp_user = OPENSSL_strdup(extra->server2.srp_user);
-        server2_ctx_data->srp_password = OPENSSL_strdup(extra->server2.srp_password);
-        SSL_CTX_set_srp_cb_arg(server2_ctx, server2_ctx_data);
-    }
-    if (extra->client.srp_user != NULL) {
-        if (!TEST_true(SSL_CTX_set_srp_username(client_ctx,
-                                                extra->client.srp_user)))
-            goto err;
-        SSL_CTX_set_srp_client_pwd_callback(client_ctx, client_srp_cb);
-        client_ctx_data->srp_password = OPENSSL_strdup(extra->client.srp_password);
-        SSL_CTX_set_srp_cb_arg(client_ctx, client_ctx_data);
-    }
+    if (!configure_handshake_ctx_for_srp(server_ctx, server2_ctx, client_ctx,
+                                         extra, server_ctx_data,
+                                         server2_ctx_data, client_ctx_data))
+        goto err;
 #endif  /* !OPENSSL_NO_SRP */
     return 1;
 err:
@@ -806,8 +766,10 @@ static void do_handshake_step(PEER *peer)
             peer->status = PEER_ERROR;
         } else {
             int error = SSL_get_error(peer->ssl, ret);
+
             /* Memory bios should never block with SSL_ERROR_WANT_WRITE. */
-            if (error != SSL_ERROR_WANT_READ)
+            if (error != SSL_ERROR_WANT_READ
+                    && error != SSL_ERROR_WANT_RETRY_VERIFY)
                 peer->status = PEER_ERROR;
         }
     }
@@ -1270,15 +1232,15 @@ static char *dup_str(const unsigned char *in, size_t len)
 
 static int pkey_type(EVP_PKEY *pkey)
 {
-    int nid = EVP_PKEY_id(pkey);
+    if (EVP_PKEY_is_a(pkey, "EC")) {
+        char name[80];
+        size_t name_len;
 
-#ifndef OPENSSL_NO_EC
-    if (nid == EVP_PKEY_EC) {
-        const EC_KEY *ec = EVP_PKEY_get0_EC_KEY(pkey);
-        return EC_GROUP_get_curve_name(EC_KEY_get0_group(ec));
+        if (!EVP_PKEY_get_group_name(pkey, name, sizeof(name), &name_len))
+            return NID_undef;
+        return OBJ_txt2nid(name);
     }
-#endif
-    return nid;
+    return EVP_PKEY_id(pkey);
 }
 
 static int peer_pkey_type(SSL *s)
@@ -1672,6 +1634,10 @@ static HANDSHAKE_RESULT *do_handshake_internal(
     else
         ret->session_id = SSL_TEST_SESSION_ID_YES;
     ret->session_ticket_do_not_call = server_ex_data.session_ticket_do_not_call;
+
+    if (extra->client.verify_callback == SSL_TEST_VERIFY_RETRY_ONCE
+            && n_retries != -1)
+        ret->result = SSL_TEST_SERVER_FAIL;
 
 #ifndef OPENSSL_NO_NEXTPROTONEG
     SSL_get0_next_proto_negotiated(client.ssl, &proto, &proto_len);

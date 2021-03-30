@@ -21,8 +21,8 @@ EVP_KEM_gettable_ctx_params, EVP_KEM_settable_ctx_params
  OSSL_PROVIDER *EVP_KEM_provider(const EVP_KEM *kem);
  void EVP_KEM_do_all_provided(OSSL_LIB_CTX *libctx,
                               void (*fn)(EVP_KEM *kem, void *arg), void *arg);
- void EVP_KEM_names_do_all(const EVP_KEM *kem,
-                           void (*fn)(const char *name, void *data), void *data);
+ int EVP_KEM_names_do_all(const EVP_KEM *kem,
+                          void (*fn)(const char *name, void *data), void *data);
  const OSSL_PARAM *EVP_KEM_gettable_ctx_params(const EVP_KEM *kem);
  const OSSL_PARAM *EVP_KEM_settable_ctx_params(const EVP_KEM *kem);
 
@@ -70,6 +70,9 @@ failure.
 
 EVP_KEM_up_ref() returns 1 for success or 0 otherwise.
 
+EVP_KEM_names_do_all() returns 1 if the callback was called for all names. A
+return value of 0 means that the callback was not called for any names.
+
 EVP_KEM_gettable_ctx_params() and EVP_KEM_settable_ctx_params() return
 a constant B<OSSL_PARAM> array or NULL on error.
 
@@ -83,7 +86,7 @@ The functions described here were added in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

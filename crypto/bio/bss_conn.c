@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -536,7 +536,7 @@ static long conn_ctrl(BIO *b, int cmd, long num, void *ptr)
         }
         break;
     case BIO_CTRL_EOF:
-        ret = (b->flags & BIO_FLAGS_IN_EOF) != 0 ? 1 : 0;
+        ret = (b->flags & BIO_FLAGS_IN_EOF) != 0;
         break;
 # ifndef OPENSSL_NO_KTLS
     case BIO_CTRL_SET_KTLS:
@@ -546,9 +546,9 @@ static long conn_ctrl(BIO *b, int cmd, long num, void *ptr)
             BIO_set_ktls_flag(b, num);
         break;
     case BIO_CTRL_GET_KTLS_SEND:
-        return BIO_should_ktls_flag(b, 1);
+        return BIO_should_ktls_flag(b, 1) != 0;
     case BIO_CTRL_GET_KTLS_RECV:
-        return BIO_should_ktls_flag(b, 0);
+        return BIO_should_ktls_flag(b, 0) != 0;
     case BIO_CTRL_SET_KTLS_TX_SEND_CTRL_MSG:
         BIO_set_ktls_ctrl_msg_flag(b);
         data->record_type = num;

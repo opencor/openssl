@@ -41,6 +41,7 @@ Table of Contents
    - [Notes on multi-threading](#notes-on-multi-threading)
    - [Notes on shared libraries](#notes-on-shared-libraries)
    - [Notes on random number generation](#notes-on-random-number-generation)
+   - [Notes on assembler modules compilation](#notes-on-assembler-modules-compilation)
 
 Prerequisites
 =============
@@ -48,8 +49,8 @@ Prerequisites
 To install OpenSSL, you will need:
 
  * A "make" implementation
- * Perl 5 with core modules (please read [NOTES-Perl.md](NOTES-Perl.md))
- * The Perl module `Text::Template` (please read [NOTES-PERL.md](NOTES-Perl.md))
+ * Perl 5 with core modules (please read [NOTES-PERL.md](NOTES-PERL.md))
+ * The Perl module `Text::Template` (please read [NOTES-PERL.md](NOTES-PERL.md))
  * an ANSI C compiler
  * a development environment in the form of development libraries and C
    header files
@@ -58,13 +59,13 @@ To install OpenSSL, you will need:
 For additional platform specific requirements, solutions to specific
 issues and other details, please read one of these:
 
- * [NOTES-Unix.md](NOTES-Unix.md) - notes for Unix like systems
- * [NOTES-VMS.md](NOTES-VMS.md) - notes related to OpenVMS
- * [NOTES-Windows.txt](NOTES-Windows.txt) - notes related to the Windows platform
- * [NOTES-DJGPP.md](NOTES-DJGPP.md) - building for DOS with DJGPP
- * [NOTES-Android.md](NOTES-Android.md) - building for Android platforms (using NDK)
- * [NOTES-Valgrind.md](NOTES-Valgrind.md) - testing with Valgrind
- * [NOTES-Perl.m](NOTES-Perl.md) - some notes on Perl
+ * [Notes for UNIX-like platforms](NOTES-UNIX.md)
+ * [Notes for Android platforms](NOTES-ANDROID.md)
+ * [Notes for Windows platforms](NOTES-WINDOWS.md)
+ * [Notes for the DOS platform with DJGPP](NOTES-DJGPP.md)
+ * [Notes for the OpenVMS platform](NOTES-VMS.md)
+ * [Notes on Perl](NOTES-PERL.md)
+ * [Notes on Valgrind](NOTES-VALGRIND.md)
 
 Notational conventions
 ======================
@@ -234,10 +235,7 @@ Use the following command to install OpenSSL.
 
 By default, OpenSSL will be installed to
 
-    SYS$COMMON:[OPENSSL-'version'...]
-
-where 'version' is the OpenSSL version number with underscores instead
-of periods.
+    SYS$COMMON:[OPENSSL]
 
 ### Windows
 
@@ -266,6 +264,9 @@ To install OpenSSL to a different location (for example into your home
 directory for testing purposes) run `Configure` as shown in the following
 examples.
 
+The options `--prefix` and `--openssldir` are explained in further detail in
+[Directories](#directories) below, and the values used here are mere examples.
+
 On Unix:
 
     $ ./Configure --prefix=/opt/openssl --openssldir=/usr/local/ssl
@@ -285,7 +286,7 @@ Configuration Options
 There are several options to `./Configure` to customize the build (note that
 for Windows, the defaults for `--prefix` and `--openssldir` depend on what
 configuration is used and what Windows implementation OpenSSL is built on.
-More notes on this in [NOTES-Windows.txt](NOTES-Windows.txt):
+For more information, see the [Notes for Windows platforms](NOTES-WINDOWS.md).
 
 API Level
 ---------
@@ -375,7 +376,7 @@ The top of the installation directory tree.  Defaults are:
 
     Unix:           /usr/local
     Windows:        C:\Program Files\OpenSSL
-    OpenVMS:        SYS$COMMON:[OPENSSL-'version']
+    OpenVMS:        SYS$COMMON:[OPENSSL]
 
 Compiler Warnings
 -----------------
@@ -582,6 +583,14 @@ alternative, you can use the language specific variables, `CFLAGS` and `CXXFLAGS
 Build only some minimal set of features.
 This is a developer option used internally for CI build tests of the project.
 
+### no-cached-fetch
+
+Never cache algorithms when they are fetched from a provider.  Normally, a
+provider indicates if the algorithms it supplies can be cached or not.  Using
+this option will reduce run-time memory usage but it also introduces a
+significant performance penalty.  This option is primarily designed to help
+with detecting incorrect reference counting.
+
 ### no-capieng
 
 Don't build the CAPI engine.
@@ -684,7 +693,7 @@ Enable building of integration with external test suites.
 This is a developer option and may not work on all platforms.  The following
 external test suites are currently supported:
 
- - BoringSSL test suite
+ - GOST engine test suite
  - Python PYCA/Cryptography test suite
  - krb5 test suite
 
@@ -1281,7 +1290,7 @@ its default):
 
 ### OpenVMS
 
-'arch' is replaced with the architecture name, `Alpha` or `ia64`,
+'arch' is replaced with the architecture name, `ALPHA` or `IA64`,
 'sover' is replaced with the shared library version (`0101` for 1.1), and
 'pz' is replaced with the pointer size OpenSSL was built with:
 
@@ -1602,8 +1611,8 @@ build.  Use this command:
     $ mms clean                                      ! (or mmk) OpenVMS
     $ nmake clean                                    # Windows
 
-Assembler error messages can sometimes be sidestepped by using the
-`no-asm` configuration option.
+Assembler error messages can sometimes be sidestepped by using the `no-asm`
+configuration option. See also [notes](#notes-on-assembler-modules-compilation).
 
 Compiling parts of OpenSSL with gcc and others with the system compiler will
 result in unresolved symbols on some systems.
@@ -1657,6 +1666,13 @@ OpenSSL provides built-in support for two threading models: pthreads (found on
 most UNIX/Linux systems), and Windows threads.  No other threading models are
 supported.  If your platform does not provide pthreads or Windows threads then
 you should use `Configure` with the `no-threads` option.
+
+For pthreads, all locks are non-recursive. In addition, in a debug build,
+the mutex attribute `PTHREAD_MUTEX_ERRORCHECK` is used. If this is not
+available on your platform, you might have to add
+`-DOPENSSL_NO_MUTEX_ERRORCHECK` to your `Configure` invocation.
+(On Linux `PTHREAD_MUTEX_ERRORCHECK` is an enum value, so a built-in
+ifdef test cannot be used.)
 
 Notes on shared libraries
 -------------------------
@@ -1718,6 +1734,41 @@ and reseeding is disabled (`--with-rand-seed=none`) and it may be necessary
 to install additional support software to obtain a random seed and reseed
 the CSPRNG manually.  Please check out the manual pages for `RAND_add()`,
 `RAND_bytes()`, `RAND_egd()`, and the FAQ for more information.
+
+Notes on assembler modules compilation
+--------------------------------------
+
+Compilation of some code paths in assembler modules might depend on whether the
+current assembler version supports certain ISA extensions or not. Code paths
+that use the AES-NI, PCLMULQDQ, SSSE3, and SHA extensions are always assembled.
+Apart from that, the minimum requirements for the assembler versions are shown
+in the table below:
+
+| ISA extension | GNU as | nasm   | llvm    |
+|---------------|--------|--------|---------|
+| AVX           | 2.19   | 2.09   | 3.0     |
+| AVX2          | 2.22   | 2.10   | 3.1     |
+| ADCX/ADOX     | 2.23   | 2.10   | 3.3     |
+| AVX512        | 2.25   | 2.11.8 | 3.6 (*) |
+| AVX512IFMA    | 2.26   | 2.11.8 | 6.0 (*) |
+| VAES          | 2.30   | 2.13.3 | 6.0 (*) |
+
+---
+
+(*) Even though AVX512 support was implemented in llvm 3.6, prior to version 7.0
+an explicit -march flag was apparently required to compile assembly modules. But
+then the compiler generates processor-specific code, which in turn contradicts
+the idea of performing dispatch at run-time, which is facilitated by the special
+variable `OPENSSL_ia32cap`. For versions older than 7.0, it is possible to work
+around the problem by forcing the build procedure to use the following script:
+
+    #!/bin/sh
+    exec clang -no-integrated-as "$@"
+
+instead of the real clang. In which case it doesn't matter what clang version
+is used, as it is the version of the GNU assembler that will be checked.
+
+---
 
 <!-- Links  -->
 

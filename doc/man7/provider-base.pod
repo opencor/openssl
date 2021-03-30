@@ -18,8 +18,11 @@ provider-base
  /* Functions offered by libcrypto to the providers */
  const OSSL_ITEM *core_gettable_params(const OSSL_CORE_HANDLE *handle);
  int core_get_params(const OSSL_CORE_HANDLE *handle, OSSL_PARAM params[]);
+
+ typedef void (*OSSL_thread_stop_handler_fn)(void *arg);
  int core_thread_start(const OSSL_CORE_HANDLE *handle,
                        OSSL_thread_stop_handler_fn handfn);
+
  OPENSSL_CORE_CTX *core_get_libctx(const OSSL_CORE_HANDLE *handle);
  void core_new_error(const OSSL_CORE_HANDLE *handle);
  void core_set_error_debug(const OSSL_CORE_HANDLE *handle,
@@ -53,28 +56,29 @@ provider-base
  int CRYPTO_secure_allocated(const void *ptr);
  void OPENSSL_cleanse(void *ptr, size_t len);
 
- OSSL_CORE_BIO * BIO_new_file(const char *filename, const char *mode)
- OSSL_CORE_BIO * BIO_new_membuf(const void *buf, int len)
+ OSSL_CORE_BIO *BIO_new_file(const char *filename, const char *mode);
+ OSSL_CORE_BIO *BIO_new_membuf(const void *buf, int len);
  int BIO_read_ex(OSSL_CORE_BIO *bio, void *data, size_t data_len,
-                 size_t *bytes_read))
+                 size_t *bytes_read);
  int BIO_write_ex(OSSL_CORE_BIO *bio, const void *data, size_t data_len,
-                  size_t *written)
- int BIO_free(OSSL_CORE_BIO *bio))
- int BIO_vprintf(OSSL_CORE_BIO *bio, const char *format, va_list args)
- int BIO_vsnprintf(char *buf, size_t n, const char *fmt, va_list args)
+                  size_t *written);
+ int BIO_up_ref(OSSL_CORE_BIO *bio);
+ int BIO_free(OSSL_CORE_BIO *bio);
+ int BIO_vprintf(OSSL_CORE_BIO *bio, const char *format, va_list args);
+ int BIO_vsnprintf(char *buf, size_t n, const char *fmt, va_list args);
 
- void self_test_cb(OPENSSL_CORE_CTX *ctx, OSSL_CALLBACK **cb, void **cbarg)
+ void self_test_cb(OPENSSL_CORE_CTX *ctx, OSSL_CALLBACK **cb, void **cbarg);
 
  size_t get_entropy(const OSSL_CORE_HANDLE *handle,
                     unsigned char **pout, int entropy,
-                    size_t min_len, size_t max_len)
+                    size_t min_len, size_t max_len);
  void cleanup_entropy(const OSSL_CORE_HANDLE *handle,
-                      unsigned char *buf, size_t len)
+                      unsigned char *buf, size_t len);
  size_t get_nonce(const OSSL_CORE_HANDLE *handle,
                   unsigned char **pout, size_t min_len, size_t max_len,
-                  const void *salt, size_t salt_len)
+                  const void *salt, size_t salt_len);
  void cleanup_nonce(const OSSL_CORE_HANDLE *handle,
-                    unsigned char *buf, size_t len)
+                    unsigned char *buf, size_t len);
 
  /* Functions offered by the provider to libcrypto */
  void provider_teardown(void *provctx);
@@ -83,6 +87,8 @@ provider-base
  const OSSL_ALGORITHM *provider_query_operation(void *provctx,
                                                 int operation_id,
                                                 const int *no_store);
+ void provider_unquery_operation(void *provctx, int operation_id,
+                                 const OSSL_ALGORITHM *algs);
  const OSSL_ITEM *provider_get_reason_strings(void *provctx);
  int provider_get_capabilities(void *provctx, const char *capability,
                                OSSL_CALLBACK *cb, void *arg);
@@ -135,6 +141,7 @@ provider):
  BIO_new_file                   OSSL_FUNC_BIO_NEW_FILE
  BIO_new_mem_buf                OSSL_FUNC_BIO_NEW_MEMBUF
  BIO_read_ex                    OSSL_FUNC_BIO_READ_EX
+ BIO_up_ref                     OSSL_FUNC_BIO_UP_REF
  BIO_free                       OSSL_FUNC_BIO_FREE
  BIO_vprintf                    OSSL_FUNC_BIO_VPRINTF
  OPENSSL_cleanse                OSSL_FUNC_OPENSSL_CLEANSE
@@ -151,6 +158,7 @@ F<libcrypto>):
  provider_gettable_params       OSSL_FUNC_PROVIDER_GETTABLE_PARAMS
  provider_get_params            OSSL_FUNC_PROVIDER_GET_PARAMS
  provider_query_operation       OSSL_FUNC_PROVIDER_QUERY_OPERATION
+ provider_unquery_operation     OSSL_FUNC_PROVIDER_UNQUERY_OPERATION
  provider_get_reason_strings    OSSL_FUNC_PROVIDER_GET_REASON_STRINGS
  provider_get_capabilities      OSSL_FUNC_PROVIDER_GET_CAPABILITIES
  provider_self_test             OSSL_FUNC_PROVIDER_SELF_TEST
@@ -164,7 +172,13 @@ core_get_params() retrieves parameters from the core for the given I<handle>.
 See L</Core parameters> below for a description of currently known
 parameters.
 
-=for comment core_thread_start() TBA
+The core_thread_start() function informs the core that the provider has started
+an interest in the current thread. The core will inform the provider when the
+thread eventually stops. It must be passed the I<handle> for this provider, as
+well as a callback I<handfn> which will be called when the thread stops. The
+callback will subsequently be called from the thread that is stopping and gets
+passed the provider context as an argument. This may be useful to perform thread
+specific clean up such as freeing thread local variables.
 
 core_get_libctx() retrieves the library context in which the library
 object for the current provider is stored, accessible through the I<handle>.
@@ -213,7 +227,7 @@ CRYPTO_strndup(), CRYPTO_free(), CRYPTO_clear_free(),
 CRYPTO_realloc(), CRYPTO_clear_realloc(), CRYPTO_secure_malloc(),
 CRYPTO_secure_zalloc(), CRYPTO_secure_free(),
 CRYPTO_secure_clear_free(), CRYPTO_secure_allocated(),
-BIO_new_file(), BIO_new_mem_buf(), BIO_read_ex(), BIO_free(),
+BIO_new_file(), BIO_new_mem_buf(), BIO_read_ex(), BIO_up_ref(), BIO_free(),
 BIO_vprintf(), OPENSSL_cleanse(), and OPENSSL_hexstr2buf()
 correspond exactly to the public functions with the same name.
 As a matter of fact, the pointers in the B<OSSL_DISPATCH> array are
@@ -264,6 +278,11 @@ that corresponds to the given I<operation_id>.
 It should indicate if the core may store a reference to this array by
 setting I<*no_store> to 0 (core may store a reference) or 1 (core may
 not store a reference).
+
+provider_unquery_operation() informs the provider that the result of a
+provider_query_operation() is no longer directly required and that the function
+pointers have been copied.  The I<operation_id> should match that passed to
+provider_query_operation() and I<algs> should be its return value.
 
 provider_get_reason_strings() should return a constant B<OSSL_ITEM>
 array that provides reason strings for reason codes the provider may
@@ -684,7 +703,7 @@ introduced in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

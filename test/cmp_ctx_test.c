@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -158,8 +158,8 @@ static int execute_CTX_print_errors_test(OSSL_CMP_CTX_TEST_FIXTURE *fixture)
         ERR_raise(ERR_LIB_CMP, CMP_R_NULL_ARGUMENT);
         base_err_msg_size += strlen("NULL_ARGUMENT");
         expected_size = base_err_msg_size;
-        ossl_cmp_add_error_data("data1"); /* should prepend separator " : " */
-        expected_size += strlen(" : " "data1");
+        ossl_cmp_add_error_data("data1"); /* should prepend separator ":" */
+        expected_size += strlen(":" "data1");
         ossl_cmp_add_error_data("data2"); /* should prepend separator " : " */
         expected_size += strlen(" : " "data2");
         ossl_cmp_add_error_line("new line"); /* should prepend separator "\n" */
@@ -169,7 +169,7 @@ static int execute_CTX_print_errors_test(OSSL_CMP_CTX_TEST_FIXTURE *fixture)
             res = 0;
 
         ERR_raise(ERR_LIB_CMP, CMP_R_INVALID_ARGS);
-        base_err_msg_size = strlen("INVALID_ARGS") + strlen(" : ");
+        base_err_msg_size = strlen("INVALID_ARGS") + strlen(":");
         expected_size = base_err_msg_size;
         while (expected_size < 4096) { /* force split */
             ERR_add_error_txt(STR_SEP, max_str_literal);

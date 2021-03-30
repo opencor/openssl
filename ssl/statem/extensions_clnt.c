@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -108,7 +108,6 @@ EXT_RETURN tls_construct_ctos_srp(SSL *s, WPACKET *pkt, unsigned int context,
 }
 #endif
 
-#ifndef OPENSSL_NO_EC
 static int use_ecc(SSL *s, int min_version, int max_version)
 {
     int i, end, ret = 0;
@@ -144,7 +143,7 @@ static int use_ecc(SSL *s, int min_version, int max_version)
     for (j = 0; j < num_groups; j++) {
         uint16_t ctmp = pgroups[j];
 
-        if (tls_valid_group(s, ctmp, min_version, max_version)
+        if (tls_valid_group(s, ctmp, min_version, max_version, 1, NULL)
                 && tls_group_allowed(s, ctmp, SSL_SECOP_CURVE_SUPPORTED))
             return 1;
     }
@@ -182,15 +181,13 @@ EXT_RETURN tls_construct_ctos_ec_pt_formats(SSL *s, WPACKET *pkt,
 
     return EXT_RETURN_SENT;
 }
-#endif
 
-#if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_EC)
 EXT_RETURN tls_construct_ctos_supported_groups(SSL *s, WPACKET *pkt,
                                                unsigned int context, X509 *x,
                                                size_t chainidx)
 {
     const uint16_t *pgroups = NULL;
-    size_t num_groups = 0, i;
+    size_t num_groups = 0, i, tls13added = 0, added = 0;
     int min_version, max_version, reason;
 
     reason = ssl_get_min_max_version(s, &min_version, &max_version, NULL);
@@ -199,13 +196,13 @@ EXT_RETURN tls_construct_ctos_supported_groups(SSL *s, WPACKET *pkt,
         return EXT_RETURN_FAIL;
     }
 
-#if defined(OPENSSL_NO_EC)
-    if (SSL_IS_DTLS(s) || max_version < TLS1_3_VERSION)
+    /*
+     * We only support EC groups in TLSv1.2 or below, and in DTLS. Therefore
+     * if we don't have EC support then we don't send this extension.
+     */
+    if (!use_ecc(s, min_version, max_version)
+            && (SSL_IS_DTLS(s) || max_version < TLS1_3_VERSION))
         return EXT_RETURN_NOT_SENT;
-#else
-    if (!use_ecc(s, min_version, max_version) && max_version < TLS1_3_VERSION)
-        return EXT_RETURN_NOT_SENT;
-#endif
 
     /*
      * Add TLS extension supported_groups to the ClientHello message
@@ -223,23 +220,36 @@ EXT_RETURN tls_construct_ctos_supported_groups(SSL *s, WPACKET *pkt,
     /* Copy group ID if supported */
     for (i = 0; i < num_groups; i++) {
         uint16_t ctmp = pgroups[i];
+        int okfortls13;
 
-        if (tls_valid_group(s, ctmp, min_version, max_version)
+        if (tls_valid_group(s, ctmp, min_version, max_version, 0, &okfortls13)
                 && tls_group_allowed(s, ctmp, SSL_SECOP_CURVE_SUPPORTED)) {
             if (!WPACKET_put_bytes_u16(pkt, ctmp)) {
                 SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
                 return EXT_RETURN_FAIL;
             }
+            if (okfortls13 && max_version == TLS1_3_VERSION)
+                tls13added++;
+            added++;
         }
     }
     if (!WPACKET_close(pkt) || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        if (added == 0)
+            SSLfatal_data(s, SSL_AD_INTERNAL_ERROR, SSL_R_NO_SUITABLE_GROUPS,
+                          "No groups enabled for max supported SSL/TLS version");
+        else
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return EXT_RETURN_FAIL;
+    }
+
+    if (tls13added == 0 && max_version == TLS1_3_VERSION) {
+        SSLfatal_data(s, SSL_AD_INTERNAL_ERROR, SSL_R_NO_SUITABLE_GROUPS,
+                      "No groups enabled for max supported SSL/TLS version");
         return EXT_RETURN_FAIL;
     }
 
     return EXT_RETURN_SENT;
 }
-#endif
 
 EXT_RETURN tls_construct_ctos_session_ticket(SSL *s, WPACKET *pkt,
                                              unsigned int context, X509 *x,
@@ -800,6 +810,7 @@ EXT_RETURN tls_construct_ctos_early_data(SSL *s, WPACKET *pkt,
         OPENSSL_free(s->psksession_id);
         s->psksession_id = OPENSSL_memdup(id, idlen);
         if (s->psksession_id == NULL) {
+            s->psksession_id_len = 0;
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             return EXT_RETURN_FAIL;
         }
@@ -1306,7 +1317,6 @@ int tls_parse_stoc_server_name(SSL *s, PACKET *pkt, unsigned int context,
     return 1;
 }
 
-#ifndef OPENSSL_NO_EC
 int tls_parse_stoc_ec_pt_formats(SSL *s, PACKET *pkt, unsigned int context,
                                  X509 *x, size_t chainidx)
 {
@@ -1328,6 +1338,7 @@ int tls_parse_stoc_ec_pt_formats(SSL *s, PACKET *pkt, unsigned int context,
         OPENSSL_free(s->ext.peer_ecpointformats);
         s->ext.peer_ecpointformats = OPENSSL_malloc(ecpointformats_len);
         if (s->ext.peer_ecpointformats == NULL) {
+            s->ext.peer_ecpointformats_len = 0;
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             return 0;
         }
@@ -1344,7 +1355,6 @@ int tls_parse_stoc_ec_pt_formats(SSL *s, PACKET *pkt, unsigned int context,
 
     return 1;
 }
-#endif
 
 int tls_parse_stoc_session_ticket(SSL *s, PACKET *pkt, unsigned int context,
                                   X509 *x, size_t chainidx)
@@ -1438,8 +1448,12 @@ int tls_parse_stoc_sct(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
         s->ext.scts_len = (uint16_t)size;
         if (size > 0) {
             s->ext.scts = OPENSSL_malloc(size);
-            if (s->ext.scts == NULL
-                    || !PACKET_copy_bytes(pkt, s->ext.scts, size)) {
+            if (s->ext.scts == NULL) {
+                s->ext.scts_len = 0;
+                SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_MALLOC_FAILURE);
+                return 0;
+            }
+            if (!PACKET_copy_bytes(pkt, s->ext.scts, size)) {
                 SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
                 return 0;
             }
@@ -1533,6 +1547,7 @@ int tls_parse_stoc_npn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
     OPENSSL_free(s->ext.npn);
     s->ext.npn = OPENSSL_malloc(selected_len);
     if (s->ext.npn == NULL) {
+        s->ext.npn_len = 0;
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
@@ -1570,6 +1585,7 @@ int tls_parse_stoc_alpn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
     OPENSSL_free(s->s3.alpn_selected);
     s->s3.alpn_selected = OPENSSL_malloc(len);
     if (s->s3.alpn_selected == NULL) {
+        s->s3.alpn_selected_len = 0;
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
@@ -1598,6 +1614,7 @@ int tls_parse_stoc_alpn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
         s->session->ext.alpn_selected =
             OPENSSL_memdup(s->s3.alpn_selected, s->s3.alpn_selected_len);
         if (s->session->ext.alpn_selected == NULL) {
+            s->session->ext.alpn_selected_len = 0;
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             return 0;
         }

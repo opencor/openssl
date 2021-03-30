@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -47,8 +47,9 @@
 
 void app_RAND_load_conf(CONF *c, const char *section);
 void app_RAND_write(void);
+int app_RAND_load(void);
 
-extern char *default_config_file;
+extern char *default_config_file; /* may be "" */
 extern BIO *bio_in;
 extern BIO *bio_out;
 extern BIO *bio_err;
@@ -63,8 +64,10 @@ BIO *bio_open_owner(const char *filename, int format, int private);
 BIO *bio_open_default(const char *filename, char mode, int format);
 BIO *bio_open_default_quiet(const char *filename, char mode, int format);
 CONF *app_load_config_bio(BIO *in, const char *filename);
-CONF *app_load_config(const char *filename);
-CONF *app_load_config_quiet(const char *filename);
+#define app_load_config(filename) app_load_config_internal(filename, 0)
+#define app_load_config_quiet(filename) app_load_config_internal(filename, 1)
+CONF *app_load_config_internal(const char *filename, int quiet);
+CONF *app_load_config_verbose(const char *filename, int verbose);
 int app_load_modules(const CONF *config);
 CONF *app_load_config_modules(const char *configfile);
 void unbuffer(FILE *fp);
@@ -91,8 +94,7 @@ int wrap_password_callback(char *buf, int bufsiz, int verify, void *cb_data);
 
 int chopup_args(ARGS *arg, char *buf);
 int dump_cert_text(BIO *out, X509 *x);
-void print_name(BIO *out, const char *title, const X509_NAME *nm,
-                unsigned long lflags);
+void print_name(BIO *out, const char *title, const X509_NAME *nm);
 void print_bignum_var(BIO *, const BIGNUM *, const char*,
                       int, unsigned char *);
 void print_array(BIO *, const char *, int, const unsigned char *);
@@ -118,7 +120,16 @@ EVP_PKEY *load_pubkey(const char *uri, int format, int maybe_stdin,
                       const char *pass, ENGINE *e, const char *desc);
 EVP_PKEY *load_keyparams(const char *uri, int maybe_stdin, const char *keytype,
                          const char *desc);
-int load_certs(const char *uri, STACK_OF(X509) **certs,
+char *next_item(char *opt); /* in list separated by comma and/or space */
+int load_cert_certs(const char *uri,
+                    X509 **pcert, STACK_OF(X509) **pcerts,
+                    int exclude_http, const char *pass, const char *desc,
+                    X509_VERIFY_PARAM *vpm);
+STACK_OF(X509) *load_certs_multifile(char *files, const char *pass,
+                                     const char *desc, X509_VERIFY_PARAM *vpm);
+X509_STORE *load_certstore(char *input, const char *pass, const char *desc,
+                           X509_VERIFY_PARAM *vpm);
+int load_certs(const char *uri, int maybe_stdin, STACK_OF(X509) **certs,
                const char *pass, const char *desc);
 int load_crls(const char *uri, STACK_OF(X509_CRL) **crls,
               const char *pass, const char *desc);
@@ -231,7 +242,7 @@ int init_gen_str(EVP_PKEY_CTX **pctx,
                  const char *algname, ENGINE *e, int do_param,
                  OSSL_LIB_CTX *libctx, const char *propq);
 int do_X509_sign(X509 *x, EVP_PKEY *pkey, const EVP_MD *md,
-                 STACK_OF(OPENSSL_STRING) *sigopts);
+                 STACK_OF(OPENSSL_STRING) *sigopts, X509V3_CTX *ext_ctx);
 int do_X509_verify(X509 *x, EVP_PKEY *pkey, STACK_OF(OPENSSL_STRING) *vfyopts);
 int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md,
                      STACK_OF(OPENSSL_STRING) *sigopts);
@@ -321,6 +332,7 @@ int app_provider_load(OSSL_LIB_CTX *libctx, const char *provider_name);
 void app_providers_cleanup(void);
 
 OSSL_LIB_CTX *app_get0_libctx(void);
+int app_set_propq(const char *arg);
 const char *app_get0_propq(void);
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2008-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -38,8 +38,8 @@ CMS_ContentInfo *d2i_CMS_bio(BIO *bp, CMS_ContentInfo **cms)
     CMS_ContentInfo *ci;
 
     ci = ASN1_item_d2i_bio(ASN1_ITEM_rptr(CMS_ContentInfo), bp, cms);
-    if (ci != NULL && cms != NULL)
-        cms_resolve_libctx(ci);
+    if (ci != NULL)
+        ossl_cms_resolve_libctx(ci);
     return ci;
 }
 
@@ -76,7 +76,7 @@ int SMIME_write_CMS(BIO *bio, CMS_ContentInfo *cms, BIO *data, int flags)
     STACK_OF(X509_ALGOR) *mdalgs;
     int ctype_nid = OBJ_obj2nid(cms->contentType);
     int econt_nid = OBJ_obj2nid(CMS_get0_eContentType(cms));
-    const CMS_CTX *ctx = cms_get0_cmsctx(cms);
+    const CMS_CTX *ctx = ossl_cms_get0_cmsctx(cms);
 
     if (ctype_nid == NID_pkcs7_signed)
         mdalgs = cms->d.signedData->digestAlgorithms;
@@ -86,8 +86,8 @@ int SMIME_write_CMS(BIO *bio, CMS_ContentInfo *cms, BIO *data, int flags)
     return SMIME_write_ASN1_ex(bio, (ASN1_VALUE *)cms, data, flags, ctype_nid,
                                econt_nid, mdalgs,
                                ASN1_ITEM_rptr(CMS_ContentInfo),
-                               cms_ctx_get0_libctx(ctx),
-                               cms_ctx_get0_propq(ctx));
+                               ossl_cms_ctx_get0_libctx(ctx),
+                               ossl_cms_ctx_get0_propq(ctx));
 }
 
 CMS_ContentInfo *SMIME_read_CMS_ex(BIO *bio, BIO **bcont, CMS_ContentInfo **cms)
@@ -97,8 +97,8 @@ CMS_ContentInfo *SMIME_read_CMS_ex(BIO *bio, BIO **bcont, CMS_ContentInfo **cms)
     ci = (CMS_ContentInfo *)SMIME_read_ASN1_ex(bio, bcont,
                                                ASN1_ITEM_rptr(CMS_ContentInfo),
                                                (ASN1_VALUE **)cms);
-    if (ci != NULL && cms != NULL)
-        cms_resolve_libctx(ci);
+    if (ci != NULL)
+        ossl_cms_resolve_libctx(ci);
     return ci;
 }
 

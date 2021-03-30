@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2000-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -227,7 +227,7 @@ struct evp_Encode_Ctx_st {
 typedef struct evp_pbe_st EVP_PBE_CTL;
 DEFINE_STACK_OF(EVP_PBE_CTL)
 
-int is_partially_overlapping(const void *ptr1, const void *ptr2, int len);
+int ossl_is_partially_overlapping(const void *ptr1, const void *ptr2, int len);
 
 #include <openssl/types.h>
 #include <openssl/core.h>
@@ -317,7 +317,7 @@ void evp_pkey_ctx_free_old_ops(EVP_PKEY_CTX *ctx);
 const char *evp_first_name(const OSSL_PROVIDER *prov, int name_id);
 int evp_is_a(OSSL_PROVIDER *prov, int number,
              const char *legacy_name, const char *name);
-void evp_names_do_all(OSSL_PROVIDER *prov, int number,
-                      void (*fn)(const char *name, void *data),
-                      void *data);
+int evp_names_do_all(OSSL_PROVIDER *prov, int number,
+                     void (*fn)(const char *name, void *data),
+                     void *data);
 int evp_cipher_cache_constants(EVP_CIPHER *cipher);

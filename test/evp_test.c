@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -7,6 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
+#define OPENSSL_SUPPRESS_DEPRECATED /* EVP_PKEY_new_CMAC_key */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -764,7 +765,7 @@ static int cipher_test_enc(EVP_TEST *t, int enc,
     if (expected->iv != NULL) {
         /* Some (e.g., GCM) tests use IVs longer than EVP_MAX_IV_LENGTH. */
         unsigned char iv[128];
-        if (!TEST_true(EVP_CIPHER_CTX_get_iv_state(ctx_base, iv, sizeof(iv)))
+        if (!TEST_true(EVP_CIPHER_CTX_get_updated_iv(ctx_base, iv, sizeof(iv)))
                 || ((EVP_CIPHER_flags(expected->cipher) & EVP_CIPH_CUSTOM_IV) == 0
                     && !TEST_mem_eq(expected->iv, expected->iv_len, iv,
                                     expected->iv_len))) {
@@ -1114,15 +1115,16 @@ static int mac_test_parse(EVP_TEST *t,
 static int mac_test_ctrl_pkey(EVP_TEST *t, EVP_PKEY_CTX *pctx,
                               const char *value)
 {
-    int rv;
+    int rv = 0;
     char *p, *tmpval;
 
     if (!TEST_ptr(tmpval = OPENSSL_strdup(value)))
         return 0;
     p = strchr(tmpval, ':');
-    if (p != NULL)
+    if (p != NULL) {
         *p++ = '\0';
-    rv = EVP_PKEY_CTX_ctrl_str(pctx, tmpval, p);
+        rv = EVP_PKEY_CTX_ctrl_str(pctx, tmpval, p);
+    }
     if (rv == -2)
         t->err = "PKEY_CTRL_INVALID";
     else if (rv <= 0)
@@ -1152,6 +1154,14 @@ static int mac_test_run_pkey(EVP_TEST *t)
                   OBJ_nid2sn(expected->type), expected->alg);
 
     if (expected->type == EVP_PKEY_CMAC) {
+#ifdef OPENSSL_NO_DEPRECATED_3_0
+        TEST_info("skipping, PKEY CMAC '%s' is disabled", expected->alg);
+        t->skip = 1;
+        t->err = NULL;
+        goto err;
+#else
+        OSSL_LIB_CTX *tmpctx;
+
         if (expected->alg != NULL && is_cipher_disabled(expected->alg)) {
             TEST_info("skipping, PKEY CMAC '%s' is disabled", expected->alg);
             t->skip = 1;
@@ -1162,8 +1172,11 @@ static int mac_test_run_pkey(EVP_TEST *t)
             t->err = "MAC_KEY_CREATE_ERROR";
             goto err;
         }
-        key = EVP_PKEY_new_CMAC_key_ex(expected->key, expected->key_len,
-                                       EVP_CIPHER_name(cipher), libctx, NULL);
+        tmpctx = OSSL_LIB_CTX_set0_default(libctx);
+        key = EVP_PKEY_new_CMAC_key(NULL, expected->key, expected->key_len,
+                                    cipher);
+        OSSL_LIB_CTX_set0_default(tmpctx);
+#endif
     } else {
         key = EVP_PKEY_new_raw_private_key_ex(libctx,
                                               OBJ_nid2sn(expected->type), NULL,
@@ -1187,7 +1200,7 @@ static int mac_test_run_pkey(EVP_TEST *t)
         t->err = "INTERNAL_ERROR";
         goto err;
     }
-    if (!EVP_DigestSignInit_ex(mctx, &pctx, mdname, libctx, NULL, key)) {
+    if (!EVP_DigestSignInit_ex(mctx, &pctx, mdname, libctx, NULL, key, NULL)) {
         t->err = "DIGESTSIGNINIT_ERROR";
         goto err;
     }
@@ -1267,11 +1280,6 @@ static int mac_test_run_mac(EVP_TEST *t)
             goto err;
         }
     }
-    if (expected->key != NULL)
-        params[params_n++] =
-            OSSL_PARAM_construct_octet_string(OSSL_MAC_PARAM_KEY,
-                                              expected->key,
-                                              expected->key_len);
     if (expected->custom != NULL)
         params[params_n++] =
             OSSL_PARAM_construct_octet_string(OSSL_MAC_PARAM_CUSTOM,
@@ -1327,11 +1335,7 @@ static int mac_test_run_mac(EVP_TEST *t)
         goto err;
     }
 
-    if (!EVP_MAC_CTX_set_params(ctx, params)) {
-        t->err = "MAC_BAD_PARAMS";
-        goto err;
-    }
-    if (!EVP_MAC_init(ctx)) {
+    if (!EVP_MAC_init(ctx, expected->key, expected->key_len, params)) {
         t->err = "MAC_INIT_ERROR";
         goto err;
     }
@@ -1456,15 +1460,16 @@ static void pkey_test_cleanup(EVP_TEST *t)
 static int pkey_test_ctrl(EVP_TEST *t, EVP_PKEY_CTX *pctx,
                           const char *value)
 {
-    int rv;
+    int rv = 0;
     char *p, *tmpval;
 
     if (!TEST_ptr(tmpval = OPENSSL_strdup(value)))
         return 0;
     p = strchr(tmpval, ':');
-    if (p != NULL)
+    if (p != NULL) {
         *p++ = '\0';
-    rv = EVP_PKEY_CTX_ctrl_str(pctx, tmpval, p);
+        rv = EVP_PKEY_CTX_ctrl_str(pctx, tmpval, p);
+    }
     if (rv == -2) {
         t->err = "PKEY_CTRL_INVALID";
         rv = 1;
@@ -2256,16 +2261,15 @@ static int rand_test_run(EVP_TEST *t)
         *p++ = OSSL_PARAM_construct_octet_string(OSSL_RAND_PARAM_TEST_NONCE,
                                                  z, item->nonce_len);
         *p = OSSL_PARAM_construct_end();
-        if (!TEST_true(EVP_RAND_set_ctx_params(expected->parent, params))
-                || !TEST_true(EVP_RAND_instantiate(expected->parent, strength,
-                                                   0, NULL, 0)))
+        if (!TEST_true(EVP_RAND_instantiate(expected->parent, strength,
+                                            0, NULL, 0, params)))
             goto err;
 
         z = item->pers != NULL ? item->pers : (unsigned char *)"";
         if (!TEST_true(EVP_RAND_instantiate
                            (expected->ctx, strength,
                             expected->prediction_resistance, z,
-                            item->pers_len)))
+                            item->pers_len, NULL)))
             goto err;
 
         if (item->reseed_entropy != NULL) {
@@ -2461,7 +2465,7 @@ static int kdf_test_run(EVP_TEST *t)
         t->err = "INTERNAL_ERROR";
         goto err;
     }
-    if (EVP_KDF_derive(expected->ctx, got, got_len) <= 0) {
+    if (EVP_KDF_derive(expected->ctx, got, got_len, NULL) <= 0) {
         t->err = "KDF_DERIVE_ERROR";
         goto err;
     }
@@ -2896,12 +2900,12 @@ static int digestsigver_test_parse(EVP_TEST *t,
         }
         if (mdata->is_verify) {
             if (!EVP_DigestVerifyInit_ex(mdata->ctx, &mdata->pctx, name, libctx,
-                                         NULL, pkey))
+                                         NULL, pkey, NULL))
                 t->err = "DIGESTVERIFYINIT_ERROR";
             return 1;
         }
         if (!EVP_DigestSignInit_ex(mdata->ctx, &mdata->pctx, name, libctx, NULL,
-                                   pkey))
+                                   pkey, NULL))
             t->err = "DIGESTSIGNINIT_ERROR";
         return 1;
     }
@@ -3592,7 +3596,7 @@ int setup_tests(void)
     /*
      * Load the provider via configuration into the created library context.
      * Load the 'null' provider into the default library context to ensure that
-     * the the tests do not fallback to using the default provider.
+     * the tests do not fallback to using the default provider.
      */
     if (!test_get_libctx(&libctx, &prov_null, config_file, NULL, NULL))
         return 0;

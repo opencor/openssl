@@ -1,6 +1,6 @@
 
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -15,17 +15,12 @@
  */
 #include "internal/deprecated.h"
 
+#include <openssl/proverr.h>
 #include "cipher_aes_xts.h"
 #include "prov/implementations.h"
 #include "prov/providercommon.h"
-#include "prov/providercommonerr.h"
 
-/* TODO (3.0) Figure out what flags need to be set */
-#define AES_XTS_FLAGS (EVP_CIPH_CUSTOM_IV          \
-                       | EVP_CIPH_ALWAYS_CALL_INIT \
-                       | EVP_CIPH_CTRL_INIT        \
-                       | EVP_CIPH_CUSTOM_COPY)
-
+#define AES_XTS_FLAGS PROV_CIPHER_FLAG_CUSTOM_IV
 #define AES_XTS_IV_BITS 128
 #define AES_XTS_BLOCK_BITS 8
 
@@ -59,7 +54,7 @@ static OSSL_FUNC_cipher_settable_ctx_params_fn aes_xts_settable_ctx_params;
 static int aes_xts_check_keys_differ(const unsigned char *key, size_t bytes,
                                      int enc)
 {
-    if ((!allow_insecure_decrypt || enc)
+    if ((!ossl_aes_xts_allow_insecure_decrypt || enc)
             && CRYPTO_memcmp(key, key + bytes, bytes) == 0) {
         ERR_raise(ERR_LIB_PROV, PROV_R_XTS_DUPLICATED_KEYS);
         return 0;
@@ -71,7 +66,8 @@ static int aes_xts_check_keys_differ(const unsigned char *key, size_t bytes,
  * Provider dispatch functions
  */
 static int aes_xts_init(void *vctx, const unsigned char *key, size_t keylen,
-                        const unsigned char *iv, size_t ivlen, int enc)
+                        const unsigned char *iv, size_t ivlen,
+                        const OSSL_PARAM params[], int enc)
 {
     PROV_AES_XTS_CTX *xctx = (PROV_AES_XTS_CTX *)vctx;
     PROV_CIPHER_CTX *ctx = &xctx->base;
@@ -92,21 +88,24 @@ static int aes_xts_init(void *vctx, const unsigned char *key, size_t keylen,
         }
         if (!aes_xts_check_keys_differ(key, keylen / 2, enc))
             return 0;
-        return ctx->hw->init(ctx, key, keylen);
+        if (!ctx->hw->init(ctx, key, keylen))
+            return 0;
     }
-    return 1;
+    return aes_xts_set_ctx_params(ctx, params);
 }
 
 static int aes_xts_einit(void *vctx, const unsigned char *key, size_t keylen,
-                         const unsigned char *iv, size_t ivlen)
+                         const unsigned char *iv, size_t ivlen,
+                         const OSSL_PARAM params[])
 {
-    return aes_xts_init(vctx, key, keylen, iv, ivlen, 1);
+    return aes_xts_init(vctx, key, keylen, iv, ivlen, params, 1);
 }
 
 static int aes_xts_dinit(void *vctx, const unsigned char *key, size_t keylen,
-                         const unsigned char *iv, size_t ivlen)
+                         const unsigned char *iv, size_t ivlen,
+                         const OSSL_PARAM params[])
 {
-    return aes_xts_init(vctx, key, keylen, iv, ivlen, 0);
+    return aes_xts_init(vctx, key, keylen, iv, ivlen, params, 0);
 }
 
 static void *aes_xts_newctx(void *provctx, unsigned int mode, uint64_t flags,
@@ -223,7 +222,8 @@ static const OSSL_PARAM aes_xts_known_settable_ctx_params[] = {
     OSSL_PARAM_END
 };
 
-static const OSSL_PARAM *aes_xts_settable_ctx_params(ossl_unused void *provctx)
+static const OSSL_PARAM *aes_xts_settable_ctx_params(ossl_unused void *cctx,
+                                                     ossl_unused void *provctx)
 {
     return aes_xts_known_settable_ctx_params;
 }
@@ -233,10 +233,9 @@ static int aes_xts_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
     const OSSL_PARAM *p;
 
-    /*
-     * TODO(3.0) We need a general solution for handling missing parameters
-     * inside set_params and get_params methods.
-     */
+    if (params == NULL)
+        return 1;
+
     p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_KEYLEN);
     if (p != NULL) {
         size_t keylen;

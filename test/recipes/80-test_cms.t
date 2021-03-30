@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -23,7 +23,6 @@ BEGIN {
 
 use lib srctop_dir('Configurations');
 use lib bldtop_dir('.');
-use platform;
 
 my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
 
@@ -52,16 +51,9 @@ my ($no_des, $no_dh, $no_dsa, $no_ec, $no_ec2m, $no_rc2, $no_zlib)
 $no_rc2 = 1 if disabled("legacy");
 
 plan tests =>
-    ($no_fips ? 0 : 1)          # FIPS install test
     + 10;
 
 unless ($no_fips) {
-    my $infile = bldtop_file('providers', platform->dso('fips'));
-
-    ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
-                '-module', $infile])),
-       "fipsinstall");
     @config = ( "-config", srctop_file("test", "fips-and-base.cnf") );
     $provname = 'fips';
 }
@@ -459,10 +451,11 @@ my @smime_cms_cades_tests = (
 );
 
 my @smime_cms_cades_ko_tests = (
-    [ "signed content DER format, RSA key, but verified as CAdES-BES compatible",
+    [ "sign content DER format, RSA key, not CAdES-BES compatible",
       [ @prov, "-sign", "-in", $smcont, "-outform", "DER", "-nodetach",
         "-certfile", catfile($smdir, "smroot.pem"),
         "-signer", catfile($smdir, "smrsa1.pem"), "-out", "{output}.cms" ],
+      "fail to verify token because requiring CAdES-BES compatibility",
       [ @prov, "-verify", "-cades", "-in", "{output}.cms", "-inform", "DER",
         "-CAfile", catfile($smdir, "smroot.pem"), "-out", "{output}.txt" ],
       \&final_compare
@@ -598,7 +591,7 @@ my @smime_cms_param_tests = (
         "-stream", "-out", "{output}.cms",
         "-recip", catfile($smdir, "smec1.pem"), "-aes-128-gcm", "-keyopt", "ecdh_kdf_md:sha256" ],
       [ "{cmd2}", "-decrypt", "-recip", catfile($smdir, "smec1.pem"),
-	      "-in", "{output}.cms", "-out", "{output}.txt" ],
+        "-in", "{output}.cms", "-out", "{output}.txt" ],
       \&final_compare
     ],
 
@@ -610,18 +603,16 @@ my @smime_cms_param_tests = (
       [ "{cmd2}", @prov, "-decrypt", "-recip", catfile($smdir, "smec2.pem"),
         "-in", "{output}.cms", "-out", "{output}.txt" ],
       \&final_compare
-    ]
+    ],
 
-    # TODO(3.0) Add this test back in when "dhpublicnumber" is supported
-    # in the keymanger.
-    #[ "enveloped content test streaming S/MIME format, X9.42 DH",
-    #  [ "{cmd1}", @prov, "-encrypt", "-in", $smcont,
-    #    "-stream", "-out", "{output}.cms",
-    #    "-recip", catfile($smdir, "smdh.pem"), "-aes128" ],
-    #  [ "{cmd2}", "-decrypt", "-recip", catfile($smdir, "smdh.pem"),
-    #    "-in", "{output}.cms", "-out", "{output}.txt" ],
-    #  \&final_compare
-    #]
+    [ "enveloped content test streaming S/MIME format, X9.42 DH",
+      [ "{cmd1}", @prov, "-encrypt", "-in", $smcont,
+        "-stream", "-out", "{output}.cms",
+        "-recip", catfile($smdir, "smdh.pem"), "-aes128" ],
+      [ "{cmd2}", @prov, "-decrypt", "-recip", catfile($smdir, "smdh.pem"),
+        "-in", "{output}.cms", "-out", "{output}.txt" ],
+      \&final_compare
+    ]
 );
 
 my @contenttype_cms_test = (
@@ -808,16 +799,15 @@ subtest "CAdES; cms incompatible arguments tests\n" => sub {
 };
 
 subtest "CAdES ko tests\n" => sub {
-    plan tests => (scalar @smime_cms_cades_ko_tests);
+    plan tests => 2 * scalar @smime_cms_cades_ko_tests;
 
     foreach (@smime_cms_cades_ko_tests) {
       SKIP: {
         my $skip_reason = check_availability($$_[0]);
         skip $skip_reason, 1 if $skip_reason;
 
-        ok(run(app(["openssl", "cms", @{$$_[1]}]))
-            && !run(app(["openssl", "cms", @{$$_[2]}])),
-            $$_[0]);
+        ok(run(app(["openssl", "cms", @{$$_[1]}])), $$_[0]);
+        ok(!run(app(["openssl", "cms", @{$$_[3]}])), $$_[2]);
         }
     }
 };

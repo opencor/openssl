@@ -1,5 +1,3 @@
-SUBDIRS=ossl_shim
-
 # TODO: use ../apps/libapps.a instead of direct ../apps/lib source.
 # This can't currently be done, because some of its units drag in too many
 # unresolved references that don't apply here.
@@ -20,7 +18,7 @@ IF[{- !$disabled{tests} -}]
   LIBS{noinst,has_main}=libtestutil.a
   SOURCE[libtestutil.a]=testutil/basic_output.c testutil/output.c \
           testutil/driver.c testutil/tests.c testutil/cb.c testutil/stanza.c \
-          testutil/format_output.c \
+          testutil/format_output.c testutil/load.c testutil/fake_random.c \
           testutil/test_cleanup.c testutil/main.c testutil/testutil_init.c \
           testutil/options.c testutil/test_options.c testutil/provider.c \
           testutil/apps_mem.c testutil/random.c $LIBAPPSSRC
@@ -32,7 +30,7 @@ IF[{- !$disabled{tests} -}]
           versions \
           aborttest test_test pkcs12_format_test \
           sanitytest rsa_complex exdatatest bntest \
-          ectest ecstresstest gmdifftest pbelutest \
+          ecstresstest gmdifftest pbelutest \
           destest mdc2test \
           exptest \
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
@@ -57,7 +55,8 @@ IF[{- !$disabled{tests} -}]
           http_test servername_test ocspapitest fatalerrtest tls13ccstest \
           sysdefaulttest errtest ssl_ctx_test gosttest \
           context_internal_test aesgcmtest params_test evp_pkey_dparams_test \
-          keymgmt_internal_test hexstr_test provider_status_test defltfips_test
+          keymgmt_internal_test hexstr_test provider_status_test defltfips_test \
+          bio_readbuffer_test
 
   IF[{- !$disabled{'deprecated-3.0'} -}]
     PROGRAMS{noinst}=enginetest
@@ -96,7 +95,7 @@ IF[{- !$disabled{tests} -}]
 
   SOURCE[ectest]=ectest.c
   INCLUDE[ectest]=../include ../apps/include
-  DEPEND[ectest]=../libcrypto libtestutil.a
+  DEPEND[ectest]=../libcrypto.a libtestutil.a
 
   SOURCE[ecstresstest]=ecstresstest.c
   INCLUDE[ecstresstest]=../include ../apps/include
@@ -279,6 +278,9 @@ IF[{- !$disabled{tests} -}]
   DEPEND[ssl_test_ctx_test]=../libcrypto ../libssl libtestutil.a
 
   SOURCE[ssl_test]=ssl_test.c helpers/ssl_test_ctx.c helpers/handshake.c
+  IF[{- !$disabled{'srp'} -}]
+    SOURCE[ssl_test]=helpers/handshake_srp.c
+  ENDIF
   INCLUDE[ssl_test]=../include ../apps/include
   DEPEND[ssl_test]=../libcrypto ../libssl libtestutil.a
 
@@ -303,6 +305,10 @@ IF[{- !$disabled{tests} -}]
   SOURCE[bio_callback_test]=bio_callback_test.c
   INCLUDE[bio_callback_test]=../include ../apps/include
   DEPEND[bio_callback_test]=../libcrypto libtestutil.a
+
+  SOURCE[bio_readbuffer_test]=bio_readbuffer_test.c
+  INCLUDE[bio_readbuffer_test]=../include ../apps/include
+  DEPEND[bio_readbuffer_test]=../libcrypto libtestutil.a
 
   SOURCE[bio_memleak_test]=bio_memleak_test.c
   INCLUDE[bio_memleak_test]=../include ../apps/include
@@ -548,7 +554,7 @@ IF[{- !$disabled{tests} -}]
       PROGRAMS{noinst}=sm4_internal_test
     ENDIF
     IF[{- !$disabled{ec} -}]
-      PROGRAMS{noinst}=ec_internal_test curve448_internal_test
+      PROGRAMS{noinst}=ectest ec_internal_test curve448_internal_test
     ENDIF
     IF[{- !$disabled{cmac} -}]
       PROGRAMS{noinst}=cmactest
@@ -707,6 +713,11 @@ IF[{- !$disabled{tests} -}]
     SOURCE[ssl_old_test]=ssl_old_test.c helpers/predefined_dhparams.c
     INCLUDE[ssl_old_test]=.. ../include ../apps/include
     DEPEND[ssl_old_test]=../libcrypto.a ../libssl.a libtestutil.a
+
+    PROGRAMS{noinst}=algorithmid_test
+    SOURCE[algorithmid_test]=algorithmid_test.c
+    INCLUDE[algorithmid_test]=../include ../apps/include
+    DEPEND[algorithmid_test]=../libcrypto.a libtestutil.a
   ENDIF
 
   PROGRAMS{noinst}=asn1_time_test
@@ -754,17 +765,17 @@ IF[{- !$disabled{tests} -}]
   PROGRAMS{noinst}=provider_internal_test
   DEFINE[provider_internal_test]=PROVIDER_INIT_FUNCTION_NAME=p_test_init
   SOURCE[provider_internal_test]=provider_internal_test.c p_test.c
-  INCLUDE[provider_internal_test]=../include ../apps/include
+  INCLUDE[provider_internal_test]=../include ../apps/include ..
   DEPEND[provider_internal_test]=../libcrypto.a libtestutil.a
   PROGRAMS{noinst}=provider_test
   DEFINE[provider_test]=PROVIDER_INIT_FUNCTION_NAME=p_test_init
   SOURCE[provider_test]=provider_test.c p_test.c
-  INCLUDE[provider_test]=../include ../apps/include
+  INCLUDE[provider_test]=../include ../apps/include ..
   DEPEND[provider_test]=../libcrypto.a libtestutil.a
   IF[{- !$disabled{module} -}]
     MODULES{noinst}=p_test
     SOURCE[p_test]=p_test.c
-    INCLUDE[p_test]=../include
+    INCLUDE[p_test]=../include ..
     IF[{- defined $target{shared_defflag} -}]
       SOURCE[p_test]=p_test.ld
       GENERATE[p_test.ld]=../util/providers.num

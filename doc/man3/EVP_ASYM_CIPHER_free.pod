@@ -23,9 +23,9 @@ EVP_ASYM_CIPHER_gettable_ctx_params, EVP_ASYM_CIPHER_settable_ctx_params
                                       void (*fn)(EVP_ASYM_CIPHER *cipher,
                                                  void *arg),
                                       void *arg);
- void EVP_ASYM_CIPHER_names_do_all(const EVP_ASYM_CIPHER *cipher,
-                                   void (*fn)(const char *name, void *data),
-                                   void *data);
+ int EVP_ASYM_CIPHER_names_do_all(const EVP_ASYM_CIPHER *cipher,
+                                  void (*fn)(const char *name, void *data),
+                                  void *data);
  const OSSL_PARAM *EVP_ASYM_CIPHER_gettable_ctx_params(const EVP_ASYM_CIPHER *cip);
  const OSSL_PARAM *EVP_ASYM_CIPHER_settable_ctx_params(const EVP_ASYM_CIPHER *cip);
 
@@ -76,6 +76,9 @@ or B<NULL> for failure.
 
 EVP_ASYM_CIPHER_up_ref() returns 1 for success or 0 otherwise.
 
+EVP_ASYM_CIPHER_names_do_all() returns 1 if the callback was called for all
+names. A return value of 0 means that the callback was not called for any names.
+
 EVP_ASYM_CIPHER_gettable_ctx_params() and EVP_ASYM_CIPHER_settable_ctx_params()
 return a constant B<OSSL_PARAM> array or NULL on error.
 
@@ -89,7 +92,7 @@ The functions described here were added in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

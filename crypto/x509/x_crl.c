@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -147,7 +147,7 @@ static int crl_set_issuers(X509_CRL *crl)
 
 /*
  * The X509_CRL structure needs a bit of customisation. Cache some extensions
- * and hash of the whole CRL.
+ * and hash of the whole CRL or set EXFLAG_NO_FINGERPRINT if this fails.
  */
 static int crl_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
                   void *exarg)
@@ -185,7 +185,7 @@ static int crl_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
 
     case ASN1_OP_D2I_POST:
         if (!X509_CRL_digest(crl, EVP_sha1(), crl->sha1_hash, NULL))
-            crl->flags |= EXFLAG_INVALID;
+            crl->flags |= EXFLAG_NO_FINGERPRINT;
         crl->idp = X509_CRL_get_ext_d2i(crl,
                                         NID_issuing_distribution_point, &i,
                                         NULL);
@@ -270,7 +270,7 @@ static int crl_cb(int operation, ASN1_VALUE **pval, const ASN1_ITEM *it,
         {
             X509_CRL *old = exarg;
 
-            if (!x509_crl_set0_libctx(crl, old->libctx, old->propq))
+            if (!ossl_x509_crl_set0_libctx(crl, old->libctx, old->propq))
                 return 0;
         }
         break;
@@ -427,7 +427,8 @@ static int def_crl_lookup(X509_CRL *crl,
      * under a lock to avoid race condition.
      */
     if (!sk_X509_REVOKED_is_sorted(crl->crl.revoked)) {
-        CRYPTO_THREAD_write_lock(crl->lock);
+        if (!CRYPTO_THREAD_write_lock(crl->lock))
+            return 0;
         sk_X509_REVOKED_sort(crl->crl.revoked);
         CRYPTO_THREAD_unlock(crl->lock);
     }
@@ -499,7 +500,8 @@ void *X509_CRL_get_meth_data(X509_CRL *crl)
     return crl->meth_data;
 }
 
-int x509_crl_set0_libctx(X509_CRL *x, OSSL_LIB_CTX *libctx, const char *propq)
+int ossl_x509_crl_set0_libctx(X509_CRL *x, OSSL_LIB_CTX *libctx,
+                              const char *propq)
 {
     if (x != NULL) {
         x->libctx = libctx;

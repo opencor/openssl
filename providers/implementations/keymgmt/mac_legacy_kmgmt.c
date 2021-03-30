@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -16,6 +16,7 @@
 #include <openssl/params.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/proverr.h>
 #include "openssl/param_build.h"
 #include "internal/param_build_set.h"
 #include "prov/implementations.h"
@@ -46,6 +47,7 @@ static OSSL_FUNC_keymgmt_new_fn mac_new_cmac;
 static OSSL_FUNC_keymgmt_gettable_params_fn cmac_gettable_params;
 static OSSL_FUNC_keymgmt_import_types_fn cmac_imexport_types;
 static OSSL_FUNC_keymgmt_export_types_fn cmac_imexport_types;
+static OSSL_FUNC_keymgmt_gen_init_fn cmac_gen_init;
 static OSSL_FUNC_keymgmt_gen_set_params_fn cmac_gen_set_params;
 static OSSL_FUNC_keymgmt_gen_settable_params_fn cmac_gen_settable_params;
 
@@ -370,7 +372,7 @@ static const OSSL_PARAM *mac_settable_params(void *provctx)
     return settable_params;
 }
 
-static void *mac_gen_init(void *provctx, int selection)
+static void *mac_gen_init_common(void *provctx, int selection)
 {
     OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(provctx);
     struct mac_gen_ctx *gctx = NULL;
@@ -381,6 +383,30 @@ static void *mac_gen_init(void *provctx, int selection)
     if ((gctx = OPENSSL_zalloc(sizeof(*gctx))) != NULL) {
         gctx->libctx = libctx;
         gctx->selection = selection;
+    }
+    return gctx;
+}
+
+static void *mac_gen_init(void *provctx, int selection,
+                          const OSSL_PARAM params[])
+{
+    struct mac_gen_ctx *gctx = mac_gen_init_common(provctx, selection);
+
+    if (gctx != NULL && !mac_gen_set_params(gctx, params)) {
+        OPENSSL_free(gctx);
+        gctx = NULL;
+    }
+    return gctx;
+}
+
+static void *cmac_gen_init(void *provctx, int selection,
+                           const OSSL_PARAM params[])
+{
+    struct mac_gen_ctx *gctx = mac_gen_init_common(provctx, selection);
+
+    if (gctx != NULL && !cmac_gen_set_params(gctx, params)) {
+        OPENSSL_free(gctx);
+        gctx = NULL;
     }
     return gctx;
 }
@@ -427,7 +453,8 @@ static int cmac_gen_set_params(void *genctx, const OSSL_PARAM params[])
     return 1;
 }
 
-static const OSSL_PARAM *mac_gen_settable_params(void *provctx)
+static const OSSL_PARAM *mac_gen_settable_params(ossl_unused void *genctx,
+                                                 ossl_unused void *provctx)
 {
     static OSSL_PARAM settable[] = {
         OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0),
@@ -436,7 +463,8 @@ static const OSSL_PARAM *mac_gen_settable_params(void *provctx)
     return settable;
 }
 
-static const OSSL_PARAM *cmac_gen_settable_params(void *provctx)
+static const OSSL_PARAM *cmac_gen_settable_params(ossl_unused void *genctx,
+                                                  ossl_unused void *provctx)
 {
     static OSSL_PARAM settable[] = {
         OSSL_PARAM_octet_string(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0),
@@ -464,7 +492,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
         return key;
 
     if (gctx->priv_key == NULL) {
-        ERR_raise(ERR_LIB_PROV, EVP_R_INVALID_KEY);
+        ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY);
         ossl_mac_key_free(key);
         return NULL;
     }
@@ -532,7 +560,7 @@ const OSSL_DISPATCH ossl_cossl_mac_legacy_keymgmt_functions[] = {
     { OSSL_FUNC_KEYMGMT_IMPORT_TYPES, (void (*)(void))cmac_imexport_types },
     { OSSL_FUNC_KEYMGMT_EXPORT, (void (*)(void))mac_export },
     { OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (void (*)(void))cmac_imexport_types },
-    { OSSL_FUNC_KEYMGMT_GEN_INIT, (void (*)(void))mac_gen_init },
+    { OSSL_FUNC_KEYMGMT_GEN_INIT, (void (*)(void))cmac_gen_init },
     { OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS, (void (*)(void))cmac_gen_set_params },
     { OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS,
         (void (*)(void))cmac_gen_settable_params },

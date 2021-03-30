@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -768,7 +768,7 @@ EC_GROUP *EC_GROUP_new_from_ecparameters(const ECPARAMETERS *params)
         ERR_raise(ERR_LIB_EC, ERR_R_EC_LIB);
         goto err;
     }
-    if ((curve_name = ec_curve_nid_from_params(dup, ctx)) != NID_undef) {
+    if ((curve_name = ossl_ec_curve_nid_from_params(dup, ctx)) != NID_undef) {
         /*
          * The input explicit parameters successfully matched one of the
          * built-in curves: often for built-in curves we have specialized
@@ -1245,7 +1245,7 @@ int i2d_ECDSA_SIG(const ECDSA_SIG *sig, unsigned char **ppout)
             return -1;
     }
 
-    if (!encode_der_dsa_sig(&pkt, sig->r, sig->s)
+    if (!ossl_encode_der_dsa_sig(&pkt, sig->r, sig->s)
             || !WPACKET_get_total_written(&pkt, &encoded_len)
             || !WPACKET_finish(&pkt)) {
         BUF_MEM_free(buf);

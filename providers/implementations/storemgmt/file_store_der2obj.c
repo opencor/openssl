@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -85,9 +85,12 @@ static int der2obj_decode(void *provctx, OSSL_CORE_BIO *cin, int selection,
      * We're called from file_store.c, so we know that OSSL_CORE_BIO is a
      * BIO in this case.
      */
-    BIO *in = (BIO *)cin;
+    BIO *in = ossl_bio_new_from_core_bio(provctx, cin);
     BUF_MEM *mem = NULL;
     int err, ok;
+
+    if (in == NULL)
+        return 0;
 
     ERR_set_mark();
     ok = (asn1_d2i_read_bio(in, &mem) >= 0);
@@ -98,7 +101,9 @@ static int der2obj_decode(void *provctx, OSSL_CORE_BIO *cin, int selection,
     err = ERR_peek_last_error();
     if (ERR_GET_LIB(err) == ERR_LIB_ASN1
             && (ERR_GET_REASON(err) == ASN1_R_HEADER_TOO_LONG
-                || ERR_GET_REASON(err) == ERR_R_NESTED_ASN1_ERROR))
+                || ERR_GET_REASON(err) == ASN1_R_UNSUPPORTED_TYPE
+                || ERR_GET_REASON(err) == ERR_R_NESTED_ASN1_ERROR
+                || ERR_GET_REASON(err) == ASN1_R_NOT_ENOUGH_DATA))
         ERR_pop_to_mark();
     else
         ERR_clear_last_mark();
@@ -117,6 +122,7 @@ static int der2obj_decode(void *provctx, OSSL_CORE_BIO *cin, int selection,
         OPENSSL_free(mem->data);
         OPENSSL_free(mem);
     }
+    BIO_free(in);
     return ok;
 }
 

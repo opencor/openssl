@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2008-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -46,66 +46,14 @@ int CMS_get1_ReceiptRequest(CMS_SignerInfo *si, CMS_ReceiptRequest **prr)
     return 1;
 }
 
-/*
-    First, get the ESS_SIGNING_CERT(V2) signed attribute from |si|.
-    Then check matching of each cert of trust |chain| with one of 
-    the |cert_ids|(Hash+IssuerID) list from this ESS_SIGNING_CERT.
-    Derived from ts_check_signing_certs()
-*/
-int ess_check_signing_certs(CMS_SignerInfo *si, STACK_OF(X509) *chain)
+int ossl_cms_check_signing_certs(const CMS_SignerInfo *si,
+                                 const STACK_OF(X509) *chain)
 {
     ESS_SIGNING_CERT *ss = NULL;
     ESS_SIGNING_CERT_V2 *ssv2 = NULL;
-    X509 *cert;
-    int i = 0, ret = 0;
-
-    if (cms_signerinfo_get_signing_cert(si, &ss) > 0 && ss->cert_ids != NULL) {
-        STACK_OF(ESS_CERT_ID) *cert_ids = ss->cert_ids;
-
-        cert = sk_X509_value(chain, 0);
-        if (ess_find_cert(cert_ids, cert) != 0)
-            goto err;
-
-        /*
-         * Check the other certificates of the chain.
-         * Fail if no signing certificate ids found for each certificate.
-         */
-        if (sk_ESS_CERT_ID_num(cert_ids) > 1) {
-            /* for each chain cert, try to find its cert id */
-            for (i = 1; i < sk_X509_num(chain); ++i) {
-                cert = sk_X509_value(chain, i);
-                if (ess_find_cert(cert_ids, cert) < 0)
-                    goto err;
-            }
-        }
-    } else if (cms_signerinfo_get_signing_cert_v2(si, &ssv2) > 0
-                   && ssv2->cert_ids!= NULL) {
-        STACK_OF(ESS_CERT_ID_V2) *cert_ids_v2 = ssv2->cert_ids;
-
-        cert = sk_X509_value(chain, 0);
-        if (ess_find_cert_v2(cert_ids_v2, cert) != 0)
-            goto err;
-
-        /*
-         * Check the other certificates of the chain.
-         * Fail if no signing certificate ids found for each certificate.
-         */
-        if (sk_ESS_CERT_ID_V2_num(cert_ids_v2) > 1) {
-            /* for each chain cert, try to find its cert id */
-            for (i = 1; i < sk_X509_num(chain); ++i) {
-                cert = sk_X509_value(chain, i);
-                if (ess_find_cert_v2(cert_ids_v2, cert) < 0)
-                    goto err;
-            }
-        }
-    } else {
-        ERR_raise(ERR_LIB_CMS, CMS_R_ESS_NO_SIGNING_CERTID_ATTRIBUTE);
-        return 0;
-    }
-    ret = 1;
- err:
-    if (!ret)
-        ERR_raise(ERR_LIB_CMS, CMS_R_ESS_SIGNING_CERTID_MISMATCH_ERROR);
+    int ret = ossl_cms_signerinfo_get_signing_cert(si, &ss) >= 0
+        && ossl_cms_signerinfo_get_signing_cert_v2(si, &ssv2) >= 0
+        && ossl_ess_check_signing_certs(ss, ssv2, chain, 1);
 
     ESS_SIGNING_CERT_free(ss);
     ESS_SIGNING_CERT_V2_free(ssv2);
@@ -218,16 +166,17 @@ static int cms_msgSigDigest(CMS_SignerInfo *si,
 
     if (md == NULL)
         return 0;
-    if (!asn1_item_digest_ex(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
-                             si->signedAttrs, dig, diglen, si->cms_ctx->libctx,
-                             si->cms_ctx->propq))
+    if (!ossl_asn1_item_digest_ex(ASN1_ITEM_rptr(CMS_Attributes_Verify), md,
+                                  si->signedAttrs, dig, diglen,
+                                  ossl_cms_ctx_get0_libctx(si->cms_ctx),
+                                  ossl_cms_ctx_get0_propq(si->cms_ctx)))
         return 0;
     return 1;
 }
 
 /* Add a msgSigDigest attribute to a SignerInfo */
 
-int cms_msgSigDigest_add1(CMS_SignerInfo *dest, CMS_SignerInfo *src)
+int ossl_cms_msgSigDigest_add1(CMS_SignerInfo *dest, CMS_SignerInfo *src)
 {
     unsigned char dig[EVP_MAX_MD_SIZE];
     unsigned int diglen;
@@ -246,7 +195,7 @@ int cms_msgSigDigest_add1(CMS_SignerInfo *dest, CMS_SignerInfo *src)
 
 /* Verify signed receipt after it has already passed normal CMS verify */
 
-int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
+int ossl_cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
 {
     int r = 0, i;
     CMS_ReceiptRequest *rr = NULL;
@@ -375,7 +324,7 @@ int cms_Receipt_verify(CMS_ContentInfo *cms, CMS_ContentInfo *req_cms)
  * SignedData ContentInfo.
  */
 
-ASN1_OCTET_STRING *cms_encode_Receipt(CMS_SignerInfo *si)
+ASN1_OCTET_STRING *ossl_cms_encode_Receipt(CMS_SignerInfo *si)
 {
     CMS_Receipt rct;
     CMS_ReceiptRequest *rr = NULL;
@@ -417,7 +366,7 @@ ASN1_OCTET_STRING *cms_encode_Receipt(CMS_SignerInfo *si)
  * Add signer certificate's V2 digest |sc| to a SignerInfo structure |si|
  */
 
-int cms_add1_signing_cert_v2(CMS_SignerInfo *si, ESS_SIGNING_CERT_V2 *sc)
+int ossl_cms_add1_signing_cert_v2(CMS_SignerInfo *si, ESS_SIGNING_CERT_V2 *sc)
 {
     ASN1_STRING *seq = NULL;
     unsigned char *p, *pp = NULL;
@@ -449,7 +398,7 @@ int cms_add1_signing_cert_v2(CMS_SignerInfo *si, ESS_SIGNING_CERT_V2 *sc)
  * Add signer certificate's digest |sc| to a SignerInfo structure |si|
  */
 
-int cms_add1_signing_cert(CMS_SignerInfo *si, ESS_SIGNING_CERT *sc)
+int ossl_cms_add1_signing_cert(CMS_SignerInfo *si, ESS_SIGNING_CERT *sc)
 {
     ASN1_STRING *seq = NULL;
     unsigned char *p, *pp = NULL;

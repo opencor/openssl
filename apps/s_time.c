@@ -127,7 +127,7 @@ int s_time_main(int argc, char **argv)
     int maxtime = SECONDS, nConn = 0, perform = 3, ret = 1, i, st_bugs = 0;
     long bytes_read = 0, finishtime = 0;
     OPTION_CHOICE o;
-    int min_version = 0, max_version = 0, ver, buf_len;
+    int min_version = 0, max_version = 0, ver, buf_len, fd;
     size_t buf_size;
 
     meth = TLS_client_method();
@@ -320,7 +320,8 @@ int s_time_main(int argc, char **argv)
          nConn, totalTime, ((double)nConn / totalTime), bytes_read);
     printf
         ("%d connections in %ld real seconds, %ld bytes read per connection\n",
-         nConn, (long)time(NULL) - finishtime + maxtime, bytes_read / nConn);
+         nConn, (long)time(NULL) - finishtime + maxtime,
+         nConn > 0 ? bytes_read / nConn : 0l);
 
     /*
      * Now loop and time connections using the same session id over and over
@@ -345,7 +346,8 @@ int s_time_main(int argc, char **argv)
             continue;
     }
     SSL_set_shutdown(scon, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-    BIO_closesocket(SSL_get_fd(scon));
+    if ((fd = SSL_get_fd(scon)) >= 0)
+        BIO_closesocket(fd);
 
     nConn = 0;
     totalTime = 0.0;
@@ -372,7 +374,8 @@ int s_time_main(int argc, char **argv)
                 bytes_read += i;
         }
         SSL_set_shutdown(scon, SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN);
-        BIO_closesocket(SSL_get_fd(scon));
+        if ((fd = SSL_get_fd(scon)) >= 0)
+            BIO_closesocket(fd);
 
         nConn += 1;
         if (SSL_session_reused(scon)) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019-2020, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -435,7 +435,7 @@ err:
     return ret;
 }
 
-extern FFC_PARAMS *dh_get0_params(DH *dh);
+extern FFC_PARAMS *ossl_dh_get0_params(DH *dh);
 
 static int ffc_public_validate_test(void)
 {
@@ -449,7 +449,7 @@ static int ffc_public_validate_test(void)
 
     if (!TEST_ptr(dh = DH_new_by_nid(NID_ffdhe2048)))
         goto err;
-    params = dh_get0_params(dh);
+    params = ossl_dh_get0_params(dh);
 
     if (!TEST_true(BN_set_word(pub, 1)))
         goto err;
@@ -528,7 +528,7 @@ static int ffc_private_validate_test(void)
 
     if (!TEST_ptr(dh = DH_new_by_nid(NID_ffdhe2048)))
         goto err;
-    params = dh_get0_params(dh);
+    params = ossl_dh_get0_params(dh);
 
     if (!TEST_true(BN_set_word(priv, 1)))
         goto err;
@@ -589,7 +589,7 @@ static int ffc_private_gen_test(int index)
 
     if (!TEST_ptr(dh = DH_new_by_nid(NID_ffdhe2048)))
         goto err;
-    params = dh_get0_params(dh);
+    params = ossl_dh_get0_params(dh);
 
     N = BN_num_bits(params->q);
     /* Fail since N < 2*s - where s = 112*/

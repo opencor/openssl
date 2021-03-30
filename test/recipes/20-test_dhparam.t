@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -19,7 +19,7 @@ setup("test_dhparam");
 
 plan skip_all => "DH is not supported in this build"
     if disabled("dh");
-plan tests => 16;
+plan tests => 17;
 
 sub checkdhparams {
     my $file = shift; #Filename containing params
@@ -36,11 +36,13 @@ sub checkdhparams {
         #Text file. Check it looks like PEM
         open(PEMFILE, '<', $file) or die $!;
         if (my $firstline = <PEMFILE>) {
-            chomp($firstline);
+            $firstline =~ s/\R$//;
             if ($firstline eq "-----BEGIN DH PARAMETERS-----") {
                 $pemtype = "PKCS3";
             } elsif ($firstline eq "-----BEGIN X9.42 DH PARAMETERS-----") {
                 $pemtype = "X9.42";
+            } else {
+                $pemtype = "";
             }
         } else {
             $pemtype = "";
@@ -169,3 +171,7 @@ SKIP: {
         checkdhparams("gen-x942-0-512.der", "X9.42", 0, "DER", 512);
     };
 }
+
+ok(run(app(["openssl", "dhparam", "-noout", "-text"],
+           stdin => data_file("pkcs3-2-1024.pem"))),
+   "stdinbuffer input test that uses BIO_gets");

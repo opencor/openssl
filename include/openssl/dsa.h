@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -98,10 +98,6 @@ int DSA_SIG_set0(DSA_SIG *sig, BIGNUM *r, BIGNUM *s);
 /* typedef struct dsa_st DSA; */
 /* typedef struct dsa_method DSA_METHOD; */
 
-/*
- * TODO(3.0): consider removing the ASN.1 encoding and decoding when
- * deserialization is completed elsewhere.
- */
 #   define d2i_DSAparams_fp(fp, x) \
         (DSA *)ASN1_d2i_fp((char *(*)())DSA_new, \
                            (char *(*)())d2i_DSAparams, (fp), \

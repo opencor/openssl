@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -16,7 +16,7 @@ use OpenSSL::Test::Utils;
 
 setup("test_pkeyutl");
 
-plan tests => 11;
+plan tests => 12;
 
 # For the tests below we use the cert itself as the TBS file
 
@@ -124,6 +124,14 @@ SKIP: {
                     srctop_file("test","testrsa.pem"),
                     srctop_file("test","testrsapub.pem"),
                     "-rawin", "-digest", "sha256");
+    };
+
+    subtest "RSA CLI signature and verification with pkeyopt" => sub {
+        tsignverify("RSA",
+                    srctop_file("test","testrsa.pem"),
+                    srctop_file("test","testrsapub.pem"),
+                    "-rawin", "-digest", "sha256",
+                    "-pkeyopt", "rsa_padding_mode:pss");
     };
 }
 

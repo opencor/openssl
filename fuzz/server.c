@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 
 /* Test first part of SSL server handshake. */
 
-/* We need to use the deprecated RSA low level calls */
+/* We need to use some deprecated APIs */
 #define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <time.h>
@@ -24,8 +24,6 @@
 #include <openssl/dh.h>
 #include <openssl/err.h>
 #include "fuzzer.h"
-
-#include "rand.inc"
 
 static const uint8_t kCertificateDER[] = {
     0x30, 0x82, 0x02, 0xff, 0x30, 0x82, 0x01, 0xe7, 0xa0, 0x03, 0x02, 0x01,
@@ -200,8 +198,8 @@ static const uint8_t kRSAPrivateKeyDER[] = {
 };
 #endif
 
-
 #ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
 /*
  *  -----BEGIN EC PRIVATE KEY-----
  *  MHcCAQEEIJLyl7hJjpQL/RhP1x2zS79xdiPJQB683gWeqcqHPeZkoAoGCCqGSM49
@@ -230,6 +228,7 @@ static const char ECDSAPrivateKeyPEM[] = {
     0x4e, 0x44, 0x20, 0x45, 0x43, 0x20, 0x50, 0x52, 0x49, 0x56, 0x41, 0x54,
     0x45, 0x20, 0x4b, 0x45, 0x59, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d, 0x0a
 };
+# endif
 
 /*
  * -----BEGIN CERTIFICATE-----
@@ -494,12 +493,12 @@ int FuzzerInitialize(int *argc, char ***argv)
 {
     STACK_OF(SSL_COMP) *comp_methods;
 
+    FuzzerSetRand();
     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ASYNC, NULL);
     OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, NULL);
     ERR_clear_error();
     CRYPTO_free_ex_index(0, -1);
     idx = SSL_get_ex_data_X509_STORE_CTX_idx();
-    FuzzerSetRand();
     comp_methods = SSL_COMP_get_compression_methods();
     if (comp_methods != NULL)
         sk_SSL_COMP_sort(comp_methods);
@@ -522,14 +521,14 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
     RSA *privkey;
 #endif
     const uint8_t *bufp;
-#if !defined(OPENSSL_NO_DEPRECATED_3_0)         \
-    || !defined(OPENSSL_NO_DSA)                 \
-    || !defined(OPENSSL_NO_EC)
+#if !defined(OPENSSL_NO_DEPRECATED_3_0)
     EVP_PKEY *pkey;
 #endif
     X509 *cert;
-#ifndef OPENSSL_NO_EC
+#ifndef OPENSSL_NO_DEPRECATED_3_0
+# ifndef OPENSSL_NO_EC
     EC_KEY *ecdsakey = NULL;
+# endif
 #endif
 #if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     DSA *dsakey = NULL;
@@ -571,6 +570,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
     X509_free(cert);
 
 #ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
     /* ECDSA */
     bio_buf = BIO_new(BIO_s_mem());
     OPENSSL_assert((size_t)BIO_write(bio_buf, ECDSAPrivateKeyPEM, sizeof(ECDSAPrivateKeyPEM)) == sizeof(ECDSAPrivateKeyPEM));
@@ -583,7 +583,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
     ret = SSL_CTX_use_PrivateKey(ctx, pkey);
     OPENSSL_assert(ret == 1);
     EVP_PKEY_free(pkey);
-
+# endif
     bio_buf = BIO_new(BIO_s_mem());
     OPENSSL_assert((size_t)BIO_write(bio_buf, ECDSACertPEM, sizeof(ECDSACertPEM)) == sizeof(ECDSACertPEM));
     cert = PEM_read_bio_X509(bio_buf, NULL, NULL, NULL);
@@ -661,4 +661,5 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
 
 void FuzzerCleanup(void)
 {
+    FuzzerClearRand();
 }

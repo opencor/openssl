@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -39,35 +39,6 @@
 #if defined(__DragonFly__)
 # include <sys/param.h>
 # include <sys/random.h>
-#endif
-/*
- * Provide a compile time error if the FIPS module is being built and none
- * of the supported entropy sources are available.
- */
-#if defined(FIPS_MODULE)
-# if !defined(OPENSSL_RAND_SEED_GETRANDOM) \
-     && !defined(OPENSSL_RAND_SEED_DEVRANDOM) \
-     && !defined(OPENSSL_RAND_SEED_RDCPU) \
-     && !defined(OPENSSL_RAND_SEED_OS)
-#  error FIPS mode without supported randomness source
-# endif
-/* Remove the sources that are not permitted in FIPS */
-# ifdef OPENSSL_RAND_SEED_LIBRANDOM
-#  undef OPENSSL_RAND_SEED_LIBRANDOM
-#  warning FIPS mode does not support the _librandom_ randomness source
-# endif
-# ifdef OPENSSL_RAND_SEED_RDTSC
-#  undef OPENSSL_RAND_SEED_RDTSC
-#  warning FIPS mode does not support the _RDTSC_ randomness source
-# endif
-# ifdef OPENSSL_RAND_SEED_EGD
-#  undef OPENSSL_RAND_SEED_EGD
-#  warning FIPS mode does not support the _EGD_ randomness source
-# endif
-# ifdef OPENSSL_RAND_SEED_NONE
-#  undef OPENSSL_RAND_SEED_NONE
-#  warning FIPS mode does not support the _none_ randomness source
-# endif
 #endif
 
 #if (defined(OPENSSL_SYS_UNIX) && !defined(OPENSSL_SYS_VXWORKS)) \
@@ -180,7 +151,7 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
     extern void s$sleep2(long long *_duration, short int *_code);
 #  endif
 
-    bytes_needed = rand_pool_bytes_needed(pool, 4 /*entropy_factor*/);
+    bytes_needed = ossl_rand_pool_bytes_needed(pool, 4 /*entropy_factor*/);
 
     for (i = 0; i < bytes_needed; i++) {
         /*
@@ -203,16 +174,16 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
         /* Get wall clock time, take 8 bits. */
         clock_gettime(CLOCK_REALTIME, &ts);
         v = (unsigned char)(ts.tv_nsec & 0xFF);
-        rand_pool_add(pool, arg, &v, sizeof(v) , 2);
+        ossl_rand_pool_add(pool, arg, &v, sizeof(v) , 2);
     }
-    return rand_pool_entropy_available(pool);
+    return ossl_rand_pool_entropy_available(pool);
 }
 
-void rand_pool_cleanup(void)
+void ossl_rand_pool_cleanup(void)
 {
 }
 
-void rand_pool_keep_random_devices_open(int keep)
+void ossl_rand_pool_keep_random_devices_open(int keep)
 {
 }
 
@@ -393,7 +364,7 @@ static ssize_t syscall_random(void *buf, size_t buflen)
         if (errno != ENOSYS)
             return -1;
     }
-#    elif !defined(FIPS_MODULE)
+#    else
     union {
         void *p;
         int (*f)(void *buffer, size_t length);
@@ -441,12 +412,10 @@ static int keep_random_devices_open = 1;
        && defined(OPENSSL_RAND_SEED_GETRANDOM)
 static void *shm_addr;
 
-#    if !defined(FIPS_MODULE)
 static void cleanup_shm(void)
 {
     shmdt(shm_addr);
 }
-#    endif
 
 /*
  * Ensure that the system randomness source has been adequately seeded.
@@ -512,11 +481,8 @@ static int wait_random_seeded(void)
              * If this call fails, it isn't a big problem.
              */
             shm_addr = shmat(shm_id, NULL, SHM_RDONLY);
-#    ifndef FIPS_MODULE
-            /* TODO 3.0: The FIPS provider doesn't have OPENSSL_atexit */
             if (shm_addr != (void *)-1)
                 OPENSSL_atexit(&cleanup_shm);
-#    endif
         }
     }
     return seeded;
@@ -589,7 +555,7 @@ static void close_random_device(size_t n)
     rd->fd = -1;
 }
 
-int rand_pool_init(void)
+int ossl_rand_pool_init(void)
 {
     size_t i;
 
@@ -599,7 +565,7 @@ int rand_pool_init(void)
     return 1;
 }
 
-void rand_pool_cleanup(void)
+void ossl_rand_pool_cleanup(void)
 {
     size_t i;
 
@@ -607,26 +573,26 @@ void rand_pool_cleanup(void)
         close_random_device(i);
 }
 
-void rand_pool_keep_random_devices_open(int keep)
+void ossl_rand_pool_keep_random_devices_open(int keep)
 {
     if (!keep)
-        rand_pool_cleanup();
+        ossl_rand_pool_cleanup();
 
     keep_random_devices_open = keep;
 }
 
 #  else     /* !defined(OPENSSL_RAND_SEED_DEVRANDOM) */
 
-int rand_pool_init(void)
+int ossl_rand_pool_init(void)
 {
     return 1;
 }
 
-void rand_pool_cleanup(void)
+void ossl_rand_pool_cleanup(void)
 {
 }
 
-void rand_pool_keep_random_devices_open(int keep)
+void ossl_rand_pool_keep_random_devices_open(int keep)
 {
 }
 
@@ -652,7 +618,7 @@ void rand_pool_keep_random_devices_open(int keep)
 size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
 {
 #  if defined(OPENSSL_RAND_SEED_NONE)
-    return rand_pool_entropy_available(pool);
+    return ossl_rand_pool_entropy_available(pool);
 #  else
     size_t entropy_available = 0;
 
@@ -666,12 +632,12 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
         /* Maximum allowed number of consecutive unsuccessful attempts */
         int attempts = 3;
 
-        bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
+        bytes_needed = ossl_rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
         while (bytes_needed != 0 && attempts-- > 0) {
-            buffer = rand_pool_add_begin(pool, bytes_needed);
+            buffer = ossl_rand_pool_add_begin(pool, bytes_needed);
             bytes = syscall_random(buffer, bytes_needed);
             if (bytes > 0) {
-                rand_pool_add_end(pool, bytes, 8 * bytes);
+                ossl_rand_pool_add_end(pool, bytes, 8 * bytes);
                 bytes_needed -= bytes;
                 attempts = 3; /* reset counter after successful attempt */
             } else if (bytes < 0 && errno != EINTR) {
@@ -679,7 +645,7 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
             }
         }
     }
-    entropy_available = rand_pool_entropy_available(pool);
+    entropy_available = ossl_rand_pool_entropy_available(pool);
     if (entropy_available > 0)
         return entropy_available;
 #   endif
@@ -696,7 +662,7 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
         unsigned char *buffer;
         size_t i;
 
-        bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
+        bytes_needed = ossl_rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
         for (i = 0; bytes_needed > 0 && i < OSSL_NELEM(random_device_paths);
              i++) {
             ssize_t bytes = 0;
@@ -708,11 +674,11 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
                 continue;
 
             while (bytes_needed != 0 && attempts-- > 0) {
-                buffer = rand_pool_add_begin(pool, bytes_needed);
+                buffer = ossl_rand_pool_add_begin(pool, bytes_needed);
                 bytes = read(fd, buffer, bytes_needed);
 
                 if (bytes > 0) {
-                    rand_pool_add_end(pool, bytes, 8 * bytes);
+                    ossl_rand_pool_add_end(pool, bytes, 8 * bytes);
                     bytes_needed -= bytes;
                     attempts = 3; /* reset counter on successful attempt */
                 } else if (bytes < 0 && errno != EINTR) {
@@ -722,22 +688,22 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
             if (bytes < 0 || !keep_random_devices_open)
                 close_random_device(i);
 
-            bytes_needed = rand_pool_bytes_needed(pool, 1);
+            bytes_needed = ossl_rand_pool_bytes_needed(pool, 1);
         }
-        entropy_available = rand_pool_entropy_available(pool);
+        entropy_available = ossl_rand_pool_entropy_available(pool);
         if (entropy_available > 0)
             return entropy_available;
     }
 #   endif
 
 #   if defined(OPENSSL_RAND_SEED_RDTSC)
-    entropy_available = prov_acquire_entropy_from_tsc(pool);
+    entropy_available = ossl_prov_acquire_entropy_from_tsc(pool);
     if (entropy_available > 0)
         return entropy_available;
 #   endif
 
 #   if defined(OPENSSL_RAND_SEED_RDCPU)
-    entropy_available = prov_acquire_entropy_from_cpu(pool);
+    entropy_available = ossl_prov_acquire_entropy_from_cpu(pool);
     if (entropy_available > 0)
         return entropy_available;
 #   endif
@@ -749,27 +715,27 @@ size_t ossl_pool_acquire_entropy(RAND_POOL *pool)
         unsigned char *buffer;
         int i;
 
-        bytes_needed = rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
+        bytes_needed = ossl_rand_pool_bytes_needed(pool, 1 /*entropy_factor*/);
         for (i = 0; bytes_needed > 0 && paths[i] != NULL; i++) {
             size_t bytes = 0;
             int num;
 
-            buffer = rand_pool_add_begin(pool, bytes_needed);
+            buffer = ossl_rand_pool_add_begin(pool, bytes_needed);
             num = RAND_query_egd_bytes(paths[i],
                                        buffer, (int)bytes_needed);
             if (num == (int)bytes_needed)
                 bytes = bytes_needed;
 
-            rand_pool_add_end(pool, bytes, 8 * bytes);
-            bytes_needed = rand_pool_bytes_needed(pool, 1);
+            ossl_rand_pool_add_end(pool, bytes, 8 * bytes);
+            bytes_needed = ossl_rand_pool_bytes_needed(pool, 1);
         }
-        entropy_available = rand_pool_entropy_available(pool);
+        entropy_available = ossl_rand_pool_entropy_available(pool);
         if (entropy_available > 0)
             return entropy_available;
     }
 #   endif
 
-    return rand_pool_entropy_available(pool);
+    return ossl_rand_pool_entropy_available(pool);
 #  endif
 }
 # endif
@@ -797,10 +763,10 @@ int ossl_pool_add_nonce_data(RAND_POOL *pool)
     data.tid = CRYPTO_THREAD_get_current_id();
     data.time = get_time_stamp();
 
-    return rand_pool_add(pool, (unsigned char *)&data, sizeof(data), 0);
+    return ossl_rand_pool_add(pool, (unsigned char *)&data, sizeof(data), 0);
 }
 
-int rand_pool_add_additional_data(RAND_POOL *pool)
+int ossl_rand_pool_add_additional_data(RAND_POOL *pool)
 {
     struct {
         int fork_id;
@@ -821,7 +787,7 @@ int rand_pool_add_additional_data(RAND_POOL *pool)
     data.tid = CRYPTO_THREAD_get_current_id();
     data.time = get_timer_bits();
 
-    return rand_pool_add(pool, (unsigned char *)&data, sizeof(data), 0);
+    return ossl_rand_pool_add(pool, (unsigned char *)&data, sizeof(data), 0);
 }
 
 

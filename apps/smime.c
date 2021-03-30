@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -145,7 +145,8 @@ int smime_main(int argc, char **argv)
     const char *CAfile = NULL, *CApath = NULL, *CAstore = NULL, *prog = NULL;
     char *certfile = NULL, *keyfile = NULL, *contfile = NULL;
     char *infile = NULL, *outfile = NULL, *signerfile = NULL, *recipfile = NULL;
-    char *passinarg = NULL, *passin = NULL, *to = NULL, *from = NULL, *subject = NULL;
+    char *passinarg = NULL, *passin = NULL, *to = NULL, *from = NULL;
+    char *subject = NULL, *digestname = NULL, *ciphername = NULL;
     OPTION_CHOICE o;
     int noCApath = 0, noCAfile = 0, noCAstore = 0;
     int flags = PKCS7_DETACHED, operation = 0, ret = 0, indef = 0;
@@ -155,7 +156,6 @@ int smime_main(int argc, char **argv)
     ENGINE *e = NULL;
     const char *mime_eol = "\n";
     OSSL_LIB_CTX *libctx = app_get0_libctx();
-    const char *propq = app_get0_propq();
 
     if ((vpm = X509_VERIFY_PARAM_new()) == NULL)
         return 1;
@@ -294,12 +294,10 @@ int smime_main(int argc, char **argv)
             recipfile = opt_arg();
             break;
         case OPT_MD:
-            if (!opt_md(opt_arg(), &sign_md))
-                goto opthelp;
+            digestname = opt_arg();
             break;
         case OPT_CIPHER:
-            if (!opt_cipher(opt_unknown(), &cipher))
-                goto opthelp;
+            ciphername = opt_unknown();
             break;
         case OPT_INKEY:
             /* If previous -inkey argument add signer to list */
@@ -361,6 +359,15 @@ int smime_main(int argc, char **argv)
     argc = opt_num_rest();
     argv = opt_rest();
 
+    app_RAND_load();
+    if (digestname != NULL) {
+        if (!opt_md(digestname, &sign_md))
+            goto opthelp;
+    }
+    if (ciphername != NULL) {
+        if (!opt_cipher(ciphername, &cipher))
+            goto opthelp;
+    }
     if (!(operation & SMIME_SIGNERS) && (skkeys != NULL || sksigners != NULL)) {
         BIO_puts(bio_err, "Multiple signers or keys not allowed\n");
         goto opthelp;
@@ -450,7 +457,7 @@ int smime_main(int argc, char **argv)
     }
 
     if (certfile != NULL) {
-        if (!load_certs(certfile, &other, NULL, "certificates")) {
+        if (!load_certs(certfile, 0, &other, NULL, "certificates")) {
             ERR_print_errors(bio_err);
             goto end;
         }
@@ -478,14 +485,6 @@ int smime_main(int argc, char **argv)
         key = load_key(keyfile, keyform, 0, passin, e, "signing key");
         if (key == NULL)
             goto end;
-
-        /*
-         * TODO: Remove this when CMS has full support for provider-native
-         * EVP_PKEYs
-         */
-        if (EVP_PKEY_get0(key) == NULL)
-            goto end;
-
     }
 
     in = bio_open_default(infile, 'r', informat);
@@ -495,7 +494,7 @@ int smime_main(int argc, char **argv)
     if (operation & SMIME_IP) {
         PKCS7 *p7_in = NULL;
 
-        p7 = PKCS7_new_ex(libctx, propq);
+        p7 = PKCS7_new_ex(libctx, app_get0_propq());
         if (p7 == NULL) {
             BIO_printf(bio_err, "Error allocating PKCS7 object\n");
             goto end;
@@ -542,7 +541,7 @@ int smime_main(int argc, char **argv)
     if (operation == SMIME_ENCRYPT) {
         if (indef)
             flags |= PKCS7_STREAM;
-        p7 = PKCS7_encrypt_ex(encerts, in, cipher, flags, libctx, propq);
+        p7 = PKCS7_encrypt_ex(encerts, in, cipher, flags, libctx, app_get0_propq());
     } else if (operation & SMIME_SIGNERS) {
         int i;
         /*
@@ -557,7 +556,7 @@ int smime_main(int argc, char **argv)
                 flags |= PKCS7_STREAM;
             }
             flags |= PKCS7_PARTIAL;
-            p7 = PKCS7_sign_ex(NULL, NULL, other, in, flags, libctx, propq);
+            p7 = PKCS7_sign_ex(NULL, NULL, other, in, flags, libctx, app_get0_propq());
             if (p7 == NULL)
                 goto end;
             if (flags & PKCS7_NOCERTS) {
@@ -577,13 +576,6 @@ int smime_main(int argc, char **argv)
                 goto end;
             key = load_key(keyfile, keyform, 0, passin, e, "signing key");
             if (key == NULL)
-                goto end;
-
-            /*
-             * TODO: Remove this when CMS has full support for provider-native
-             * EVP_PKEYs
-             */
-            if (EVP_PKEY_get0(key) == NULL)
                 goto end;
 
             if (!PKCS7_sign_add_signer(p7, signer, key, sign_md, flags))

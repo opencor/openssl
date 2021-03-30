@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2014-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -16,6 +16,7 @@
 # include <openssl/err.h>
 # include <openssl/e_os2.h>
 # include <openssl/bn.h>
+# include <openssl/x509.h>
 # include "opt.h"
 
 /*-
@@ -565,7 +566,25 @@ char *glue_strings(const char *list[], size_t *out_len);
 uint32_t test_random(void);
 void test_random_seed(uint32_t sd);
 
+/* Fake non-secure random number generator */
+typedef int fake_random_generate_cb(unsigned char *out, size_t outlen,
+                                    const char *name, EVP_RAND_CTX *ctx);
+
+OSSL_PROVIDER *fake_rand_start(OSSL_LIB_CTX *libctx);
+void fake_rand_finish(OSSL_PROVIDER *p);
+void fake_rand_set_callback(EVP_RAND_CTX *ctx,
+                            int (*cb)(unsigned char *out, size_t outlen,
+                                      const char *name, EVP_RAND_CTX *ctx));
+void fake_rand_set_public_private_callbacks(OSSL_LIB_CTX *libctx,
+                                            fake_random_generate_cb *cb);
+
 /* Create a file path from a directory and a filename */
 char *test_mk_file_path(const char *dir, const char *file);
+
+EVP_PKEY *load_pkey_pem(const char *file, OSSL_LIB_CTX *libctx);
+X509 *load_cert_pem(const char *file, OSSL_LIB_CTX *libctx);
+X509 *load_cert_der(const unsigned char *bytes, int len);
+STACK_OF(X509) *load_certs_pem(const char *file);
+X509_REQ *load_csr_der(const char *file);
 
 #endif                          /* OSSL_TESTUTIL_H */

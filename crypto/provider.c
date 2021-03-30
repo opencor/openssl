@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,7 +13,8 @@
 #include <openssl/core_names.h>
 #include "internal/provider.h"
 
-OSSL_PROVIDER *OSSL_PROVIDER_try_load(OSSL_LIB_CTX *libctx, const char *name)
+OSSL_PROVIDER *OSSL_PROVIDER_try_load(OSSL_LIB_CTX *libctx, const char *name,
+                                      int retain_fallbacks)
 {
     OSSL_PROVIDER *prov = NULL;
 
@@ -22,7 +23,7 @@ OSSL_PROVIDER *OSSL_PROVIDER_try_load(OSSL_LIB_CTX *libctx, const char *name)
         && (prov = ossl_provider_new(libctx, name, NULL, 0)) == NULL)
         return NULL;
 
-    if (!ossl_provider_activate(prov)) {
+    if (!ossl_provider_activate(prov, retain_fallbacks)) {
         ossl_provider_free(prov);
         return NULL;
     }
@@ -34,7 +35,7 @@ OSSL_PROVIDER *OSSL_PROVIDER_load(OSSL_LIB_CTX *libctx, const char *name)
 {
     /* Any attempt to load a provider disables auto-loading of defaults */
     if (ossl_provider_disable_fallback_loading(libctx))
-        return OSSL_PROVIDER_try_load(libctx, name);
+        return OSSL_PROVIDER_try_load(libctx, name, 0);
     return NULL;
 }
 
@@ -73,6 +74,13 @@ const OSSL_ALGORITHM *OSSL_PROVIDER_query_operation(const OSSL_PROVIDER *prov,
                                                     int *no_cache)
 {
     return ossl_provider_query_operation(prov, operation_id, no_cache);
+}
+
+void OSSL_PROVIDER_unquery_operation(const OSSL_PROVIDER *prov,
+                                     int operation_id,
+                                     const OSSL_ALGORITHM *algs)
+{
+    ossl_provider_unquery_operation(prov, operation_id, algs);
 }
 
 void *OSSL_PROVIDER_get0_provider_ctx(const OSSL_PROVIDER *prov)
@@ -126,5 +134,5 @@ int OSSL_PROVIDER_do_all(OSSL_LIB_CTX *ctx,
                                    void *cbdata),
                          void *cbdata)
 {
-    return ossl_provider_forall_loaded(ctx, cb, cbdata);
+    return ossl_provider_doall_activated(ctx, cb, cbdata);
 }

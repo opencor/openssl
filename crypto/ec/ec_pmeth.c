@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -161,8 +161,15 @@ static int pkey_ec_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen)
     size_t outlen;
     const EC_POINT *pubkey = NULL;
     EC_KEY *eckey;
+    const EC_KEY *eckeypub;
     EC_PKEY_CTX *dctx = ctx->data;
-    if (!ctx->pkey || !ctx->peerkey) {
+
+    if (ctx->pkey == NULL || ctx->peerkey == NULL) {
+        ERR_raise(ERR_LIB_EC, EC_R_KEYS_NOT_SET);
+        return 0;
+    }
+    eckeypub = EVP_PKEY_get0_EC_KEY(ctx->peerkey);
+    if (eckeypub == NULL) {
         ERR_raise(ERR_LIB_EC, EC_R_KEYS_NOT_SET);
         return 0;
     }
@@ -172,10 +179,13 @@ static int pkey_ec_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen)
     if (!key) {
         const EC_GROUP *group;
         group = EC_KEY_get0_group(eckey);
+
+        if (group == NULL)
+            return 0;
         *keylen = (EC_GROUP_get_degree(group) + 7) / 8;
         return 1;
     }
-    pubkey = EC_KEY_get0_public_key(ctx->peerkey->pkey.ec);
+    pubkey = EC_KEY_get0_public_key(eckeypub);
 
     /*
      * NB: unlike PKCS#3 DH, if *outlen is less than maximum size this is not
@@ -215,9 +225,9 @@ static int pkey_ec_kdf_derive(EVP_PKEY_CTX *ctx,
     if (!pkey_ec_derive(ctx, ktmp, &ktmplen))
         goto err;
     /* Do KDF stuff */
-    if (!ecdh_KDF_X9_63(key, *keylen, ktmp, ktmplen,
-                        dctx->kdf_ukm, dctx->kdf_ukmlen, dctx->kdf_md,
-                        ctx->libctx, ctx->propquery))
+    if (!ossl_ecdh_kdf_X9_63(key, *keylen, ktmp, ktmplen,
+                             dctx->kdf_ukm, dctx->kdf_ukmlen, dctx->kdf_md,
+                             ctx->libctx, ctx->propquery))
         goto err;
     rv = 1;
 
@@ -483,7 +493,7 @@ static const EVP_PKEY_METHOD ec_pkey_meth = {
     pkey_ec_ctrl_str
 };
 
-const EVP_PKEY_METHOD *ec_pkey_method(void)
+const EVP_PKEY_METHOD *ossl_ec_pkey_method(void)
 {
     return &ec_pkey_meth;
 }

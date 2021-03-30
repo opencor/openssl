@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2009-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -83,10 +83,6 @@ void sha512_block_data_order(void *ctx, const void *inp, size_t len)
         sha512_block_ppc(ctx, inp, len);
 }
 
-/*
- * TODO(3.0): Temporarily disabled some assembler that hasn't been brought into
- * the FIPS module yet.
- */
 #ifndef FIPS_MODULE
 # ifndef OPENSSL_NO_CHACHA
 void ChaCha20_ctr32_int(unsigned char *out, const unsigned char *inp,
@@ -226,6 +222,24 @@ size_t OPENSSL_instrument_bus2(unsigned int *out, size_t cnt, size_t max)
 # if __GLIBC_PREREQ(2, 16)
 #  include <sys/auxv.h>
 #  define OSSL_IMPLEMENT_GETAUXVAL
+# endif
+#endif
+
+#if defined(__FreeBSD__)
+# include <sys/param.h>
+# if __FreeBSD_version >= 1200000
+#  include <sys/auxv.h>
+#  define OSSL_IMPLEMENT_GETAUXVAL
+
+static unsigned long getauxval(unsigned long key)
+{
+  unsigned long val = 0ul;
+
+  if (elf_aux_info((int)key, &val, sizeof(val)) != 0)
+    return 0ul;
+
+  return val;
+}
 # endif
 #endif
 

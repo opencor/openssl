@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -57,11 +57,10 @@ int gendsa_main(int argc, char **argv)
     EVP_PKEY *pkey = NULL;
     EVP_PKEY_CTX *ctx = NULL;
     const EVP_CIPHER *enc = NULL;
-    char *dsaparams = NULL;
+    char *dsaparams = NULL, *ciphername = NULL;
     char *outfile = NULL, *passoutarg = NULL, *passout = NULL, *prog;
     OPTION_CHOICE o;
-    int ret = 1, private = 0, verbose = 0;
-    const BIGNUM *p = NULL;
+    int ret = 1, private = 0, verbose = 0, nbits;
 
     prog = opt_init(argc, argv, gendsa_options);
     while ((o = opt_next()) != OPT_EOF) {
@@ -93,8 +92,7 @@ int gendsa_main(int argc, char **argv)
                 goto end;
             break;
         case OPT_CIPHER:
-            if (!opt_cipher(opt_unknown(), &enc))
-                goto end;
+            ciphername = opt_unknown();
             break;
         case OPT_VERBOSE:
             verbose = 1;
@@ -107,8 +105,13 @@ int gendsa_main(int argc, char **argv)
     argv = opt_rest();
     if (argc != 1)
         goto opthelp;
-
     dsaparams = argv[0];
+
+    app_RAND_load();
+    if (ciphername != NULL) {
+        if (!opt_cipher(ciphername, &enc))
+            goto end;
+    }
     private = 1;
 
     if (!app_passwd(NULL, passoutarg, NULL, &passout)) {
@@ -122,7 +125,8 @@ int gendsa_main(int argc, char **argv)
     if (out == NULL)
         goto end2;
 
-    if (EVP_PKEY_bits(pkey) > OPENSSL_DSA_MAX_MODULUS_BITS)
+    nbits = EVP_PKEY_bits(pkey);
+    if (nbits > OPENSSL_DSA_MAX_MODULUS_BITS)
         BIO_printf(bio_err,
                    "Warning: It is not recommended to use more than %d bit for DSA keys.\n"
                    "         Your key size is %d! Larger key size may behave not as expected.\n",
@@ -140,7 +144,7 @@ int gendsa_main(int argc, char **argv)
         goto end;
     }
     if (verbose)
-        BIO_printf(bio_err, "Generating DSA key, %d bits\n", BN_num_bits(p));
+        BIO_printf(bio_err, "Generating DSA key, %d bits\n", nbits);
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
         BIO_printf(bio_err, "unable to generate key\n");
         goto end;

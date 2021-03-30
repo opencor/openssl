@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,8 +39,6 @@
 #include <openssl/ssl.h>
 #include <internal/nelem.h>
 #include "fuzzer.h"
-
-#include "rand.inc"
 
 static ASN1_ITEM_EXP *item_type[] = {
     ASN1_ITEM_ref(ACCESS_DESCRIPTION),
@@ -96,7 +94,7 @@ static ASN1_ITEM_EXP *item_type[] = {
     ASN1_ITEM_ref(DISPLAYTEXT),
     ASN1_ITEM_ref(DIST_POINT),
     ASN1_ITEM_ref(DIST_POINT_NAME),
-#ifndef OPENSSL_NO_EC
+#if !defined(OPENSSL_NO_EC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     ASN1_ITEM_ref(ECPARAMETERS),
     ASN1_ITEM_ref(ECPKPARAMETERS),
 #endif
@@ -280,6 +278,7 @@ static ASN1_PCTX *pctx;
 
 int FuzzerInitialize(int *argc, char ***argv)
 {
+    FuzzerSetRand();
     pctx = ASN1_PCTX_new();
     ASN1_PCTX_set_flags(pctx, ASN1_PCTX_FLAGS_SHOW_ABSENT |
         ASN1_PCTX_FLAGS_SHOW_SEQUENCE | ASN1_PCTX_FLAGS_SHOW_SSOF |
@@ -291,7 +290,6 @@ int FuzzerInitialize(int *argc, char ***argv)
     OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, NULL);
     ERR_clear_error();
     CRYPTO_free_ex_index(0, -1);
-    FuzzerSetRand();
 
     return 1;
 }
@@ -347,10 +345,10 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
     DO_TEST_NO_PRINT(RSA, d2i_RSAPublicKey, i2d_RSAPublicKey);
 #endif
 #ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
     DO_TEST_PRINT_OFFSET(EC_GROUP, d2i_ECPKParameters, i2d_ECPKParameters, ECPKParameters_print);
     DO_TEST_PRINT_OFFSET(EC_KEY, d2i_ECPrivateKey, i2d_ECPrivateKey, EC_KEY_print);
     DO_TEST(EC_KEY, d2i_ECParameters, i2d_ECParameters, ECParameters_print);
-# ifndef OPENSSL_NO_DEPRECATED_3_0
     DO_TEST_NO_PRINT(ECDSA_SIG, d2i_ECDSA_SIG, i2d_ECDSA_SIG);
 # endif
 #endif
@@ -365,4 +363,5 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
 void FuzzerCleanup(void)
 {
     ASN1_PCTX_free(pctx);
+    FuzzerClearRand();
 }

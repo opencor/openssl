@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -76,8 +76,8 @@ int EC_KEY_set_method(EC_KEY *key, const EC_KEY_METHOD *meth)
     return 1;
 }
 
-EC_KEY *ec_key_new_method_int(OSSL_LIB_CTX *libctx, const char *propq,
-                              ENGINE *engine)
+EC_KEY *ossl_ec_key_new_method_int(OSSL_LIB_CTX *libctx, const char *propq,
+                                   ENGINE *engine)
 {
     EC_KEY *ret = OPENSSL_zalloc(sizeof(*ret));
 
@@ -145,7 +145,7 @@ EC_KEY *ec_key_new_method_int(OSSL_LIB_CTX *libctx, const char *propq,
 #ifndef FIPS_MODULE
 EC_KEY *EC_KEY_new_method(ENGINE *engine)
 {
-    return ec_key_new_method_int(NULL, NULL, engine);
+    return ossl_ec_key_new_method_int(NULL, NULL, engine);
 }
 #endif
 

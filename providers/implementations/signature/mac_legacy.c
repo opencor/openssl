@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -74,6 +74,7 @@ static void *mac_newctx(void *provctx, const char *propq, const char *macname)
     return pmacctx;
 
  err:
+    OPENSSL_free(pmacctx->propq);
     OPENSSL_free(pmacctx);
     EVP_MAC_free(mac);
     return NULL;
@@ -90,7 +91,8 @@ MAC_NEWCTX(siphash, "SIPHASH")
 MAC_NEWCTX(poly1305, "POLY1305")
 MAC_NEWCTX(cmac, "CMAC")
 
-static int mac_digest_sign_init(void *vpmacctx, const char *mdname, void *vkey)
+static int mac_digest_sign_init(void *vpmacctx, const char *mdname, void *vkey,
+                                const OSSL_PARAM params[])
 {
     PROV_MAC_CTX *pmacctx = (PROV_MAC_CTX *)vpmacctx;
     const char *ciphername = NULL, *engine = NULL;
@@ -116,11 +118,11 @@ static int mac_digest_sign_init(void *vpmacctx, const char *mdname, void *vkey)
                               (char *)mdname,
                               (char *)engine,
                               pmacctx->key->properties,
-                              pmacctx->key->priv_key,
-                              pmacctx->key->priv_key_len))
+                              NULL, 0))
         return 0;
 
-    if (!EVP_MAC_init(pmacctx->macctx))
+    if (!EVP_MAC_init(pmacctx->macctx, pmacctx->key->priv_key,
+                      pmacctx->key->priv_key_len, params))
         return 0;
 
     return 1;
@@ -171,8 +173,12 @@ static void *mac_dupctx(void *vpmacctx)
         return NULL;
 
     *dstctx = *srcctx;
+    dstctx->propq = NULL;
     dstctx->key = NULL;
     dstctx->macctx = NULL;
+
+    if (srcctx->propq != NULL && (dstctx->propq = OPENSSL_strdup(srcctx->propq)) == NULL)
+        goto err;
 
     if (srcctx->key != NULL && !ossl_mac_key_up_ref(srcctx->key))
         goto err;
@@ -197,7 +203,8 @@ static int mac_set_ctx_params(void *vpmacctx, const OSSL_PARAM params[])
     return EVP_MAC_CTX_set_params(ctx->macctx, params);
 }
 
-static const OSSL_PARAM *mac_settable_ctx_params(void *provctx,
+static const OSSL_PARAM *mac_settable_ctx_params(ossl_unused void *ctx,
+                                                 void *provctx,
                                                  const char *macname)
 {
     EVP_MAC *mac = EVP_MAC_fetch(PROV_LIBCTX_OF(provctx), macname,
@@ -214,9 +221,10 @@ static const OSSL_PARAM *mac_settable_ctx_params(void *provctx,
 }
 
 #define MAC_SETTABLE_CTX_PARAMS(funcname, macname) \
-    static const OSSL_PARAM *mac_##funcname##_settable_ctx_params(void *provctx) \
+    static const OSSL_PARAM *mac_##funcname##_settable_ctx_params(void *ctx, \
+                                                                  void *provctx) \
     { \
-        return mac_settable_ctx_params(provctx, macname); \
+        return mac_settable_ctx_params(ctx, provctx, macname); \
     }
 
 MAC_SETTABLE_CTX_PARAMS(hmac, "HMAC")

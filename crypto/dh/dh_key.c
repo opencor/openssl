@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -86,26 +86,53 @@ static int compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh)
         goto err;
     }
 
-    ret = BN_bn2bin(tmp, key);
+    /* return the padded key, i.e. same number of bytes as the modulus */
+    ret = BN_bn2binpad(tmp, key, BN_num_bytes(dh->params.p));
  err:
     BN_CTX_end(ctx);
     BN_CTX_free(ctx);
     return ret;
 }
 
+/*-
+ * NB: This function is inherently not constant time due to the
+ * RFC 5246 (8.1.2) padding style that strips leading zero bytes.
+ */
 int DH_compute_key(unsigned char *key, const BIGNUM *pub_key, DH *dh)
 {
+    int ret = 0, i;
+    volatile size_t npad = 0, mask = 1;
+
+    /* compute the key; ret is constant unless compute_key is external */
 #ifdef FIPS_MODULE
-    return compute_key(key, pub_key, dh);
+    ret = compute_key(key, pub_key, dh);
 #else
-    return dh->meth->compute_key(key, pub_key, dh);
+    ret = dh->meth->compute_key(key, pub_key, dh);
 #endif
+    if (ret <= 0)
+        return ret;
+
+    /* count leading zero bytes, yet still touch all bytes */
+    for (i = 0; i < ret; i++) {
+        mask &= !key[i];
+        npad += mask;
+    }
+
+    /* unpad key */
+    ret -= npad;
+    /* key-dependent memory access, potentially leaking npad / ret */
+    memmove(key, key + npad, ret);
+    /* key-dependent memory access, potentially leaking npad / ret */
+    memset(key + ret, 0, npad);
+
+    return ret;
 }
 
 int DH_compute_key_padded(unsigned char *key, const BIGNUM *pub_key, DH *dh)
 {
     int rv, pad;
 
+    /* rv is constant unless compute_key is external */
 #ifdef FIPS_MODULE
     rv = compute_key(key, pub_key, dh);
 #else
@@ -114,6 +141,7 @@ int DH_compute_key_padded(unsigned char *key, const BIGNUM *pub_key, DH *dh)
     if (rv <= 0)
         return rv;
     pad = BN_num_bytes(dh->params.p) - rv;
+    /* pad is constant (zero) unless compute_key is external */
     if (pad > 0) {
         memmove(key + pad, key, rv);
         memset(key, 0, pad);
@@ -182,8 +210,8 @@ int DH_generate_key(DH *dh)
 #endif
 }
 
-int dh_generate_public_key(BN_CTX *ctx, const DH *dh, const BIGNUM *priv_key,
-                           BIGNUM *pub_key)
+int ossl_dh_generate_public_key(BN_CTX *ctx, const DH *dh,
+                                const BIGNUM *priv_key, BIGNUM *pub_key)
 {
     int ret = 0;
     BIGNUM *prk = BN_new();
@@ -262,7 +290,7 @@ static int generate_key(DH *dh)
         /* Is it an approved safe prime ?*/
         if (DH_get_nid(dh) != NID_undef) {
             int max_strength =
-                    ifc_ffc_compute_security_bits(BN_num_bits(dh->params.p));
+                    ossl_ifc_ffc_compute_security_bits(BN_num_bits(dh->params.p));
 
             if (dh->params.q == NULL
                 || dh->length > BN_num_bits(dh->params.q))
@@ -300,7 +328,7 @@ static int generate_key(DH *dh)
             {
                 /* Do a partial check for invalid p, q, g */
                 if (!ossl_ffc_params_simple_validate(dh->libctx, &dh->params,
-                                                     FFC_PARAM_TYPE_DH))
+                                                     FFC_PARAM_TYPE_DH, NULL))
                     goto err;
                 /*
                  * For FFC FIPS 186-4 keygen
@@ -316,7 +344,7 @@ static int generate_key(DH *dh)
         }
     }
 
-    if (!dh_generate_public_key(ctx, dh, priv_key, pub_key))
+    if (!ossl_dh_generate_public_key(ctx, dh, priv_key, pub_key))
         goto err;
 
     dh->pub_key = pub_key;
@@ -335,7 +363,7 @@ static int generate_key(DH *dh)
     return ok;
 }
 
-int dh_buf2key(DH *dh, const unsigned char *buf, size_t len)
+int ossl_dh_buf2key(DH *dh, const unsigned char *buf, size_t len)
 {
     int err_reason = DH_R_BN_ERROR;
     BIGNUM *pubkey = NULL;
@@ -366,7 +394,8 @@ err:
     return 0;
 }
 
-size_t dh_key2buf(const DH *dh, unsigned char **pbuf_out, size_t size, int alloc)
+size_t ossl_dh_key2buf(const DH *dh, unsigned char **pbuf_out, size_t size,
+                       int alloc)
 {
     const BIGNUM *pubkey;
     unsigned char *pbuf = NULL;

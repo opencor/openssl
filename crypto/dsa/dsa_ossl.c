@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -67,7 +67,7 @@ const DSA_METHOD *DSA_OpenSSL(void)
     return &openssl_dsa_meth;
 }
 
-DSA_SIG *dsa_do_sign_int(const unsigned char *dgst, int dlen, DSA *dsa)
+DSA_SIG *ossl_dsa_do_sign_int(const unsigned char *dgst, int dlen, DSA *dsa)
 {
     BIGNUM *kinv = NULL;
     BIGNUM *m, *blind, *blindm, *tmp;
@@ -185,7 +185,7 @@ DSA_SIG *dsa_do_sign_int(const unsigned char *dgst, int dlen, DSA *dsa)
 
 static DSA_SIG *dsa_do_sign(const unsigned char *dgst, int dlen, DSA *dsa)
 {
-    return dsa_do_sign_int(dgst, dlen, dsa);
+    return ossl_dsa_do_sign_int(dgst, dlen, dsa);
 }
 
 static int dsa_sign_setup_no_digest(DSA *dsa, BN_CTX *ctx_in,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -9,9 +9,13 @@
 
 /* Dispatch functions for AES CBC CTS ciphers */
 
+#include <openssl/proverr.h>
 #include "cipher_aes_cts.h"
-#include "prov/providercommonerr.h"
 
+#define AES_CTS_FLAGS PROV_CIPHER_FLAG_CTS
+
+static OSSL_FUNC_cipher_encrypt_init_fn aes_cbc_cts_einit;
+static OSSL_FUNC_cipher_decrypt_init_fn aes_cbc_cts_dinit;
 static OSSL_FUNC_cipher_get_ctx_params_fn aes_cbc_cts_get_ctx_params;
 static OSSL_FUNC_cipher_set_ctx_params_fn aes_cbc_cts_set_ctx_params;
 static OSSL_FUNC_cipher_gettable_ctx_params_fn aes_cbc_cts_gettable_ctx_params;
@@ -20,6 +24,24 @@ static OSSL_FUNC_cipher_settable_ctx_params_fn aes_cbc_cts_settable_ctx_params;
 CIPHER_DEFAULT_GETTABLE_CTX_PARAMS_START(aes_cbc_cts)
 OSSL_PARAM_utf8_string(OSSL_CIPHER_PARAM_CTS_MODE, NULL, 0),
 CIPHER_DEFAULT_GETTABLE_CTX_PARAMS_END(aes_cbc_cts)
+
+static int aes_cbc_cts_einit(void *ctx, const unsigned char *key, size_t keylen,
+                             const unsigned char *iv, size_t ivlen,
+                             const OSSL_PARAM params[])
+{
+    if (!ossl_cipher_generic_einit(ctx, key, keylen, iv, ivlen, NULL))
+        return 0;
+    return aes_cbc_cts_set_ctx_params(ctx, params);
+}
+
+static int aes_cbc_cts_dinit(void *ctx, const unsigned char *key, size_t keylen,
+                             const unsigned char *iv, size_t ivlen,
+                             const OSSL_PARAM params[])
+{
+    if (!ossl_cipher_generic_dinit(ctx, key, keylen, iv, ivlen, NULL))
+        return 0;
+    return aes_cbc_cts_set_ctx_params(ctx, params);
+}
 
 static int aes_cbc_cts_get_ctx_params(void *vctx, OSSL_PARAM params[])
 {
@@ -78,8 +100,8 @@ const OSSL_DISPATCH ossl_##alg##kbits##lcmode##_cts_functions[] = {            \
       (void (*)(void)) alg##_##kbits##_##lcmode##_newctx },                    \
     { OSSL_FUNC_CIPHER_FREECTX, (void (*)(void)) alg##_freectx },              \
     { OSSL_FUNC_CIPHER_DUPCTX, (void (*)(void)) alg##_dupctx },                \
-    { OSSL_FUNC_CIPHER_ENCRYPT_INIT, (void (*)(void))ossl_cipher_generic_einit }, \
-    { OSSL_FUNC_CIPHER_DECRYPT_INIT, (void (*)(void))ossl_cipher_generic_dinit }, \
+    { OSSL_FUNC_CIPHER_ENCRYPT_INIT, (void (*)(void))aes_cbc_cts_einit },      \
+    { OSSL_FUNC_CIPHER_DECRYPT_INIT, (void (*)(void))aes_cbc_cts_dinit },      \
     { OSSL_FUNC_CIPHER_UPDATE,                                                 \
       (void (*)(void)) ossl_##alg##_##lcmode##_cts_block_update },             \
     { OSSL_FUNC_CIPHER_FINAL,                                                  \
@@ -101,8 +123,8 @@ const OSSL_DISPATCH ossl_##alg##kbits##lcmode##_cts_functions[] = {            \
 };
 
 /* ossl_aes256cbc_cts_functions */
-IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, EVP_CIPH_FLAG_CTS, 256, 128, 128, block)
+IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, AES_CTS_FLAGS, 256, 128, 128, block)
 /* ossl_aes192cbc_cts_functions */
-IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, EVP_CIPH_FLAG_CTS, 192, 128, 128, block)
+IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, AES_CTS_FLAGS, 192, 128, 128, block)
 /* ossl_aes128cbc_cts_functions */
-IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, EVP_CIPH_FLAG_CTS, 128, 128, 128, block)
+IMPLEMENT_cts_cipher(aes, AES, cbc, CBC, AES_CTS_FLAGS, 128, 128, 128, block)

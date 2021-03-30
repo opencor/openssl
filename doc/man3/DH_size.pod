@@ -38,11 +38,14 @@ key. See L<BN_security_bits(3)>.
 
 =head1 RETURN VALUES
 
-DH_bits() returns the number of bits in the key.
+DH_bits() returns the number of bits in the key, or -1 if
+B<dh> doesn't hold any key parameters.
 
-DH_size() returns the prime size of Diffie-Hellman in bytes.
+DH_size() returns the prime size of Diffie-Hellman in bytes, or -1 if
+B<dh> doesn't hold any key parameters.
 
-DH_security_bits() returns the number of security bits.
+DH_security_bits() returns the number of security bits, or -1 if
+B<dh> doesn't hold any key parameters.
 
 =head1 SEE ALSO
 
@@ -58,7 +61,7 @@ The DH_bits() function was added in OpenSSL 1.1.0.
 
 =head1 COPYRIGHT
 
-Copyright 2000-2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2000-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -281,7 +281,7 @@ static const EVP_PKEY_METHOD dsa_pkey_meth = {
     pkey_dsa_ctrl_str
 };
 
-const EVP_PKEY_METHOD *dsa_pkey_method(void)
+const EVP_PKEY_METHOD *ossl_dsa_pkey_method(void)
 {
     return &dsa_pkey_meth;
 }

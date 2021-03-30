@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -74,18 +74,18 @@ KDF_NEWCTX(tls1_prf, "TLS1-PRF")
 KDF_NEWCTX(hkdf, "HKDF")
 KDF_NEWCTX(scrypt, "SCRYPT")
 
-static int kdf_init(void *vpkdfctx, void *vkdf)
+static int kdf_init(void *vpkdfctx, void *vkdf, const OSSL_PARAM params[])
 {
     PROV_KDF_CTX *pkdfctx = (PROV_KDF_CTX *)vpkdfctx;
 
     if (!ossl_prov_is_running()
             || pkdfctx == NULL
             || vkdf == NULL
-            || !kdf_data_up_ref(vkdf))
+            || !ossl_kdf_data_up_ref(vkdf))
         return 0;
     pkdfctx->kdfdata = vkdf;
 
-    return 1;
+    return kdf_set_ctx_params(pkdfctx, params);
 }
 
 static int kdf_derive(void *vpkdfctx, unsigned char *secret, size_t *secretlen,
@@ -95,7 +95,13 @@ static int kdf_derive(void *vpkdfctx, unsigned char *secret, size_t *secretlen,
 
     if (!ossl_prov_is_running())
         return 0;
-    return EVP_KDF_derive(pkdfctx->kdfctx, secret, *secretlen);
+
+    if (secret == NULL) {
+        *secretlen = EVP_KDF_CTX_get_kdf_size(pkdfctx->kdfctx);
+        return 1;
+    }
+
+    return EVP_KDF_derive(pkdfctx->kdfctx, secret, outlen, NULL);
 }
 
 static void kdf_freectx(void *vpkdfctx)
@@ -103,7 +109,7 @@ static void kdf_freectx(void *vpkdfctx)
     PROV_KDF_CTX *pkdfctx = (PROV_KDF_CTX *)vpkdfctx;
 
     EVP_KDF_CTX_free(pkdfctx->kdfctx);
-    kdf_data_free(pkdfctx->kdfdata);
+    ossl_kdf_data_free(pkdfctx->kdfdata);
 
     OPENSSL_free(pkdfctx);
 }
@@ -127,7 +133,7 @@ static void *kdf_dupctx(void *vpkdfctx)
         OPENSSL_free(dstctx);
         return NULL;
     }
-    if (!kdf_data_up_ref(dstctx->kdfdata)) {
+    if (!ossl_kdf_data_up_ref(dstctx->kdfdata)) {
         EVP_KDF_CTX_free(dstctx->kdfctx);
         OPENSSL_free(dstctx);
         return NULL;
@@ -143,7 +149,8 @@ static int kdf_set_ctx_params(void *vpkdfctx, const OSSL_PARAM params[])
     return EVP_KDF_CTX_set_params(pkdfctx->kdfctx, params);
 }
 
-static const OSSL_PARAM *kdf_settable_ctx_params(void *provctx,
+static const OSSL_PARAM *kdf_settable_ctx_params(ossl_unused void *vpkdfctx,
+                                                 void *provctx,
                                                  const char *kdfname)
 {
     EVP_KDF *kdf = EVP_KDF_fetch(PROV_LIBCTX_OF(provctx), kdfname,
@@ -160,9 +167,10 @@ static const OSSL_PARAM *kdf_settable_ctx_params(void *provctx,
 }
 
 #define KDF_SETTABLE_CTX_PARAMS(funcname, kdfname) \
-    static const OSSL_PARAM *kdf_##funcname##_settable_ctx_params(void *provctx) \
+    static const OSSL_PARAM *kdf_##funcname##_settable_ctx_params(void *vpkdfctx, \
+                                                                  void *provctx) \
     { \
-        return kdf_settable_ctx_params(provctx, kdfname); \
+        return kdf_settable_ctx_params(vpkdfctx, provctx, kdfname); \
     }
 
 KDF_SETTABLE_CTX_PARAMS(tls1_prf, "TLS1-PRF")

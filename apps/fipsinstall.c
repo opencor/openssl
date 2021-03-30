@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -78,7 +78,7 @@ static int do_mac(EVP_MAC_CTX *ctx, unsigned char *tmp, BIO *in,
     int i;
     size_t outsz = *out_len;
 
-    if (!EVP_MAC_init(ctx))
+    if (!EVP_MAC_init(ctx, NULL, 0, NULL))
         goto err;
     if (EVP_MAC_CTX_get_mac_size(ctx) > outsz)
         goto end;
@@ -376,7 +376,7 @@ opthelp:
 
     /* No extra arguments. */
     argc = opt_num_rest();
-    if (argc != 0)
+    if (argc != 0 || (verify && in_fname == NULL))
         goto opthelp;
 
     if (parent_config != NULL) {
@@ -384,14 +384,12 @@ opthelp:
         if (verify_module_load(parent_config)) {
             ret = OSSL_PROVIDER_available(NULL, prov_name) ? 0 : 1;
             if (!quiet)
-                BIO_printf(bio_out, "FIPS provider is %s\n",
+                BIO_printf(bio_err, "FIPS provider is %s\n",
                            ret == 0 ? "available" : " not available");
         }
         goto end;
     }
-    if (module_fname == NULL
-            || (verify && in_fname == NULL)
-            || (!verify && out_fname == NULL))
+    if (module_fname == NULL)
         goto opthelp;
 
     tail = opt_path_end(module_fname);
@@ -478,7 +476,7 @@ opthelp:
                            install_mac, install_mac_len))
             goto end;
         if (!quiet)
-            BIO_printf(bio_out, "VERIFY PASSED\n");
+            BIO_printf(bio_err, "VERIFY PASSED\n");
     } else {
 
         conf = generate_config_and_load(prov_name, section_name, module_mac,
@@ -490,7 +488,9 @@ opthelp:
         if (!load_fips_prov_and_run_self_test(prov_name))
             goto end;
 
-        fout = bio_open_default(out_fname, 'w', FORMAT_TEXT);
+        fout =
+            out_fname == NULL ? dup_bio_out(FORMAT_TEXT)
+                              : bio_open_default(out_fname, 'w', FORMAT_TEXT);
         if (fout == NULL) {
             BIO_printf(bio_err, "Failed to open file\n");
             goto end;
@@ -502,7 +502,7 @@ opthelp:
                                        install_mac, install_mac_len))
             goto end;
         if (!quiet)
-            BIO_printf(bio_out, "INSTALL PASSED\n");
+            BIO_printf(bio_err, "INSTALL PASSED\n");
     }
 
     ret = 0;
@@ -550,10 +550,10 @@ static int self_test_events(const OSSL_PARAM params[], void *arg)
 
     if (self_test_log) {
         if (strcmp(phase, OSSL_SELF_TEST_PHASE_START) == 0)
-            BIO_printf(bio_out, "%s : (%s) : ", desc, type);
+            BIO_printf(bio_err, "%s : (%s) : ", desc, type);
         else if (strcmp(phase, OSSL_SELF_TEST_PHASE_PASS) == 0
                  || strcmp(phase, OSSL_SELF_TEST_PHASE_FAIL) == 0)
-            BIO_printf(bio_out, "%s\n", phase);
+            BIO_printf(bio_err, "%s\n", phase);
     }
     /*
      * The self test code will internally corrupt the KAT test result if an
@@ -568,7 +568,7 @@ static int self_test_events(const OSSL_PARAM params[], void *arg)
         if (self_test_corrupt_type != NULL
                 && strcmp(self_test_corrupt_type, type) != 0)
             goto end;
-        BIO_printf(bio_out, "%s ", phase);
+        BIO_printf(bio_err, "%s ", phase);
         goto err;
     }
 end:

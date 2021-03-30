@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -286,14 +286,14 @@ extern const OSSL_DISPATCH ossl_kdf_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_cossl_mac_legacy_keymgmt_functions[];
 #ifndef OPENSSL_NO_SM2
-extern const OSSL_DISPATCH sm2_keymgmt_functions[];
+extern const OSSL_DISPATCH ossl_sm2_keymgmt_functions[];
 #endif
 
 /* Key Exchange */
 extern const OSSL_DISPATCH ossl_dh_keyexch_functions[];
 extern const OSSL_DISPATCH ossl_x25519_keyexch_functions[];
 extern const OSSL_DISPATCH ossl_x448_keyexch_functions[];
-extern const OSSL_DISPATCH ecossl_dh_keyexch_functions[];
+extern const OSSL_DISPATCH ossl_ecdh_keyexch_functions[];
 extern const OSSL_DISPATCH ossl_kdf_tls1_prf_keyexch_functions[];
 extern const OSSL_DISPATCH ossl_kdf_hkdf_keyexch_functions[];
 extern const OSSL_DISPATCH ossl_kdf_scrypt_keyexch_functions[];
@@ -303,17 +303,17 @@ extern const OSSL_DISPATCH ossl_dsa_signature_functions[];
 extern const OSSL_DISPATCH ossl_rsa_signature_functions[];
 extern const OSSL_DISPATCH ossl_ed25519_signature_functions[];
 extern const OSSL_DISPATCH ossl_ed448_signature_functions[];
-extern const OSSL_DISPATCH ecossl_dsa_signature_functions[];
+extern const OSSL_DISPATCH ossl_ecdsa_signature_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_hmac_signature_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_siphash_signature_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_poly1305_signature_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_cmac_signature_functions[];
-extern const OSSL_DISPATCH sm2_signature_functions[];
+extern const OSSL_DISPATCH ossl_sm2_signature_functions[];
 
 /* Asym Cipher */
 extern const OSSL_DISPATCH ossl_rsa_asym_cipher_functions[];
 #ifndef OPENSSL_NO_SM2
-extern const OSSL_DISPATCH sm2_asym_cipher_functions[];
+extern const OSSL_DISPATCH ossl_sm2_asym_cipher_functions[];
 #endif
 
 /* Asym Key encapsulation  */
@@ -380,6 +380,7 @@ extern const OSSL_DISPATCH ossl_dsa_to_text_encoder_functions[];
 
 extern const OSSL_DISPATCH ossl_ec_to_EC_der_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_EC_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_ec_to_blob_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_PKCS8_der_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_PKCS8_pem_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_SubjectPublicKeyInfo_der_encoder_functions[];
@@ -389,6 +390,19 @@ extern const OSSL_DISPATCH ossl_ec_to_X9_62_pem_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_type_specific_no_pub_pem_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_type_specific_no_pub_der_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ec_to_text_encoder_functions[];
+
+#ifndef OPENSSL_NO_SM2
+extern const OSSL_DISPATCH ossl_sm2_to_SM2_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_SM2_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_blob_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_PKCS8_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_PKCS8_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_SubjectPublicKeyInfo_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_SubjectPublicKeyInfo_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_type_specific_no_pub_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_type_specific_no_pub_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_sm2_to_text_encoder_functions[];
+#endif
 
 extern const OSSL_DISPATCH ossl_ed25519_to_PKCS8_der_encoder_functions[];
 extern const OSSL_DISPATCH ossl_ed25519_to_PKCS8_pem_encoder_functions[];
@@ -452,6 +466,11 @@ extern const OSSL_DISPATCH ossl_SubjectPublicKeyInfo_der_to_ed25519_decoder_func
 
 extern const OSSL_DISPATCH ossl_PKCS8_der_to_ed448_decoder_functions[];
 extern const OSSL_DISPATCH ossl_SubjectPublicKeyInfo_der_to_ed448_decoder_functions[];
+
+#ifndef OPENSSL_NO_SM2
+extern const OSSL_DISPATCH ossl_PKCS8_der_to_sm2_decoder_functions[];
+extern const OSSL_DISPATCH ossl_SubjectPublicKeyInfo_der_to_sm2_decoder_functions[];
+#endif
 
 extern const OSSL_DISPATCH ossl_PKCS8_der_to_rsa_decoder_functions[];
 extern const OSSL_DISPATCH ossl_SubjectPublicKeyInfo_der_to_rsa_decoder_functions[];

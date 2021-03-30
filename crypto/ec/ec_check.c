@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -35,7 +35,7 @@ int EC_GROUP_check_named_curve(const EC_GROUP *group, int nist_only,
         }
     }
 
-    nid = ec_curve_nid_from_params(group, ctx);
+    nid = ossl_ec_curve_nid_from_params(group, ctx);
     if (nid > 0 && nist_only && EC_curve_nid2nist(nid) == NULL)
         nid = NID_undef;
 

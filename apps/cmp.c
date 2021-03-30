@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -42,16 +42,13 @@
 #include <openssl/objects.h>
 #include <openssl/x509.h>
 
+static char *prog;
 static char *opt_config = NULL;
 #define CMP_SECTION "cmp"
 #define SECTION_NAME_MAX 40 /* max length of section name */
 #define DEFAULT_SECTION "default"
 static char *opt_section = CMP_SECTION;
 static int opt_verbosity = OSSL_CMP_LOG_INFO;
-
-#undef PROG
-#define PROG cmp_main
-static char *prog = "cmp";
 
 static int read_config(void);
 
@@ -74,6 +71,7 @@ static char server_port[32] = { '\0' };
 static char *opt_path = NULL;
 static char *opt_proxy = NULL;
 static char *opt_no_proxy = NULL;
+static char *opt_recipient = NULL;
 static int opt_msg_timeout = -1;
 static int opt_total_timeout = -1;
 
@@ -81,7 +79,6 @@ static int opt_total_timeout = -1;
 static char *opt_trusted = NULL;
 static char *opt_untrusted = NULL;
 static char *opt_srvcert = NULL;
-static char *opt_recipient = NULL;
 static char *opt_expect_sender = NULL;
 static int opt_ignore_keyusage = 0;
 static int opt_unprotected_errors = 0;
@@ -207,10 +204,11 @@ typedef enum OPTION_choice {
     OPT_OLDCERT, OPT_REVREASON,
 
     OPT_SERVER, OPT_PATH, OPT_PROXY, OPT_NO_PROXY,
+    OPT_RECIPIENT,
     OPT_MSG_TIMEOUT, OPT_TOTAL_TIMEOUT,
 
     OPT_TRUSTED, OPT_UNTRUSTED, OPT_SRVCERT,
-    OPT_RECIPIENT, OPT_EXPECT_SENDER,
+    OPT_EXPECT_SENDER,
     OPT_IGNORE_KEYUSAGE, OPT_UNPROTECTED_ERRORS,
     OPT_EXTRACERTSOUT, OPT_CACERTSOUT,
 
@@ -275,7 +273,7 @@ const OPTIONS cmp_options[] = {
     {"subject", OPT_SUBJECT, 's',
      "Distinguished Name (DN) of subject to use in the requested cert template"},
     {OPT_MORE_STR, 0, 0,
-     "For kur, default is the subject DN of the reference cert (see -oldcert);"},
+     "For kur, default is subject of -csr arg or else of reference cert (see -oldcert)"},
     {OPT_MORE_STR, 0, 0,
      "this default is used for ir and cr only if no Subject Alt Names are set"},
     {"issuer", OPT_ISSUER, 's',
@@ -285,7 +283,9 @@ const OPTIONS cmp_options[] = {
     {"days", OPT_DAYS, 'n',
      "Requested validity time of the new certificate in number of days"},
     {"reqexts", OPT_REQEXTS, 's',
-     "Name of config file section defining certificate request extensions"},
+     "Name of config file section defining certificate request extensions."},
+    {OPT_MORE_STR, 0, 0,
+     "Augments or replaces any extensions contained CSR given with -csr"},
     {"sans", OPT_SANS, 's',
      "Subject Alt Names (IPADDR/DNS/URI) to add as (critical) cert req extension"},
     {"san_nodefault", OPT_SAN_NODEFAULT, '-',
@@ -301,7 +301,7 @@ const OPTIONS cmp_options[] = {
     {OPT_MORE_STR, 0, 0,
      "-1 = NONE, 0 = RAVERIFIED, 1 = SIGNATURE (default), 2 = KEYENC"},
     {"csr", OPT_CSR, 's',
-     "PKCS#10 CSR file in PEM or DER format to use in p10cr for legacy support"},
+     "PKCS#10 CSR file in PEM or DER format to convert or to use in p10cr"},
     {"out_trusted", OPT_OUT_TRUSTED, 's',
      "Certificates to trust when verifying newly enrolled certificates"},
     {"implicit_confirm", OPT_IMPLICIT_CONFIRM, '-',
@@ -341,6 +341,8 @@ const OPTIONS cmp_options[] = {
      "List of addresses of servers not to use HTTP(S) proxy for"},
     {OPT_MORE_STR, 0, 0,
      "Default from environment variable 'no_proxy', else 'NO_PROXY', else none"},
+    {"recipient", OPT_RECIPIENT, 's',
+     "DN of CA. Default: subject of -srvcert, -issuer, issuer of -oldcert or -cert"},
     {"msg_timeout", OPT_MSG_TIMEOUT, 'n',
      "Timeout per CMP message round trip (or 0 for none). Default 120 seconds"},
     {"total_timeout", OPT_TOTAL_TIMEOUT, 'n',
@@ -354,8 +356,6 @@ const OPTIONS cmp_options[] = {
      "Intermediate CA certs for chain construction for CMP/TLS/enrolled certs"},
     {"srvcert", OPT_SRVCERT, 's',
      "Server cert to pin and trust directly when verifying signed CMP responses"},
-    {"recipient", OPT_RECIPIENT, 's',
-     "DN of CA. Default: subject of -srvcert, -issuer, issuer of -oldcert or -cert"},
     {"expect_sender", OPT_EXPECT_SENDER, 's',
      "DN of expected sender of responses. Defaults to subject of -srvcert, if any"},
     {"ignore_keyusage", OPT_IGNORE_KEYUSAGE, '-',
@@ -386,7 +386,7 @@ const OPTIONS cmp_options[] = {
      "Optional certs to verify chain building for own CMP signer cert"},
     {"key", OPT_KEY, 's', "CMP signer private key, not used when -secret given"},
     {"keypass", OPT_KEYPASS, 's',
-     "Client private key (and cert and old cert file) pass phrase source"},
+     "Client private key (and cert and old cert) pass phrase source"},
     {"digest", OPT_DIGEST, 's',
      "Digest to use in message protection and POPO signatures. Default \"sha256\""},
     {"mac", OPT_MAC, 's',
@@ -421,7 +421,7 @@ const OPTIONS cmp_options[] = {
     {"tls_key", OPT_TLS_KEY, 's',
      "Private key for the client's TLS certificate"},
     {"tls_keypass", OPT_TLS_KEYPASS, 's',
-     "Pass phrase source for the client's private TLS key (and TLS cert file)"},
+     "Pass phrase source for the client's private TLS key (and TLS cert)"},
     {"tls_extra", OPT_TLS_EXTRA, 's',
      "Extra certificates to provide to TLS server during TLS handshake"},
     {"tls_trusted", OPT_TLS_TRUSTED, 's',
@@ -458,7 +458,7 @@ const OPTIONS cmp_options[] = {
     {"srv_key", OPT_SRV_KEY, 's',
      "Private key used by the server for signing messages"},
     {"srv_keypass", OPT_SRV_KEYPASS, 's',
-     "Server private key (and cert) file pass phrase source"},
+     "Server private key (and cert) pass phrase source"},
 
     {"srv_trusted", OPT_SRV_TRUSTED, 's',
      "Trusted certificates for client authentication"},
@@ -528,10 +528,11 @@ static varref cmp_vars[] = { /* must be in same order as enumerated above! */
     {&opt_oldcert}, {(char **)&opt_revreason},
 
     {&opt_server}, {&opt_path}, {&opt_proxy}, {&opt_no_proxy},
+    {&opt_recipient},
     {(char **)&opt_msg_timeout}, {(char **)&opt_total_timeout},
 
     {&opt_trusted}, {&opt_untrusted}, {&opt_srvcert},
-    {&opt_recipient}, {&opt_expect_sender},
+    {&opt_expect_sender},
     {(char **)&opt_ignore_keyusage}, {(char **)&opt_unprotected_errors},
     {&opt_extracertsout}, {&opt_cacertsout},
 
@@ -617,25 +618,6 @@ static int set_verbosity(int level)
     return 1;
 }
 
-static char *next_item(char *opt) /* in list separated by comma and/or space */
-{
-    /* advance to separator (comma or whitespace), if any */
-    while (*opt != ',' && !isspace(*opt) && *opt != '\0') {
-        if (*opt == '\\' && opt[1] != '\0')
-            /* skip and unescape '\' escaped char */
-            memmove(opt, opt + 1, strlen(opt));
-        opt++;
-    }
-    if (*opt != '\0') {
-        /* terminate current item */
-        *opt++ = '\0';
-        /* skip over any whitespace after separator */
-        while (isspace(*opt))
-            opt++;
-    }
-    return *opt == '\0' ? NULL : opt; /* NULL indicates end of input */
-}
-
 static EVP_PKEY *load_key_pwd(const char *uri, int format,
                               const char *pass, ENGINE *eng, const char *desc)
 {
@@ -676,64 +658,16 @@ static X509_REQ *load_csr_autofmt(const char *infile, const char *desc)
         ERR_print_errors(bio_err);
         BIO_printf(bio_err, "error: unable to load %s from file '%s'\n", desc,
                    infile);
+    } else {
+        EVP_PKEY *pkey = X509_REQ_get0_pubkey(csr);
+        int ret = do_X509_REQ_verify(csr, pkey, NULL /* vfyopts */);
+
+        if (pkey == NULL || ret < 0)
+            CMP_warn("error while verifying CSR self-signature");
+        else if (ret == 0)
+            CMP_warn("CSR self-signature does not match the contents");
     }
     return csr;
-}
-
-static void warn_cert_msg(const char *uri, X509 *cert, const char *msg)
-{
-    char *subj = X509_NAME_oneline(X509_get_subject_name(cert), NULL, 0);
-
-    CMP_warn3("certificate from '%s' with subject '%s' %s", uri, subj, msg);
-    OPENSSL_free(subj);
-}
-
-static void warn_cert(const char *uri, X509 *cert, int warn_EE)
-{
-    int res = X509_cmp_timeframe(vpm, X509_get0_notBefore(cert),
-                                 X509_get0_notAfter(cert));
-
-    if (res != 0)
-        warn_cert_msg(uri, cert, res > 0 ? "has expired" : "not yet valid");
-    if (warn_EE && (X509_get_extension_flags(cert) & EXFLAG_CA) == 0)
-        warn_cert_msg(uri, cert, "is not a CA cert");
-}
-
-static void warn_certs(const char *uri, STACK_OF(X509) *certs, int warn_EE)
-{
-    int i;
-
-    for (i = 0; i < sk_X509_num(certs); i++)
-        warn_cert(uri, sk_X509_value(certs, i), warn_EE);
-}
-
-/* TODO potentially move this and related functions to apps/lib/apps.c */
-static int load_cert_certs(const char *uri,
-                           X509 **pcert, STACK_OF(X509) **pcerts,
-                           int exclude_http, const char *pass, const char *desc)
-{
-    int ret = 0;
-    char *pass_string;
-
-    if (exclude_http && (strncasecmp(uri, "http://", 7) == 0
-                         || strncasecmp(uri, "https://", 8) == 0)) {
-        BIO_printf(bio_err, "error: HTTP retrieval not allowed for %s\n", desc);
-        return ret;
-    }
-    pass_string = get_passwd(pass, desc);
-    ret = load_key_certs_crls(uri, 0, pass_string, desc, NULL, NULL, NULL,
-                              pcert, pcerts, NULL, NULL);
-    clear_free(pass_string);
-
-    if (ret) {
-        if (pcert != NULL)
-            warn_cert(uri, *pcert, 0);
-        warn_certs(uri, *pcerts, 1);
-    } else {
-        sk_X509_pop_free(*pcerts, X509_free);
-        *pcerts = NULL;
-    }
-    return ret;
 }
 
 /* set expected host name/IP addr and clears the email addr in the given ts */
@@ -753,24 +687,6 @@ static int truststore_set_host_etc(X509_STORE *ts, char *host)
         || X509_VERIFY_PARAM_set1_host(ts_vpm, host, 0);
 }
 
-static X509_STORE *sk_X509_to_store(X509_STORE *store /* may be NULL */,
-                                    const STACK_OF(X509) *certs /* may NULL */)
-{
-    int i;
-
-    if (store == NULL)
-        store = X509_STORE_new();
-    if (store == NULL)
-        return NULL;
-    for (i = 0; i < sk_X509_num(certs); i++) {
-        if (!X509_STORE_add_cert(store, sk_X509_value(certs, i))) {
-            X509_STORE_free(store);
-            return NULL;
-        }
-    }
-    return store;
-}
-
 /* write OSSL_CMP_MSG DER-encoded to the specified file name item */
 static int write_PKIMESSAGE(const OSSL_CMP_MSG *msg, char **filenames)
 {
@@ -781,14 +697,14 @@ static int write_PKIMESSAGE(const OSSL_CMP_MSG *msg, char **filenames)
         return 0;
     }
     if (*filenames == NULL) {
-        CMP_err("Not enough file names provided for writing PKIMessage");
+        CMP_err("not enough file names provided for writing PKIMessage");
         return 0;
     }
 
     file = *filenames;
     *filenames = next_item(file);
     if (OSSL_CMP_MSG_write(file, msg) < 0) {
-        CMP_err1("Cannot write PKIMessage to file '%s'", file);
+        CMP_err1("cannot write PKIMessage to file '%s'", file);
         return 0;
     }
     return 1;
@@ -805,7 +721,7 @@ static OSSL_CMP_MSG *read_PKIMESSAGE(char **filenames)
         return NULL;
     }
     if (*filenames == NULL) {
-        CMP_err("Not enough file names provided for reading PKIMessage");
+        CMP_err("not enough file names provided for reading PKIMessage");
         return NULL;
     }
 
@@ -814,7 +730,7 @@ static OSSL_CMP_MSG *read_PKIMESSAGE(char **filenames)
 
     ret = OSSL_CMP_MSG_read(file);
     if (ret == NULL)
-        CMP_err1("Cannot read PKIMessage from file '%s'", file);
+        CMP_err1("cannot read PKIMessage from file '%s'", file);
     return ret;
 }
 
@@ -942,37 +858,9 @@ static int set_gennames(OSSL_CMP_CTX *ctx, char *names, const char *desc)
     return 1;
 }
 
-/* TODO potentially move to apps/lib/apps.c */
-/*
- * create cert store structure with certificates read from given file(s)
- * returns pointer to created X509_STORE on success, NULL on error
- */
-static X509_STORE *load_certstore(char *input, const char *desc)
-{
-    X509_STORE *store = NULL;
-    STACK_OF(X509) *certs = NULL;
-
-    while (input != NULL) {
-        char *next = next_item(input);
-        int ok;
-
-        if (!load_cert_certs(input, NULL, &certs, 1, opt_otherpass, desc)) {
-            X509_STORE_free(store);
-            return NULL;
-        }
-        ok = (store = sk_X509_to_store(store, certs)) != NULL;
-        sk_X509_pop_free(certs, X509_free);
-        certs = NULL;
-        if (!ok)
-            return NULL;
-        input = next;
-    }
-    return store;
-}
-
 static X509_STORE *load_trusted(char *input, int for_new_cert, const char *desc)
 {
-    X509_STORE *ts = load_certstore(input, desc);
+    X509_STORE *ts = load_certstore(input, opt_otherpass, desc, vpm);
 
     if (ts == NULL)
         return NULL;
@@ -988,40 +876,6 @@ static X509_STORE *load_trusted(char *input, int for_new_cert, const char *desc)
     return NULL;
 }
 
-/* TODO potentially move to apps/lib/apps.c */
-static STACK_OF(X509) *load_certs_multifile(char *files,
-                                            const char *pass, const char *desc)
-{
-    STACK_OF(X509) *certs = NULL;
-    STACK_OF(X509) *result = sk_X509_new_null();
-
-    if (files == NULL)
-        goto err;
-    if (result == NULL)
-        goto oom;
-
-    while (files != NULL) {
-        char *next = next_item(files);
-
-        if (!load_cert_certs(files, NULL, &certs, 0, pass, desc))
-            goto err;
-        if (!X509_add_certs(result, certs,
-                            X509_ADD_FLAG_UP_REF | X509_ADD_FLAG_NO_DUP))
-            goto oom;
-        sk_X509_pop_free(certs, X509_free);
-        certs = NULL;
-        files = next;
-    }
-    return result;
-
- oom:
-    BIO_printf(bio_err, "out of memory\n");
- err:
-    sk_X509_pop_free(certs, X509_free);
-    sk_X509_pop_free(result, X509_free);
-    return NULL;
-}
-
 typedef int (*add_X509_stack_fn_t)(void *ctx, const STACK_OF(X509) *certs);
 
 static int setup_certs(char *files, const char *desc, void *ctx,
@@ -1032,7 +886,7 @@ static int setup_certs(char *files, const char *desc, void *ctx,
 
     if (files == NULL)
         return 1;
-    if ((certs = load_certs_multifile(files, opt_otherpass, desc)) == NULL)
+    if ((certs = load_certs_multifile(files, opt_otherpass, desc, vpm)) == NULL)
         return 0;
     ok = (*set1_fn)(ctx, certs);
     sk_X509_pop_free(certs, X509_free);
@@ -1340,8 +1194,9 @@ static SSL_CTX *setup_ssl_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
     SSL_CTX_set_mode(ssl_ctx, SSL_MODE_AUTO_RETRY);
 
     if (opt_tls_trusted != NULL) {
-        if ((trust_store = load_certstore(opt_tls_trusted,
-                                          "trusted TLS certificates")) == NULL)
+        trust_store = load_certstore(opt_tls_trusted, opt_otherpass,
+                                     "trusted TLS certificates", vpm);
+        if (trust_store == NULL)
             goto err;
         SSL_CTX_set_cert_store(ssl_ctx, trust_store);
         /* for improved diagnostics on SSL_CTX_build_cert_chain() errors: */
@@ -1354,7 +1209,8 @@ static SSL_CTX *setup_ssl_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         int ok;
 
         if (!load_cert_certs(opt_tls_cert, &cert, &certs, 0, opt_tls_keypass,
-                             "TLS client certificate (optionally with chain)"))
+                             "TLS client certificate (optionally with chain)",
+                             vpm))
             /* need opt_tls_keypass if opt_tls_cert is encrypted PKCS#12 file */
             goto err;
 
@@ -1408,7 +1264,8 @@ static SSL_CTX *setup_ssl_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         if (opt_tls_extra != NULL) {
             STACK_OF(X509) *tls_extra = load_certs_multifile(opt_tls_extra,
                                                              opt_otherpass,
-                                                             "extra certificates for TLS");
+                                                             "extra certificates for TLS",
+                                                             vpm);
             int res = 1;
 
             if (tls_extra == NULL)
@@ -1531,7 +1388,8 @@ static int setup_protection_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         int ok;
 
         if (!load_cert_certs(opt_cert, &cert, &certs, 0, opt_keypass,
-                             "CMP client certificate (optionally with chain)"))
+                             "CMP client certificate (optionally with chain)",
+                             vpm))
             /* opt_keypass is needed if opt_cert is an encrypted PKCS#12 file */
             return 0;
         ok = OSSL_CMP_CTX_set1_cert(ctx, cert);
@@ -1594,24 +1452,108 @@ static int setup_protection_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
  */
 static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
 {
-    if (opt_subject == NULL && opt_oldcert == NULL && opt_cert == NULL
-            && opt_cmd != CMP_RR && opt_cmd != CMP_GENM)
-        CMP_warn("no -subject given, neither -oldcert nor -cert available as default");
-    if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject")
-            || !set_name(opt_issuer, OSSL_CMP_CTX_set1_issuer, ctx, "issuer"))
-        return 0;
+    X509_REQ *csr = NULL;
+    X509_EXTENSIONS *exts = NULL;
+    X509V3_CTX ext_ctx;
 
-    if (opt_newkey != NULL) {
+    if (opt_subject == NULL
+            && opt_csr == NULL && opt_oldcert == NULL && opt_cert == NULL
+            && opt_cmd != CMP_RR && opt_cmd != CMP_GENM)
+        CMP_warn("no -subject given; no -csr or -oldcert or -cert available for fallback");
+
+    if (opt_cmd == CMP_IR || opt_cmd == CMP_CR || opt_cmd == CMP_KUR) {
+        if (opt_newkey == NULL && opt_key == NULL && opt_csr == NULL) {
+            CMP_err("missing -newkey (or -key) to be certified and no -csr given");
+            return 0;
+        }
+        if (opt_certout == NULL) {
+            CMP_err("-certout not given, nowhere to save newly enrolled certificate");
+            return 0;
+        }
+        if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject")
+                || !set_name(opt_issuer, OSSL_CMP_CTX_set1_issuer, ctx, "issuer"))
+            return 0;
+    } else {
+        const char *msg = "option is ignored for commands other than 'ir', 'cr', and 'kur'";
+
+        if (opt_subject != NULL) {
+            if (opt_ref == NULL && opt_cert == NULL) {
+                /* use subject as default sender unless oldcert subject is used */
+                if (!set_name(opt_subject, OSSL_CMP_CTX_set1_subjectName, ctx, "subject"))
+                    return 0;
+            } else {
+                CMP_warn1("-subject %s since -ref or -cert is given", msg);
+            }
+        }
+        if (opt_issuer != NULL)
+            CMP_warn1("-issuer %s", msg);
+        if (opt_reqexts != NULL)
+            CMP_warn1("-reqexts %s", msg);
+        if (opt_san_nodefault)
+            CMP_warn1("-san_nodefault %s", msg);
+        if (opt_sans != NULL)
+            CMP_warn1("-sans %s", msg);
+        if (opt_policies != NULL)
+            CMP_warn1("-policies %s", msg);
+        if (opt_policy_oids != NULL)
+            CMP_warn1("-policy_oids %s", msg);
+    }
+    if (opt_cmd == CMP_KUR) {
+        char *ref_cert = opt_oldcert != NULL ? opt_oldcert : opt_cert;
+
+        if (ref_cert == NULL && opt_csr == NULL) {
+            CMP_err("missing -oldcert for certificate to be updated and no -csr given");
+            return 0;
+        }
+        if (opt_subject != NULL)
+            CMP_warn2("given -subject '%s' overrides the subject of '%s' for KUR",
+                      opt_subject, ref_cert != NULL ? ref_cert : opt_csr);
+    }
+    if (opt_cmd == CMP_RR) {
+        if (opt_oldcert == NULL && opt_csr == NULL) {
+            CMP_err("missing -oldcert for certificate to be revoked and no -csr given");
+            return 0;
+        }
+        if (opt_oldcert != NULL && opt_csr != NULL)
+            CMP_warn("ignoring -csr since certificate to be revoked is given");
+    }
+    if (opt_cmd == CMP_P10CR && opt_csr == NULL) {
+        CMP_err("missing PKCS#10 CSR for p10cr");
+        return 0;
+    }
+
+    if (opt_recipient == NULL && opt_srvcert == NULL && opt_issuer == NULL
+            && opt_oldcert == NULL && opt_cert == NULL)
+        CMP_warn("missing -recipient, -srvcert, -issuer, -oldcert or -cert; recipient will be set to \"NULL-DN\"");
+
+    if (opt_cmd == CMP_P10CR || opt_cmd == CMP_RR) {
+        const char *msg = "option is ignored for 'p10cr' and 'rr' commands";
+
+        if (opt_newkeypass != NULL)
+            CMP_warn1("-newkeytype %s", msg);
+        if (opt_newkey != NULL)
+            CMP_warn1("-newkey %s", msg);
+        if (opt_days != 0)
+            CMP_warn1("-days %s", msg);
+        if (opt_popo != OSSL_CRMF_POPO_NONE - 1)
+            CMP_warn1("-popo %s", msg);
+    } else if (opt_newkey != NULL) {
         const char *file = opt_newkey;
         const int format = opt_keyform;
         const char *pass = opt_newkeypass;
         const char *desc = "new private key for cert to be enrolled";
-        EVP_PKEY *pkey = load_key_pwd(file, format, pass, engine, desc);
+        EVP_PKEY *pkey;
         int priv = 1;
+        BIO *bio_bak = bio_err;
 
+        bio_err = NULL; /* suppress diagnostics on first try loading key */
+        pkey = load_key_pwd(file, format, pass, engine, desc);
+        bio_err = bio_bak;
         if (pkey == NULL) {
             ERR_clear_error();
-            desc = "fallback public key for cert to be enrolled";
+            desc = opt_csr == NULL
+            ? "fallback public key for cert to be enrolled"
+            : "public key for checking cert resulting from p10cr";
             pkey = load_pubkey(file, format, 0, pass, engine, desc);
             priv = 0;
         }
@@ -1634,30 +1576,41 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         return 0;
     }
 
+    if (opt_csr != NULL) {
+        if (opt_cmd == CMP_GENM) {
+            CMP_warn("-csr option is ignored for command 'genm'");
+        } else {
+            csr = load_csr_autofmt(opt_csr, "PKCS#10 CSR");
+            if (csr == NULL)
+                return 0;
+            if (!OSSL_CMP_CTX_set1_p10CSR(ctx, csr)) {
+                X509_REQ_free(csr);
+                goto oom;
+            }
+        }
+    }
     if (opt_reqexts != NULL || opt_policies != NULL) {
-        X509V3_CTX ext_ctx;
-        X509_EXTENSIONS *exts = sk_X509_EXTENSION_new_null();
-
-        if (exts == NULL)
-            return 0;
-        X509V3_set_ctx(&ext_ctx, NULL, NULL, NULL, NULL, 0);
+        if ((exts = sk_X509_EXTENSION_new_null()) == NULL)
+            goto exts_err;
+        X509V3_set_ctx(&ext_ctx, NULL, NULL, csr, NULL, X509V3_CTX_REPLACE);
         X509V3_set_nconf(&ext_ctx, conf);
         if (opt_reqexts != NULL
             && !X509V3_EXT_add_nconf_sk(conf, &ext_ctx, opt_reqexts, &exts)) {
             CMP_err1("cannot load certificate request extension section '%s'",
                      opt_reqexts);
-            sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
-            return 0;
+            goto exts_err;
         }
         if (opt_policies != NULL
             && !X509V3_EXT_add_nconf_sk(conf, &ext_ctx, opt_policies, &exts)) {
             CMP_err1("cannot load policy cert request extension section '%s'",
                      opt_policies);
-            sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
-            return 0;
+            goto exts_err;
         }
         OSSL_CMP_CTX_set0_reqExtensions(ctx, exts);
+        exts = NULL;
     }
+    X509_REQ_free(csr);
+    csr = NULL;
     if (OSSL_CMP_CTX_reqExtensions_have_SAN(ctx) && opt_sans != NULL) {
         CMP_err("cannot have Subject Alternative Names both via -reqexts and via -sans");
         return 0;
@@ -1706,35 +1659,26 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
     if (opt_popo >= OSSL_CRMF_POPO_NONE)
         (void)OSSL_CMP_CTX_set_option(ctx, OSSL_CMP_OPT_POPO_METHOD, opt_popo);
 
-    if (opt_csr != NULL) {
-        if (opt_cmd != CMP_P10CR) {
-            CMP_warn("-csr option is ignored for command other than p10cr");
+    if (opt_oldcert != NULL) {
+        if (opt_cmd == CMP_GENM) {
+            CMP_warn("-oldcert option is ignored for command 'genm'");
         } else {
-            X509_REQ *csr =
-                load_csr_autofmt(opt_csr, "PKCS#10 CSR for p10cr");
+            X509 *oldcert = load_cert_pwd(opt_oldcert, opt_keypass,
+                                          opt_cmd == CMP_KUR ?
+                                          "certificate to be updated" :
+                                          opt_cmd == CMP_RR ?
+                                          "certificate to be revoked" :
+                                          "reference certificate (oldcert)");
+            /* opt_keypass needed if opt_oldcert is an encrypted PKCS#12 file */
 
-            if (csr == NULL)
+            if (oldcert == NULL)
                 return 0;
-            if (!OSSL_CMP_CTX_set1_p10CSR(ctx, csr)) {
-                X509_REQ_free(csr);
+            if (!OSSL_CMP_CTX_set1_oldCert(ctx, oldcert)) {
+                X509_free(oldcert);
                 goto oom;
             }
-            X509_REQ_free(csr);
-        }
-    }
-
-    if (opt_oldcert != NULL) {
-        X509 *oldcert = load_cert_pwd(opt_oldcert, opt_keypass,
-                                      "certificate to be updated/revoked");
-        /* opt_keypass is needed if opt_oldcert is an encrypted PKCS#12 file */
-
-        if (oldcert == NULL)
-            return 0;
-        if (!OSSL_CMP_CTX_set1_oldCert(ctx, oldcert)) {
             X509_free(oldcert);
-            goto oom;
         }
-        X509_free(oldcert);
     }
     cleanse(opt_keypass);
     if (opt_revreason > CRL_REASON_NONE)
@@ -1745,6 +1689,9 @@ static int setup_request_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
 
  oom:
     CMP_err("out of memory");
+ exts_err:
+    sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
+    X509_REQ_free(csr);
     return 0;
 }
 
@@ -1831,7 +1778,8 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
         CMP_err("missing -server option");
         goto err;
     }
-    if (!OSSL_HTTP_parse_url(opt_server, &server, &port, &portnum, &path, &ssl)) {
+    if (!OSSL_HTTP_parse_url(opt_server, &ssl, NULL /* user */, &server, &port,
+                             &portnum, &path, NULL /* q */, NULL /* frag */)) {
         CMP_err1("cannot parse -server URL: %s", opt_server);
         goto err;
     }
@@ -1858,40 +1806,6 @@ static int setup_client_ctx(OSSL_CMP_CTX *ctx, ENGINE *engine)
 
     if (!transform_opts())
         goto err;
-
-    if (opt_cmd == CMP_IR || opt_cmd == CMP_CR || opt_cmd == CMP_KUR) {
-        if (opt_newkey == NULL && opt_key == NULL && opt_csr == NULL) {
-            CMP_err("missing -newkey (or -key) to be certified");
-            goto err;
-        }
-        if (opt_certout == NULL) {
-            CMP_err("-certout not given, nowhere to save certificate");
-            goto err;
-        }
-    }
-    if (opt_cmd == CMP_KUR) {
-        char *ref_cert = opt_oldcert != NULL ? opt_oldcert : opt_cert;
-
-        if (ref_cert == NULL) {
-            CMP_err("missing -oldcert option for certificate to be updated");
-            goto err;
-        }
-        if (opt_subject != NULL)
-            CMP_warn2("-subject '%s' given, which overrides the subject of '%s' in KUR",
-                      opt_subject, ref_cert);
-    }
-    if (opt_cmd == CMP_RR && opt_oldcert == NULL) {
-        CMP_err("missing certificate to be revoked");
-        goto err;
-    }
-    if (opt_cmd == CMP_P10CR && opt_csr == NULL) {
-        CMP_err("missing PKCS#10 CSR for p10cr");
-        goto err;
-    }
-
-    if (opt_recipient == NULL && opt_srvcert == NULL && opt_issuer == NULL
-            && opt_oldcert == NULL && opt_cert == NULL)
-        CMP_warn("missing -recipient, -srvcert, -issuer, -oldcert or -cert; recipient will be set to \"NULL-DN\"");
 
     if (opt_infotype_s != NULL) {
         char id_buf[100] = "id-it-";
@@ -2311,6 +2225,9 @@ static int get_opts(int argc, char **argv)
         case OPT_PATH:
             opt_path = opt_str("path");
             break;
+        case OPT_RECIPIENT:
+            opt_recipient = opt_str("recipient");
+            break;
         case OPT_MSG_TIMEOUT:
             if ((opt_msg_timeout = opt_nat()) < 0)
                 goto opthelp;
@@ -2379,9 +2296,6 @@ static int get_opts(int argc, char **argv)
             break;
         case OPT_SRVCERT:
             opt_srvcert = opt_str("srvcert");
-            break;
-        case OPT_RECIPIENT:
-            opt_recipient = opt_str("recipient");
             break;
         case OPT_EXPECT_SENDER:
             opt_expect_sender = opt_str("expect_sender");
@@ -2625,6 +2539,7 @@ int cmp_main(int argc, char **argv)
     int ret = 0; /* default: failure */
 
     if (argc <= 1) {
+        prog = opt_appname(argv[0]);
         opt_help(cmp_options);
         goto err;
     }
@@ -2694,8 +2609,13 @@ int cmp_main(int argc, char **argv)
     if (opt_batch)
         set_base_ui_method(UI_null());
 
-    if (opt_engine != NULL)
+    if (opt_engine != NULL) {
         engine = setup_engine_methods(opt_engine, 0 /* not: ENGINE_METHOD_ALL */, 0);
+        if (engine == NULL) {
+            CMP_err1("cannot load engine %s", opt_engine);
+            goto err;
+        }
+    }
 
     if (opt_port != NULL) {
         if (opt_use_mock_srv) {
@@ -2758,7 +2678,7 @@ int cmp_main(int argc, char **argv)
             if (req != NULL) {
                 if (strcmp(path, "") != 0 && strcmp(path, "pkix/") != 0) {
                     (void)http_server_send_status(cbio, 404, "Not Found");
-                    CMP_err1("Expecting empty path or 'pkix/' but got '%s'",
+                    CMP_err1("expecting empty path or 'pkix/' but got '%s'",
                              path);
                     OPENSSL_free(path);
                     OSSL_CMP_MSG_free(req);
@@ -2833,8 +2753,7 @@ int cmp_main(int argc, char **argv)
                 ret = 1;
             break;
         case CMP_RR:
-            if (OSSL_CMP_exec_RR_ses(cmp_ctx) != NULL)
-                ret = 1;
+            ret = OSSL_CMP_exec_RR_ses(cmp_ctx);
             break;
         case CMP_GENM:
             {

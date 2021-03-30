@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -159,7 +159,8 @@ static int add_params(OSSL_PARAM_BLD *bld, const ST_KAT_PARAM *params,
             break;
         }
         case OSSL_PARAM_UTF8_STRING: {
-            if (!OSSL_PARAM_BLD_push_utf8_string(bld, p->name, p->data, 0))
+            if (!OSSL_PARAM_BLD_push_utf8_string(bld, p->name, p->data,
+                                                 p->data_len))
                 goto err;
             break;
         }
@@ -216,12 +217,10 @@ static int self_test_kdf(const ST_KAT_KDF *t, OSSL_SELF_TEST *st,
     params = OSSL_PARAM_BLD_to_param(bld);
     if (params == NULL)
         goto err;
-    if (!EVP_KDF_CTX_set_params(ctx, params))
-        goto err;
 
     if (t->expected_len > sizeof(out))
         goto err;
-    if (EVP_KDF_derive(ctx, out, t->expected_len) <= 0)
+    if (EVP_KDF_derive(ctx, out, t->expected_len, params) <= 0)
         goto err;
 
     OSSL_SELF_TEST_oncorrupt_byte(st, out);
@@ -295,10 +294,10 @@ static int self_test_drbg(const ST_KAT_DRBG *t, OSSL_SELF_TEST *st,
     drbg_params[1] =
         OSSL_PARAM_construct_octet_string(OSSL_RAND_PARAM_TEST_NONCE,
                                           (void *)t->nonce, t->noncelen);
-    if (!EVP_RAND_set_ctx_params(test, drbg_params)
-            || !EVP_RAND_instantiate(test, strength, 0, NULL, 0))
+    if (!EVP_RAND_instantiate(test, strength, 0, NULL, 0, drbg_params))
         goto err;
-    if (!EVP_RAND_instantiate(drbg, strength, 0, t->persstr, t->persstrlen))
+    if (!EVP_RAND_instantiate(drbg, strength, 0, t->persstr, t->persstrlen,
+                              NULL))
         goto err;
 
     drbg_params[0] =
@@ -361,7 +360,7 @@ static int self_test_ka(const ST_KAT_KAS *t,
     OSSL_PARAM *params = NULL;
     OSSL_PARAM *params_peer = NULL;
     unsigned char secret[256];
-    size_t secret_len;
+    size_t secret_len = sizeof(secret);
     OSSL_PARAM_BLD *bld = NULL;
     BN_CTX *bnctx = NULL;
 
@@ -392,11 +391,11 @@ static int self_test_ka(const ST_KAT_KAS *t,
     kactx = EVP_PKEY_CTX_new_from_name(libctx, t->algorithm, "");
     if (kactx == NULL)
         goto err;
-    if (EVP_PKEY_key_fromdata_init(kactx) <= 0
-        || EVP_PKEY_fromdata(kactx, &pkey, params) <= 0)
+    if (EVP_PKEY_fromdata_init(kactx) <= 0
+        || EVP_PKEY_fromdata(kactx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0)
         goto err;
-    if (EVP_PKEY_key_fromdata_init(kactx) <= 0
-        || EVP_PKEY_fromdata(kactx, &peerkey, params_peer) <= 0)
+    if (EVP_PKEY_fromdata_init(kactx) <= 0
+        || EVP_PKEY_fromdata(kactx, &peerkey, EVP_PKEY_KEYPAIR, params_peer) <= 0)
         goto err;
 
     /* Create a EVP_PKEY_CTX to perform key derivation */
@@ -464,8 +463,8 @@ static int self_test_sign(const ST_KAT_SIGN *t,
     kctx = EVP_PKEY_CTX_new_from_name(libctx, t->algorithm, "");
     if (kctx == NULL || params == NULL)
         goto err;
-    if (EVP_PKEY_key_fromdata_init(kctx) <= 0
-        || EVP_PKEY_fromdata(kctx, &pkey, params) <= 0)
+    if (EVP_PKEY_fromdata_init(kctx) <= 0
+        || EVP_PKEY_fromdata(kctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0)
         goto err;
 
     /* Create a EVP_PKEY_CTX to use for the signing operation */
@@ -546,8 +545,8 @@ static int self_test_asym_cipher(const ST_KAT_ASYM_CIPHER *t, OSSL_SELF_TEST *st
     keyctx = EVP_PKEY_CTX_new_from_name(libctx, t->algorithm, NULL);
     if (keyctx == NULL || keyparams == NULL)
         goto err;
-    if (EVP_PKEY_key_fromdata_init(keyctx) <= 0
-        || EVP_PKEY_fromdata(keyctx, &key, keyparams) <= 0)
+    if (EVP_PKEY_fromdata_init(keyctx) <= 0
+        || EVP_PKEY_fromdata(keyctx, &key, EVP_PKEY_KEYPAIR, keyparams) <= 0)
         goto err;
 
     /* Create a EVP_PKEY_CTX to use for the encrypt or decrypt operation */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,19 +13,17 @@
  */
 #include "internal/deprecated.h"
 
+#include <openssl/proverr.h>
 #include "cipher_aes.h"
 #include "prov/providercommon.h"
-#include "prov/providercommonerr.h"
 #include "prov/implementations.h"
 
 /* AES wrap with padding has IV length of 4, without padding 8 */
 #define AES_WRAP_PAD_IVLEN   4
 #define AES_WRAP_NOPAD_IVLEN 8
 
-/* TODO(3.0) Figure out what flags need to be passed */
-#define WRAP_FLAGS (EVP_CIPH_WRAP_MODE | EVP_CIPH_CUSTOM_IV \
-                    | EVP_CIPH_ALWAYS_CALL_INIT)
-#define WRAP_FLAGS_INV (WRAP_FLAGS | EVP_CIPH_FLAG_INVERSE_CIPHER)
+#define WRAP_FLAGS (PROV_CIPHER_FLAG_CUSTOM_IV)
+#define WRAP_FLAGS_INV (WRAP_FLAGS | PROV_CIPHER_FLAG_INVERSE_CIPHER)
 
 typedef size_t (*aeswrap_fn)(void *key, const unsigned char *iv,
                              unsigned char *out, const unsigned char *in,
@@ -36,6 +34,7 @@ static OSSL_FUNC_cipher_decrypt_init_fn aes_wrap_dinit;
 static OSSL_FUNC_cipher_update_fn aes_wrap_cipher;
 static OSSL_FUNC_cipher_final_fn aes_wrap_final;
 static OSSL_FUNC_cipher_freectx_fn aes_wrap_freectx;
+static OSSL_FUNC_cipher_set_ctx_params_fn aes_wrap_set_ctx_params;
 
 typedef struct prov_aes_wrap_ctx_st {
     PROV_CIPHER_CTX base;
@@ -77,7 +76,7 @@ static void aes_wrap_freectx(void *vctx)
 
 static int aes_wrap_init(void *vctx, const unsigned char *key,
                          size_t keylen, const unsigned char *iv,
-                         size_t ivlen, int enc)
+                         size_t ivlen, const OSSL_PARAM params[], int enc)
 {
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
     PROV_AES_WRAP_CTX *wctx = (PROV_AES_WRAP_CTX *)vctx;
@@ -111,7 +110,7 @@ static int aes_wrap_init(void *vctx, const unsigned char *key,
          * to be the AES decryption function, then CIPH-1K will be the AES
          * encryption function.
          */
-        if ((ctx->flags & EVP_CIPH_FLAG_INVERSE_CIPHER) == 0)
+        if (ctx->inverse_cipher == 0)
             use_forward_transform = ctx->enc;
         else
             use_forward_transform = !ctx->enc;
@@ -123,19 +122,21 @@ static int aes_wrap_init(void *vctx, const unsigned char *key,
             ctx->block = (block128_f)AES_decrypt;
         }
     }
-    return 1;
+    return aes_wrap_set_ctx_params(ctx, params);
 }
 
 static int aes_wrap_einit(void *ctx, const unsigned char *key, size_t keylen,
-                          const unsigned char *iv, size_t ivlen)
+                          const unsigned char *iv, size_t ivlen,
+                          const OSSL_PARAM params[])
 {
-    return aes_wrap_init(ctx, key, keylen, iv, ivlen, 1);
+    return aes_wrap_init(ctx, key, keylen, iv, ivlen, params, 1);
 }
 
 static int aes_wrap_dinit(void *ctx, const unsigned char *key, size_t keylen,
-                          const unsigned char *iv, size_t ivlen)
+                          const unsigned char *iv, size_t ivlen,
+                          const OSSL_PARAM params[])
 {
-    return aes_wrap_init(ctx, key, keylen, iv, ivlen, 0);
+    return aes_wrap_init(ctx, key, keylen, iv, ivlen, params, 0);
 }
 
 static int aes_wrap_cipher_internal(void *vctx, unsigned char *out,
@@ -227,6 +228,9 @@ static int aes_wrap_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
     const OSSL_PARAM *p;
     size_t keylen = 0;
+
+    if (params == NULL)
+        return 1;
 
     p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_KEYLEN);
     if (p != NULL) {

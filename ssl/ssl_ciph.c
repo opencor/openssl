@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -323,6 +323,8 @@ int ssl_load_ciphers(SSL_CTX *ctx)
 {
     size_t i;
     const ssl_cipher_table *t;
+    EVP_KEYEXCH *kex = NULL;
+    EVP_SIGNATURE *sig = NULL;
 
     ctx->disabled_enc_mask = 0;
     for (i = 0, t = ssl_cipher_table_cipher; i < SSL_ENC_NUM_IDX; i++, t++) {
@@ -354,16 +356,33 @@ int ssl_load_ciphers(SSL_CTX *ctx)
     ctx->disabled_mkey_mask = 0;
     ctx->disabled_auth_mask = 0;
 
-#ifdef OPENSSL_NO_DSA
-    ctx->disabled_auth_mask |= SSL_aDSS;
-#endif
-#ifdef OPENSSL_NO_DH
-    ctx->disabled_mkey_mask |= SSL_kDHE | SSL_kDHEPSK;
-#endif
-#ifdef OPENSSL_NO_EC
-    ctx->disabled_mkey_mask |= SSL_kECDHE | SSL_kECDHEPSK;
-    ctx->disabled_auth_mask |= SSL_aECDSA;
-#endif
+    /*
+     * We ignore any errors from the fetches below. They are expected to fail
+     * if theose algorithms are not available.
+     */
+    ERR_set_mark();
+    sig = EVP_SIGNATURE_fetch(ctx->libctx, "DSA", ctx->propq);
+    if (sig == NULL)
+        ctx->disabled_auth_mask |= SSL_aDSS;
+    else
+        EVP_SIGNATURE_free(sig);
+    kex = EVP_KEYEXCH_fetch(ctx->libctx, "DH", ctx->propq);
+    if (kex == NULL)
+        ctx->disabled_mkey_mask |= SSL_kDHE | SSL_kDHEPSK;
+    else
+        EVP_KEYEXCH_free(kex);
+    kex = EVP_KEYEXCH_fetch(ctx->libctx, "ECDH", ctx->propq);
+    if (kex == NULL)
+        ctx->disabled_mkey_mask |= SSL_kECDHE | SSL_kECDHEPSK;
+    else
+        EVP_KEYEXCH_free(kex);
+    sig = EVP_SIGNATURE_fetch(ctx->libctx, "ECDSA", ctx->propq);
+    if (sig == NULL)
+        ctx->disabled_auth_mask |= SSL_aECDSA;
+    else
+        EVP_SIGNATURE_free(sig);
+    ERR_pop_to_mark();
+
 #ifdef OPENSSL_NO_PSK
     ctx->disabled_mkey_mask |= SSL_PSK;
     ctx->disabled_auth_mask |= SSL_aPSK;
@@ -1226,7 +1245,6 @@ static int ssl_cipher_process_rulestr(const char *rule_str,
     return retval;
 }
 
-#ifndef OPENSSL_NO_EC
 static int check_suiteb_cipher_list(const SSL_METHOD *meth, CERT *c,
                                     const char **prule_str)
 {
@@ -1257,7 +1275,7 @@ static int check_suiteb_cipher_list(const SSL_METHOD *meth, CERT *c,
         ERR_raise(ERR_LIB_SSL, SSL_R_AT_LEAST_TLS_1_2_NEEDED_IN_SUITEB_MODE);
         return 0;
     }
-# ifndef OPENSSL_NO_EC
+
     switch (suiteb_flags) {
     case SSL_CERT_FLAG_SUITEB_128_LOS:
         if (suiteb_comb2)
@@ -1274,12 +1292,7 @@ static int check_suiteb_cipher_list(const SSL_METHOD *meth, CERT *c,
         break;
     }
     return 1;
-# else
-    ERR_raise(ERR_LIB_SSL, SSL_R_ECDH_REQUIRED_FOR_SUITEB_MODE);
-    return 0;
-# endif
 }
-#endif
 
 static int ciphersuite_cb(const char *elem, int len, void *arg)
 {
@@ -1371,8 +1384,10 @@ static int update_cipher_list(STACK_OF(SSL_CIPHER) **cipher_list,
         sk_SSL_CIPHER_insert(tmp_cipher_list,
                              sk_SSL_CIPHER_value(tls13_ciphersuites, i), i);
 
-    if (!update_cipher_list_by_id(cipher_list_by_id, tmp_cipher_list))
+    if (!update_cipher_list_by_id(cipher_list_by_id, tmp_cipher_list)) {
+        sk_SSL_CIPHER_free(tmp_cipher_list);
         return 0;
+    }
 
     sk_SSL_CIPHER_free(*cipher_list);
     *cipher_list = tmp_cipher_list;
@@ -1427,10 +1442,9 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(SSL_CTX *ctx,
      */
     if (rule_str == NULL || cipher_list == NULL || cipher_list_by_id == NULL)
         return NULL;
-#ifndef OPENSSL_NO_EC
+
     if (!check_suiteb_cipher_list(ssl_method, c, &rule_str))
         return NULL;
-#endif
 
     /*
      * To reduce the work to do we only want to process the compiled
@@ -1613,8 +1627,11 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(SSL_CTX *ctx,
         if ((sslc->algorithm_enc & disabled_enc) != 0
                 || (ssl_cipher_table_mac[sslc->algorithm2
                                          & SSL_HANDSHAKE_MAC_MASK].mask
-                    & ctx->disabled_mac_mask) != 0)
+                    & ctx->disabled_mac_mask) != 0) {
+            sk_SSL_CIPHER_delete(tls13_ciphersuites, i);
+            i--;
             continue;
+        }
 
         if (!sk_SSL_CIPHER_push(cipherstack, sslc)) {
             sk_SSL_CIPHER_free(cipherstack);
@@ -1659,7 +1676,7 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     const char *ver;
     const char *kx, *au, *enc, *mac;
     uint32_t alg_mkey, alg_auth, alg_enc, alg_mac;
-    static const char *format = "%-30s %-7s Kx=%-8s Au=%-5s Enc=%-9s Mac=%-4s\n";
+    static const char *format = "%-30s %-7s Kx=%-8s Au=%-5s Enc=%-22s Mac=%-4s\n";
 
     if (buf == NULL) {
         len = 128;
@@ -2203,8 +2220,6 @@ const char *OSSL_default_cipher_list(void)
 const char *OSSL_default_ciphersuites(void)
 {
     return "TLS_AES_256_GCM_SHA384:"
-#if !defined(OPENSSL_NO_CHACHA) && !defined(OPENSSL_NO_POLY1305)
            "TLS_CHACHA20_POLY1305_SHA256:"
-#endif
            "TLS_AES_128_GCM_SHA256";
 }

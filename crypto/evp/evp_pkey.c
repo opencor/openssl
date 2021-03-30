@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,6 +13,7 @@
 #include <openssl/x509.h>
 #include <openssl/rand.h>
 #include <openssl/encoder.h>
+#include <openssl/decoder.h>
 #include "internal/provider.h"
 #include "crypto/asn1.h"
 #include "crypto/evp.h"
@@ -20,8 +21,8 @@
 
 /* Extract a private key from a PKCS8 structure */
 
-EVP_PKEY *EVP_PKCS82PKEY_ex(const PKCS8_PRIV_KEY_INFO *p8, OSSL_LIB_CTX *libctx,
-                            const char *propq)
+EVP_PKEY *evp_pkcs82pkey_legacy(const PKCS8_PRIV_KEY_INFO *p8, OSSL_LIB_CTX *libctx,
+                                const char *propq)
 {
     EVP_PKEY *pkey = NULL;
     const ASN1_OBJECT *algoid;
@@ -62,6 +63,34 @@ EVP_PKEY *EVP_PKCS82PKEY_ex(const PKCS8_PRIV_KEY_INFO *p8, OSSL_LIB_CTX *libctx,
     return NULL;
 }
 
+EVP_PKEY *EVP_PKCS82PKEY_ex(const PKCS8_PRIV_KEY_INFO *p8, OSSL_LIB_CTX *libctx,
+                            const char *propq)
+{
+    EVP_PKEY *pkey = NULL;
+    const unsigned char *p8_data = NULL;
+    unsigned char *encoded_data = NULL;
+    int encoded_len;
+    size_t len;
+    OSSL_DECODER_CTX *dctx = NULL;
+
+    if ((encoded_len = i2d_PKCS8_PRIV_KEY_INFO(p8, &encoded_data)) <= 0)
+        goto end;
+
+    p8_data = encoded_data;
+    len = encoded_len;
+    dctx = OSSL_DECODER_CTX_new_for_pkey(&pkey, "DER", "pkcs8", EVP_PKEY_NONE,
+                                         0, libctx, propq);
+    if (dctx == NULL
+        || !OSSL_DECODER_from_data(dctx, &p8_data, &len))
+        /* try legacy */
+        pkey = evp_pkcs82pkey_legacy(p8, libctx, propq);
+
+ end:
+    OPENSSL_clear_free(encoded_data, encoded_len);
+    OSSL_DECODER_CTX_free(dctx);
+    return pkey;
+}
+
 EVP_PKEY *EVP_PKCS82PKEY(const PKCS8_PRIV_KEY_INFO *p8)
 {
     return EVP_PKCS82PKEY_ex(p8, NULL, NULL);
@@ -85,9 +114,9 @@ PKCS8_PRIV_KEY_INFO *EVP_PKEY2PKCS8(const EVP_PKEY *pkey)
         size_t derlen = 0;
         const unsigned char *pp;
 
-        if ((ctx = OSSL_ENCODER_CTX_new_by_EVP_PKEY(pkey, selection,
-                                                    "DER", "pkcs8",
-                                                    NULL)) == NULL
+        if ((ctx = OSSL_ENCODER_CTX_new_for_pkey(pkey, selection,
+                                                 "DER", "pkcs8",
+                                                 NULL)) == NULL
             || !OSSL_ENCODER_to_data(ctx, &der, &derlen))
             goto error;
 

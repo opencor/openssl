@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -83,7 +83,7 @@ static int test_dsa_param_keygen(int tstid)
     int expected;
     EVP_PKEY_CTX *gen_ctx = NULL;
     EVP_PKEY *pkey_parm = NULL;
-    EVP_PKEY *pkey = NULL;
+    EVP_PKEY *pkey = NULL, *dup_pk = NULL;
     DSA *dsa = NULL;
     int pind, qind, gind;
     BIGNUM *p = NULL, *q = NULL, *g = NULL;
@@ -93,7 +93,8 @@ static int test_dsa_param_keygen(int tstid)
      * these 'safe primes' should not be used normally for dsa *.
      */
     static const BIGNUM *bn[] = {
-        &_bignum_dh2048_256_p,  &_bignum_dh2048_256_q, &_bignum_dh2048_256_g
+        &ossl_bignum_dh2048_256_p, &ossl_bignum_dh2048_256_q,
+        &ossl_bignum_dh2048_256_g
     };
 
     /*
@@ -126,9 +127,17 @@ static int test_dsa_param_keygen(int tstid)
         || !TEST_int_gt(EVP_PKEY_keygen_init(gen_ctx), 0)
         || !TEST_int_eq(EVP_PKEY_keygen(gen_ctx, &pkey), expected))
         goto err;
+
+    if (expected) {
+        if (!TEST_ptr(dup_pk = EVP_PKEY_dup(pkey))
+            || !TEST_int_eq(EVP_PKEY_eq(pkey, dup_pk), 1))
+            goto err;
+    }
+
     ret = 1;
 err:
     EVP_PKEY_free(pkey);
+    EVP_PKEY_free(dup_pk);
     EVP_PKEY_CTX_free(gen_ctx);
     EVP_PKEY_free(pkey_parm);
     DSA_free(dsa);
@@ -146,7 +155,7 @@ static int do_dh_param_keygen(int tstid, const BIGNUM **bn)
     int expected;
     EVP_PKEY_CTX *gen_ctx = NULL;
     EVP_PKEY *pkey_parm = NULL;
-    EVP_PKEY *pkey = NULL;
+    EVP_PKEY *pkey = NULL, *dup_pk = NULL;
     DH *dh = NULL;
     int pind, qind, gind;
     BIGNUM *p = NULL, *q = NULL, *g = NULL;
@@ -181,9 +190,17 @@ static int do_dh_param_keygen(int tstid, const BIGNUM **bn)
         || !TEST_int_gt(EVP_PKEY_keygen_init(gen_ctx), 0)
         || !TEST_int_eq(EVP_PKEY_keygen(gen_ctx, &pkey), expected))
         goto err;
+
+    if (expected) {
+        if (!TEST_ptr(dup_pk = EVP_PKEY_dup(pkey))
+            || !TEST_int_eq(EVP_PKEY_eq(pkey, dup_pk), 1))
+            goto err;
+    }
+
     ret = 1;
 err:
     EVP_PKEY_free(pkey);
+    EVP_PKEY_free(dup_pk);
     EVP_PKEY_CTX_free(gen_ctx);
     EVP_PKEY_free(pkey_parm);
     DH_free(dh);
@@ -201,7 +218,8 @@ err:
 static int test_dh_safeprime_param_keygen(int tstid)
 {
     static const BIGNUM *bn[] = {
-        &_bignum_ffdhe2048_p,  &_bignum_ffdhe2048_q, &_bignum_const_2
+        &ossl_bignum_ffdhe2048_p,  &ossl_bignum_ffdhe2048_q,
+        &ossl_bignum_const_2
     };
     return do_dh_param_keygen(tstid, bn);
 }
@@ -295,11 +313,13 @@ err:
 
 static int test_cipher_reinit(int test_id)
 {
-    int ret = 0, out1_len = 0, out2_len = 0, diff, ccm;
+    int ret = 0, diff, ccm, siv;
+    int out1_len = 0, out2_len = 0, out3_len = 0;
     EVP_CIPHER *cipher = NULL;
     EVP_CIPHER_CTX *ctx = NULL;
     unsigned char out1[256];
     unsigned char out2[256];
+    unsigned char out3[256];
     unsigned char in[16] = {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10
@@ -330,6 +350,9 @@ static int test_cipher_reinit(int test_id)
     /* ccm fails on the second update - this matches OpenSSL 1_1_1 behaviour */
     ccm = (EVP_CIPHER_mode(cipher) == EVP_CIPH_CCM_MODE);
 
+    /* siv cannot be called with NULL key as the iv is irrelevant */
+    siv = (EVP_CIPHER_mode(cipher) == EVP_CIPH_SIV_MODE);
+
     /* DES3-WRAP uses random every update - so it will give a different value */
     diff = EVP_CIPHER_is_a(cipher, "DES3-WRAP");
 
@@ -337,15 +360,21 @@ static int test_cipher_reinit(int test_id)
         || !TEST_true(EVP_EncryptUpdate(ctx, out1, &out1_len, in, sizeof(in)))
         || !TEST_true(EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv))
         || !TEST_int_eq(EVP_EncryptUpdate(ctx, out2, &out2_len, in, sizeof(in)),
-                        ccm ? 0 : 1))
+                        ccm ? 0 : 1)
+        || !TEST_true(EVP_EncryptInit_ex(ctx, NULL, NULL, NULL, iv))
+        || !TEST_int_eq(EVP_EncryptUpdate(ctx, out3, &out3_len, in, sizeof(in)),
+                        ccm || siv ? 0 : 1))
         goto err;
 
     if (ccm == 0) {
         if (diff) {
-            if (!TEST_mem_ne(out1, out1_len, out2, out2_len))
+            if (!TEST_mem_ne(out1, out1_len, out2, out2_len)
+                || !TEST_mem_ne(out1, out1_len, out3, out3_len)
+                || !TEST_mem_ne(out2, out2_len, out3, out3_len))
                 goto err;
         } else {
-            if (!TEST_mem_eq(out1, out1_len, out2, out2_len))
+            if (!TEST_mem_eq(out1, out1_len, out2, out2_len)
+                || (!siv && !TEST_mem_eq(out1, out1_len, out3, out3_len)))
                 goto err;
         }
     }
@@ -364,11 +393,13 @@ err:
  */
 static int test_cipher_reinit_partialupdate(int test_id)
 {
-    int ret = 0, out1_len = 0, out2_len = 0, in_len;
+    int ret = 0, in_len;
+    int out1_len = 0, out2_len = 0, out3_len = 0;
     EVP_CIPHER *cipher = NULL;
     EVP_CIPHER_CTX *ctx = NULL;
     unsigned char out1[256];
     unsigned char out2[256];
+    unsigned char out3[256];
     static const unsigned char in[32] = {
         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
         0xba, 0xbe, 0xba, 0xbe, 0x00, 0x00, 0xba, 0xbe,
@@ -416,12 +447,15 @@ static int test_cipher_reinit_partialupdate(int test_id)
         || !TEST_true(EVP_EncryptUpdate(ctx, out2, &out2_len, in, in_len)))
         goto err;
 
-    /* DES3-WRAP uses random every update - so it will give a different value */
-    if (EVP_CIPHER_is_a(cipher, "DES3-WRAP")) {
-        if (!TEST_mem_ne(out1, out1_len, out2, out2_len))
+    if (!TEST_mem_eq(out1, out1_len, out2, out2_len))
+        goto err;
+
+    if (EVP_CIPHER_mode(cipher) != EVP_CIPH_SIV_MODE) {
+        if (!TEST_true(EVP_EncryptInit_ex(ctx, NULL, NULL, NULL, iv))
+            || !TEST_true(EVP_EncryptUpdate(ctx, out3, &out3_len, in, in_len)))
             goto err;
-    } else {
-        if (!TEST_mem_eq(out1, out1_len, out2, out2_len))
+
+        if (!TEST_mem_eq(out1, out1_len, out3, out3_len))
             goto err;
     }
     ret = 1;
@@ -458,10 +492,10 @@ static int rsa_keygen(int bits, EVP_PKEY **pub, EVP_PKEY **priv)
         || !TEST_true(EVP_PKEY_CTX_set_rsa_keygen_bits(keygen_ctx, bits))
         || !TEST_int_gt(EVP_PKEY_keygen(keygen_ctx, priv), 0)
         || !TEST_ptr(ectx =
-                     OSSL_ENCODER_CTX_new_by_EVP_PKEY(*priv,
-                                                      EVP_PKEY_PUBLIC_KEY,
-                                                      "DER", "type-specific",
-                                                      NULL))
+                     OSSL_ENCODER_CTX_new_for_pkey(*priv,
+                                                   EVP_PKEY_PUBLIC_KEY,
+                                                   "DER", "type-specific",
+                                                   NULL))
         || !TEST_true(OSSL_ENCODER_to_data(ectx, &pub_der, &len)))
         goto err;
     pp = pub_der;
@@ -488,7 +522,7 @@ static int kem_rsa_gen_recover(void)
 
     ret = TEST_true(rsa_keygen(2048, &pub, &priv))
           && TEST_ptr(sctx = EVP_PKEY_CTX_new_from_pkey(libctx, pub, NULL))
-          && TEST_int_eq(EVP_PKEY_encapsulate_init(sctx), 1)
+          && TEST_int_eq(EVP_PKEY_encapsulate_init(sctx, NULL), 1)
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(sctx, "RSASVE"), 1)
           && TEST_int_eq(EVP_PKEY_encapsulate(sctx, NULL, &ctlen, NULL,
                                               &secretlen), 1)
@@ -497,7 +531,7 @@ static int kem_rsa_gen_recover(void)
           && TEST_int_eq(EVP_PKEY_encapsulate(sctx, ct, &ctlen, secret,
                                               &secretlen), 1)
           && TEST_ptr(rctx = EVP_PKEY_CTX_new_from_pkey(libctx, priv, NULL))
-          && TEST_int_eq(EVP_PKEY_decapsulate_init(rctx), 1)
+          && TEST_int_eq(EVP_PKEY_decapsulate_init(rctx, NULL), 1)
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(rctx, "RSASVE"), 1)
           && TEST_int_eq(EVP_PKEY_decapsulate(rctx, NULL, &unwraplen,
                                               ct, ctlen), 1)
@@ -527,21 +561,21 @@ static int kem_rsa_params(void)
           /* Test setting kem op before the init fails */
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(pubctx, "RSASVE"), -2)
           /* Test NULL ctx passed */
-          && TEST_int_eq(EVP_PKEY_encapsulate_init(NULL), 0)
+          && TEST_int_eq(EVP_PKEY_encapsulate_init(NULL, NULL), 0)
           && TEST_int_eq(EVP_PKEY_encapsulate(NULL, NULL, NULL, NULL, NULL), 0)
-          && TEST_int_eq(EVP_PKEY_decapsulate_init(NULL), 0)
+          && TEST_int_eq(EVP_PKEY_decapsulate_init(NULL, NULL), 0)
           && TEST_int_eq(EVP_PKEY_decapsulate(NULL, NULL, NULL, NULL, 0), 0)
           /* Test Invalid operation */
           && TEST_int_eq(EVP_PKEY_encapsulate(pubctx, NULL, NULL, NULL, NULL), -1)
           && TEST_int_eq(EVP_PKEY_decapsulate(privctx, NULL, NULL, NULL, 0), 0)
           /* Wrong key component - no secret should be returned on failure */
-          && TEST_int_eq(EVP_PKEY_decapsulate_init(pubctx), 1)
+          && TEST_int_eq(EVP_PKEY_decapsulate_init(pubctx, NULL), 1)
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(pubctx, "RSASVE"), 1)
           && TEST_int_eq(EVP_PKEY_decapsulate(pubctx, secret, &secretlen, ct,
                                               sizeof(ct)), 0)
           && TEST_uchar_eq(secret[0], 0)
           /* Test encapsulate fails if the mode is not set */
-          && TEST_int_eq(EVP_PKEY_encapsulate_init(pubctx), 1)
+          && TEST_int_eq(EVP_PKEY_encapsulate_init(pubctx, NULL), 1)
           && TEST_int_eq(EVP_PKEY_encapsulate(pubctx, ct, &ctlen, secret, &secretlen), -2)
           /* Test setting a bad kem ops fail */
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(pubctx, "RSA"), 0)
@@ -565,7 +599,7 @@ static int kem_rsa_params(void)
           /* Test that lengths are optional if ct is not NULL */
           && TEST_int_eq(EVP_PKEY_encapsulate(pubctx, ct, NULL, secret, NULL), 1)
           /* Pass if secret or secret length are not NULL */
-          && TEST_int_eq(EVP_PKEY_decapsulate_init(privctx), 1)
+          && TEST_int_eq(EVP_PKEY_decapsulate_init(privctx, NULL), 1)
           && TEST_int_eq(EVP_PKEY_CTX_set_kem_op(privctx, "RSASVE"), 1)
           && TEST_int_eq(EVP_PKEY_decapsulate(privctx, secret, NULL, ct, sizeof(ct)), 1)
           && TEST_int_eq(EVP_PKEY_decapsulate(privctx, NULL, &secretlen, ct, sizeof(ct)), 1)
@@ -615,7 +649,7 @@ static int kem_invalid_keytype(void)
 
     if (!TEST_ptr(sctx = EVP_PKEY_CTX_new_from_pkey(libctx, key, NULL)))
         goto done;
-    if (!TEST_int_eq(EVP_PKEY_encapsulate_init(sctx), -2))
+    if (!TEST_int_eq(EVP_PKEY_encapsulate_init(sctx, NULL), -2))
         goto done;
 
     ret = 1;

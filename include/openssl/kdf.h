@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -41,45 +41,23 @@ const EVP_KDF *EVP_KDF_CTX_kdf(EVP_KDF_CTX *ctx);
 
 void EVP_KDF_CTX_reset(EVP_KDF_CTX *ctx);
 size_t EVP_KDF_CTX_get_kdf_size(EVP_KDF_CTX *ctx);
-int EVP_KDF_derive(EVP_KDF_CTX *ctx, unsigned char *key, size_t keylen);
+int EVP_KDF_derive(EVP_KDF_CTX *ctx, unsigned char *key, size_t keylen,
+                   const OSSL_PARAM params[]);
 int EVP_KDF_get_params(EVP_KDF *kdf, OSSL_PARAM params[]);
 int EVP_KDF_CTX_get_params(EVP_KDF_CTX *ctx, OSSL_PARAM params[]);
 int EVP_KDF_CTX_set_params(EVP_KDF_CTX *ctx, const OSSL_PARAM params[]);
 const OSSL_PARAM *EVP_KDF_gettable_params(const EVP_KDF *kdf);
 const OSSL_PARAM *EVP_KDF_gettable_ctx_params(const EVP_KDF *kdf);
 const OSSL_PARAM *EVP_KDF_settable_ctx_params(const EVP_KDF *kdf);
+const OSSL_PARAM *EVP_KDF_CTX_gettable_params(EVP_KDF_CTX *ctx);
+const OSSL_PARAM *EVP_KDF_CTX_settable_params(EVP_KDF_CTX *ctx);
 
 void EVP_KDF_do_all_provided(OSSL_LIB_CTX *libctx,
                              void (*fn)(EVP_KDF *kdf, void *arg),
                              void *arg);
-void EVP_KDF_names_do_all(const EVP_KDF *kdf,
-                          void (*fn)(const char *name, void *data),
-                          void *data);
-
-# define EVP_KDF_CTRL_SET_PASS               0x01 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_SALT               0x02 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_ITER               0x03 /* int */
-# define EVP_KDF_CTRL_SET_MD                 0x04 /* EVP_MD * */
-# define EVP_KDF_CTRL_SET_KEY                0x05 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_MAXMEM_BYTES       0x06 /* uint64_t */
-# define EVP_KDF_CTRL_SET_TLS_SECRET         0x07 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_ADD_TLS_SEED           0x08 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_RESET_HKDF_INFO        0x09
-# define EVP_KDF_CTRL_ADD_HKDF_INFO          0x0a /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_HKDF_MODE          0x0b /* int */
-# define EVP_KDF_CTRL_SET_SCRYPT_N           0x0c /* uint64_t */
-# define EVP_KDF_CTRL_SET_SCRYPT_R           0x0d /* uint32_t */
-# define EVP_KDF_CTRL_SET_SCRYPT_P           0x0e /* uint32_t */
-# define EVP_KDF_CTRL_SET_SSHKDF_XCGHASH     0x0f /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_SSHKDF_SESSION_ID  0x10 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_SSHKDF_TYPE        0x11 /* int */
-# define EVP_KDF_CTRL_SET_MAC                0x12 /* EVP_MAC * */
-# define EVP_KDF_CTRL_SET_MAC_SIZE           0x13 /* size_t */
-# define EVP_KDF_CTRL_SET_SSKDF_INFO         0x14 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_PBKDF2_PKCS5_MODE  0x15 /* int */
-# define EVP_KDF_CTRL_SET_UKM                0x16 /* unsigned char *, size_t */
-# define EVP_KDF_CTRL_SET_CEK_ALG            0x17 /* char * */
-# define EVP_KDF_CTRL_SET_SHARED_INFO        EVP_KDF_CTRL_SET_SSKDF_INFO
+int EVP_KDF_names_do_all(const EVP_KDF *kdf,
+                         void (*fn)(const char *name, void *data),
+                         void *data);
 
 # define EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND  0
 # define EVP_KDF_HKDF_MODE_EXTRACT_ONLY        1

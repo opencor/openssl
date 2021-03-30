@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -17,22 +17,21 @@ use OpenSSL::Test qw/:DEFAULT with bldtop_file bldtop_dir srctop_file srctop_dir
 use OpenSSL::Test::Utils;
 
 BEGIN {
-setup("test_ssl");
+setup("test_ssl_old");
 }
 
 use lib srctop_dir('Configurations');
 use lib bldtop_dir('.');
-use platform;
 
 my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
-my $infile = bldtop_file('providers', platform->dso('fips'));
-
 my ($no_rsa, $no_dsa, $no_dh, $no_ec, $no_psk,
     $no_ssl3, $no_tls1, $no_tls1_1, $no_tls1_2, $no_tls1_3,
     $no_dtls, $no_dtls1, $no_dtls1_2, $no_ct) =
     anydisabled qw/rsa dsa dh ec psk
                    ssl3 tls1 tls1_1 tls1_2 tls1_3
                    dtls dtls1 dtls1_2 ct/;
+#If ec and dh are disabled then don't use TLSv1.3
+$no_tls1_3 = 1 if (!$no_tls1_3 && $no_ec && $no_dh);
 my $no_anytls = alldisabled(available_protocols("tls"));
 my $no_anydtls = alldisabled(available_protocols("dtls"));
 
@@ -79,17 +78,10 @@ my $client_sess="client.ss";
 # If you're adding tests here, you probably want to convert them to the
 # new format in ssl_test.c and add recipes to 80-test_ssl_new.t instead.
 plan tests =>
-   ($no_fips ? 0 : 1 + 5) # For fipsinstall + testssl with fips provider
+   ($no_fips ? 0 : 5)     # testssl with fips provider
     + 1                   # For testss
     + 5                   # For the testssl with default provider
     ;
-
-unless ($no_fips) {
-    ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
-                '-module', $infile])),
-       "fipsinstall");
-}
 
 subtest 'test_ss' => sub {
     if (testss()) {
@@ -103,15 +95,15 @@ subtest 'test_ss' => sub {
     }
 };
 
-note('test_ssl -- key U');
+note('test_ssl_old -- key U');
 my $configfile = srctop_file("test","default-and-legacy.cnf");
 if (disabled("legacy")) {
     $configfile = srctop_file("test","default.cnf");
 }
 
-testssl("keyU.ss", $Ucert, $CAcert, "default", $configfile);
+testssl($Ukey, $Ucert, $CAcert, "default", $configfile);
 unless ($no_fips) {
-    testssl("keyU.ss", $Ucert, $CAcert, "fips",
+    testssl($Ukey, $Ucert, $CAcert, "fips",
             srctop_file("test","fips-and-base.cnf"));
 }
 

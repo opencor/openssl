@@ -20,7 +20,16 @@ OpenSSL 3.0
 
 ### Major changes between OpenSSL 1.1.1 and OpenSSL 3.0 [under development]
 
-  * Deprecated the `DSA_` functions.
+  * Changed the license to the Apache License v2.0.
+  * Moved all variations of the EVP ciphers CAST5, BF, IDEA, SEED, RC2,
+    RC4, RC5, and DES to the legacy provider.
+  * Moved the EVP digests MD2, MD4, MDC2, WHIRLPOOL and RIPEMD-160 to the legacy
+    provider.
+  * Deprecated the `OCSP_REQ_CTX` type and functions.
+  * Deprecated the `EC_KEY` and `EC_KEY_METHOD` types and functions.
+  * Deprecated the `RSA` and `RSA_METHOD` types and functions.
+  * Deprecated the `DSA` and `DSA_METHOD` types and functions.
+  * Deprecated the `DH` and `DH_METHOD` types and functions.
   * Deprecated the `ERR_load_` functions.
   * Remove the `RAND_DRBG` API.
   * Deprecated the `ENGINE` API.
@@ -76,7 +85,24 @@ OpenSSL 3.0
 OpenSSL 1.1.1
 -------------
 
-### Major changes between OpenSSL 1.1.1h and OpenSSL 1.1.1i [under development]
+### Major changes between OpenSSL 1.1.1j and OpenSSL 1.1.1k [under development]
+
+  * Fixed a problem with verifying a certificate chain when using the
+    X509_V_FLAG_X509_STRICT flag ([CVE-2021-3450])
+  * Fixed an issue where an OpenSSL TLS server may crash if sent a maliciously
+    crafted renegotiation ClientHello message from a client ([CVE-2021-3449])
+
+### Major changes between OpenSSL 1.1.1i and OpenSSL 1.1.1j [16 Feb 2021]
+
+  * Fixed a NULL pointer deref in the X509_issuer_and_serial_hash()
+    function ([CVE-2021-23841])
+  * Fixed the RSA_padding_check_SSLv23() function and the RSA_SSLV23_PADDING
+    padding mode to correctly check for rollback attacks
+  * Fixed an overflow in the EVP_CipherUpdate, EVP_EncryptUpdate and
+    EVP_DecryptUpdate functions ([CVE-2021-23840])
+  * Fixed SRP_Calc_client_key so that it runs in constant time
+
+### Major changes between OpenSSL 1.1.1h and OpenSSL 1.1.1i [8 Dec 2020]
 
   * Fixed NULL pointer deref in GENERAL_NAME_cmp ([CVE-2020-1971])
 

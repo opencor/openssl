@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -119,11 +119,6 @@ static int rsa_ossl_public_encrypt(int flen, const unsigned char *from,
                                                     from, flen, NULL, 0,
                                                     NULL, NULL);
         break;
-#ifndef FIPS_MODULE
-    case RSA_SSLV23_PADDING:
-        i = ossl_rsa_padding_add_SSLv23_ex(rsa->libctx, buf, num, from, flen);
-        break;
-#endif
     case RSA_NO_PADDING:
         i = RSA_padding_add_none(buf, num, from, flen);
         break;
@@ -168,7 +163,8 @@ static BN_BLINDING *rsa_get_blinding(RSA *rsa, int *local, BN_CTX *ctx)
 {
     BN_BLINDING *ret;
 
-    CRYPTO_THREAD_write_lock(rsa->lock);
+    if (!CRYPTO_THREAD_write_lock(rsa->lock))
+        return NULL;
 
     if (rsa->blinding == NULL) {
         rsa->blinding = RSA_setup_blinding(rsa, ctx);
@@ -278,7 +274,6 @@ static int rsa_ossl_private_encrypt(int flen, const unsigned char *from,
     case RSA_NO_PADDING:
         i = RSA_padding_add_none(buf, num, from, flen);
         break;
-    case RSA_SSLV23_PADDING:
     default:
         ERR_raise(ERR_LIB_RSA, RSA_R_UNKNOWN_PADDING_TYPE);
         goto err;
@@ -487,11 +482,6 @@ static int rsa_ossl_private_decrypt(int flen, const unsigned char *from,
     case RSA_PKCS1_OAEP_PADDING:
         r = RSA_padding_check_PKCS1_OAEP(to, num, buf, j, num, NULL, 0);
         break;
-#ifndef FIPS_MODULE
-    case RSA_SSLV23_PADDING:
-        r = RSA_padding_check_SSLv23(to, num, buf, j, num);
-        break;
-#endif
     case RSA_NO_PADDING:
         memcpy(to, buf, (r = j));
         break;
@@ -698,15 +688,20 @@ static int rsa_ossl_mod_exp(BIGNUM *r0, const BIGNUM *I, RSA *rsa, BN_CTX *ctx)
         if (/* m1 = I moq q */
             !bn_from_mont_fixed_top(m1, I, rsa->_method_mod_q, ctx)
             || !bn_to_mont_fixed_top(m1, m1, rsa->_method_mod_q, ctx)
-            /* m1 = m1^dmq1 mod q */
-            || !BN_mod_exp_mont_consttime(m1, m1, rsa->dmq1, rsa->q, ctx,
-                                          rsa->_method_mod_q)
             /* r1 = I mod p */
             || !bn_from_mont_fixed_top(r1, I, rsa->_method_mod_p, ctx)
             || !bn_to_mont_fixed_top(r1, r1, rsa->_method_mod_p, ctx)
-            /* r1 = r1^dmp1 mod p */
-            || !BN_mod_exp_mont_consttime(r1, r1, rsa->dmp1, rsa->p, ctx,
-                                          rsa->_method_mod_p)
+            /*
+             * Use parallel exponentiations optimization if possible,
+             * otherwise fallback to two sequential exponentiations:
+             *    m1 = m1^dmq1 mod q
+             *    r1 = r1^dmp1 mod p
+             */
+            || !BN_mod_exp_mont_consttime_x2(m1, m1, rsa->dmq1, rsa->q,
+                                             rsa->_method_mod_q,
+                                             r1, r1, rsa->dmp1, rsa->p,
+                                             rsa->_method_mod_p,
+                                             ctx)
             /* r1 = (r1 - m1) mod p */
             /*
              * bn_mod_sub_fixed_top is not regular modular subtraction,

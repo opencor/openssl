@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,9 +13,11 @@
 #include <openssl/provider.h>
 #include <openssl/evperr.h>
 #include <openssl/ecerr.h>
+#include <openssl/pkcs12err.h>
 #include <openssl/x509err.h>
 #include <openssl/trace.h>
 #include "internal/passphrase.h"
+#include "internal/bio.h"
 #include "crypto/decoder.h"
 #include "encoder_local.h"
 #include "e_os.h"
@@ -28,6 +30,8 @@ struct decoder_process_data_st {
 
     /* Index of the current decoder instance to be processed */
     size_t current_decoder_inst_index;
+    /* For tracing, count recursion level */
+    size_t recursion;
 };
 
 static int decoder_process(const OSSL_PARAM params[], void *arg);
@@ -36,7 +40,14 @@ int OSSL_DECODER_from_bio(OSSL_DECODER_CTX *ctx, BIO *in)
 {
     struct decoder_process_data_st data;
     int ok = 0;
+    BIO *new_bio = NULL;
 
+    if (BIO_tell(in) < 0) {
+        new_bio = BIO_new(BIO_f_readbuffer());
+        if (new_bio == NULL)
+            return 0;
+        in = BIO_push(new_bio, in);
+    }
     memset(&data, 0, sizeof(data));
     data.ctx = ctx;
     data.bio = in;
@@ -49,6 +60,10 @@ int OSSL_DECODER_from_bio(OSSL_DECODER_CTX *ctx, BIO *in)
     /* Clear any internally cached passphrase */
     (void)ossl_pw_clear_passphrase_cache(&ctx->pwdata);
 
+    if (new_bio != NULL) {
+        BIO_pop(new_bio);
+        BIO_free(new_bio);
+    }
     return ok;
 }
 
@@ -506,19 +521,33 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
     OSSL_DECODER_CTX *ctx = data->ctx;
     OSSL_DECODER_INSTANCE *decoder_inst = NULL;
     OSSL_DECODER *decoder = NULL;
+    OSSL_CORE_BIO *cbio = NULL;
     BIO *bio = data->bio;
     long loc;
     size_t i;
-    int err, ok = 0;
+    int err, lib, reason, ok = 0;
     /* For recursions */
     struct decoder_process_data_st new_data;
-    const char *object_type = NULL;
+    const char *data_type = NULL;
+    const char *data_structure = NULL;
 
     memset(&new_data, 0, sizeof(new_data));
     new_data.ctx = data->ctx;
+    new_data.recursion = data->recursion + 1;
+
+#define LEVEL_STR ">>>>>>>>>>>>>>>>"
+#define LEVEL (new_data.recursion < sizeof(LEVEL_STR)                   \
+               ? &LEVEL_STR[sizeof(LEVEL_STR) - new_data.recursion - 1] \
+               : LEVEL_STR "...")
 
     if (params == NULL) {
         /* First iteration, where we prepare for what is to come */
+
+        OSSL_TRACE_BEGIN(DECODER) {
+            BIO_printf(trc_out,
+                       "(ctx %p) starting to walk the decoder chain\n",
+                       (void *)new_data.ctx);
+        } OSSL_TRACE_END(DECODER);
 
         data->current_decoder_inst_index =
             OSSL_DECODER_CTX_get_num_decoders(ctx);
@@ -526,6 +555,7 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
         bio = data->bio;
     } else {
         const OSSL_PARAM *p;
+        const char *trace_data_structure;
 
         decoder_inst =
             sk_OSSL_DECODER_INSTANCE_value(ctx->decoder_insts,
@@ -555,10 +585,42 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
             goto end;
         bio = new_data.bio;
 
-        /* Get the object type if there is one */
+        /* Get the data type if there is one */
         p = OSSL_PARAM_locate_const(params, OSSL_OBJECT_PARAM_DATA_TYPE);
-        if (p != NULL && !OSSL_PARAM_get_utf8_string_ptr(p, &object_type))
+        if (p != NULL && !OSSL_PARAM_get_utf8_string_ptr(p, &data_type))
             goto end;
+
+        /* Get the data structure if there is one */
+        p = OSSL_PARAM_locate_const(params, OSSL_OBJECT_PARAM_DATA_STRUCTURE);
+        if (p != NULL && !OSSL_PARAM_get_utf8_string_ptr(p, &data_structure))
+            goto end;
+
+        /*
+         * If the data structure is "type-specific" and the data type is
+         * given, we drop the data structure.  The reasoning is that the
+         * data type is already enough to find the applicable next decoder,
+         * so an additional "type-specific" data structure is extraneous.
+         *
+         * Furthermore, if the OSSL_DECODER caller asked for a type specific
+         * structure under another name, such as "DH", we get a mismatch
+         * if the data structure we just received is "type-specific".
+         * There's only so much you can do without infusing this code with
+         * too special knowledge.
+         */
+        trace_data_structure = data_structure;
+        if (data_type != NULL && data_structure != NULL
+            && strcasecmp(data_structure, "type-specific") == 0)
+            data_structure = NULL;
+
+        OSSL_TRACE_BEGIN(DECODER) {
+            BIO_printf(trc_out,
+                       "(ctx %p) %s incoming from previous decoder (%p):\n"
+                       "    data type: %s, data structure: %s%s\n",
+                       (void *)new_data.ctx, LEVEL, (void *)decoder,
+                       data_type, trace_data_structure,
+                       (trace_data_structure == data_structure
+                        ? "" : " (dropped)"));
+        } OSSL_TRACE_END(DECODER);
     }
 
     /*
@@ -573,6 +635,11 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
         goto end;
     }
 
+    if ((cbio = ossl_core_bio_new_from_bio(bio)) == NULL) {
+        ERR_raise(ERR_LIB_OSSL_DECODER, ERR_R_MALLOC_FAILURE);
+        goto end;
+    }
+
     for (i = data->current_decoder_inst_index; i-- > 0;) {
         OSSL_DECODER_INSTANCE *new_decoder_inst =
             sk_OSSL_DECODER_INSTANCE_value(ctx->decoder_insts, i);
@@ -582,6 +649,19 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
             OSSL_DECODER_INSTANCE_get_decoder_ctx(new_decoder_inst);
         const char *new_input_type =
             OSSL_DECODER_INSTANCE_get_input_type(new_decoder_inst);
+        int n_i_s_was_set = 0;   /* We don't care here */
+        const char *new_input_structure =
+            OSSL_DECODER_INSTANCE_get_input_structure(new_decoder_inst,
+                                                      &n_i_s_was_set);
+
+        OSSL_TRACE_BEGIN(DECODER) {
+            BIO_printf(trc_out,
+                       "(ctx %p) %s [%u] Considering decoder instance %p, which has:\n"
+                       "    input type: %s, input structure: %s, decoder: %p\n",
+                       (void *)new_data.ctx, LEVEL, (unsigned int)i,
+                       (void *)new_decoder_inst, new_input_type,
+                       new_input_structure, (void *)new_decoder);
+        } OSSL_TRACE_END(DECODER);
 
         /*
          * If |decoder| is NULL, it means we've just started, and the caller
@@ -589,24 +669,60 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
          * that's the case, we do this extra check.
          */
         if (decoder == NULL && ctx->start_input_type != NULL
-            && strcasecmp(ctx->start_input_type, new_input_type) != 0)
+            && strcasecmp(ctx->start_input_type, new_input_type) != 0) {
+            OSSL_TRACE_BEGIN(DECODER) {
+                BIO_printf(trc_out,
+                           "(ctx %p) %s [%u] the start input type '%s' doesn't match the input type of the considered decoder, skipping...\n",
+                           (void *)new_data.ctx, LEVEL, (unsigned int)i,
+                           ctx->start_input_type);
+            } OSSL_TRACE_END(DECODER);
             continue;
+        }
 
         /*
          * If we have a previous decoder, we check that the input type
          * of the next to be used matches the type of this previous one.
-         * input_type is a cache of the parameter "input-type" value for
-         * that decoder.
+         * |new_input_type| holds the value of the "input-type" parameter
+         * for the decoder we're currently considering.
          */
-        if (decoder != NULL && !OSSL_DECODER_is_a(decoder, new_input_type))
+        if (decoder != NULL && !OSSL_DECODER_is_a(decoder, new_input_type)) {
+            OSSL_TRACE_BEGIN(DECODER) {
+                BIO_printf(trc_out,
+                           "(ctx %p) %s [%u] the input type doesn't match the name of the previous decoder (%p), skipping...\n",
+                           (void *)new_data.ctx, LEVEL, (unsigned int)i,
+                           (void *)decoder);
+            } OSSL_TRACE_END(DECODER);
             continue;
+        }
 
         /*
-         * If the previous decoder gave us an object type, we check to see
+         * If the previous decoder gave us a data type, we check to see
          * if that matches the decoder we're currently considering.
          */
-        if (object_type != NULL && !OSSL_DECODER_is_a(new_decoder, object_type))
+        if (data_type != NULL && !OSSL_DECODER_is_a(new_decoder, data_type)) {
+            OSSL_TRACE_BEGIN(DECODER) {
+                BIO_printf(trc_out,
+                           "(ctx %p) %s [%u] the previous decoder's data type doesn't match the name of the considered decoder, skipping...\n",
+                           (void *)new_data.ctx, LEVEL, (unsigned int)i);
+            } OSSL_TRACE_END(DECODER);
             continue;
+        }
+
+        /*
+         * If the previous decoder gave us a data structure name, we check
+         * to see that it matches the input data structure of the decoder
+         * we're currently considering.
+         */
+        if (data_structure != NULL
+            && (new_input_structure == NULL
+                || strcasecmp(data_structure, new_input_structure) != 0)) {
+            OSSL_TRACE_BEGIN(DECODER) {
+                BIO_printf(trc_out,
+                           "(ctx %p) %s [%u] the previous decoder's data structure doesn't match the input structure of the considered decoder, skipping...\n",
+                           (void *)new_data.ctx, LEVEL, (unsigned int)i);
+            } OSSL_TRACE_END(DECODER);
+            continue;
+        }
 
         /*
          * Checking the return value of BIO_reset() or BIO_seek() is unsafe.
@@ -623,8 +739,15 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
             goto end;
 
         /* Recurse */
+        OSSL_TRACE_BEGIN(DECODER) {
+            BIO_printf(trc_out,
+                       "(ctx %p) %s [%u] Running decoder instance %p\n",
+                       (void *)new_data.ctx, LEVEL, (unsigned int)i,
+                       (void *)new_decoder_inst);
+        } OSSL_TRACE_END(DECODER);
+
         new_data.current_decoder_inst_index = i;
-        ok = new_decoder->decode(new_decoderctx, (OSSL_CORE_BIO *)bio,
+        ok = new_decoder->decode(new_decoderctx, cbio,
                                  new_data.ctx->selection,
                                  decoder_process, &new_data,
                                  ossl_pw_passphrase_callback_dec,
@@ -632,25 +755,35 @@ static int decoder_process(const OSSL_PARAM params[], void *arg)
 
         OSSL_TRACE_BEGIN(DECODER) {
             BIO_printf(trc_out,
-                       "(ctx %p) Running decoder instance %p => %d\n",
-                       (void *)new_data.ctx, (void *)new_decoder_inst, ok);
+                       "(ctx %p) %s [%u] Running decoder instance %p => %d\n",
+                       (void *)new_data.ctx, LEVEL, (unsigned int)i,
+                       (void *)new_decoder_inst, ok);
         } OSSL_TRACE_END(DECODER);
 
         if (ok)
             break;
+
+        /*
+         * These errors are assumed to come from ossl_store_handle_load_result()
+         * in crypto/store/store_result.c.  They are currently considered fatal
+         * errors, so we preserve them in the error queue and stop.
+         */
         err = ERR_peek_last_error();
-        if ((ERR_GET_LIB(err) == ERR_LIB_EVP
-             && ERR_GET_REASON(err) == EVP_R_UNSUPPORTED_PRIVATE_KEY_ALGORITHM)
+        lib = ERR_GET_LIB(err);
+        reason = ERR_GET_REASON(err);
+        if ((lib == ERR_LIB_EVP
+             && reason == EVP_R_UNSUPPORTED_PRIVATE_KEY_ALGORITHM)
 #ifndef OPENSSL_NO_EC
-            || (ERR_GET_LIB(err) == ERR_LIB_EC
-                && ERR_GET_REASON(err) == EC_R_UNKNOWN_GROUP)
+            || (lib == ERR_LIB_EC && reason == EC_R_UNKNOWN_GROUP)
 #endif
-            || (ERR_GET_LIB(err) == ERR_LIB_X509
-                && ERR_GET_REASON(err) == X509_R_UNSUPPORTED_ALGORITHM))
-            break; /* fatal error; preserve it on the error queue and stop */
+            || (lib == ERR_LIB_X509 && reason == X509_R_UNSUPPORTED_ALGORITHM)
+            || (lib == ERR_LIB_PKCS12
+                && reason == PKCS12_R_PKCS12_CIPHERFINAL_ERROR))
+            goto end;
     }
 
  end:
+    ossl_core_bio_free(cbio);
     BIO_free(new_data.bio);
     return ok;
 }

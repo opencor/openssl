@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -222,8 +222,12 @@ int BN_rand_range_ex(BIGNUM *r, const BIGNUM *range, BN_CTX *ctx);
 int BN_rand_range(BIGNUM *rnd, const BIGNUM *range);
 int BN_priv_rand_range_ex(BIGNUM *r, const BIGNUM *range, BN_CTX *ctx);
 int BN_priv_rand_range(BIGNUM *rnd, const BIGNUM *range);
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+OSSL_DEPRECATEDIN_3_0
 int BN_pseudo_rand(BIGNUM *rnd, int bits, int top, int bottom);
+OSSL_DEPRECATEDIN_3_0
 int BN_pseudo_rand_range(BIGNUM *rnd, const BIGNUM *range);
+# endif
 int BN_num_bits(const BIGNUM *a);
 int BN_num_bits_word(BN_ULONG l);
 int BN_security_bits(int L, int N);
@@ -308,6 +312,11 @@ int BN_mod_exp2_mont(BIGNUM *r, const BIGNUM *a1, const BIGNUM *p1,
                      BN_CTX *ctx, BN_MONT_CTX *m_ctx);
 int BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p,
                       const BIGNUM *m, BN_CTX *ctx);
+int BN_mod_exp_mont_consttime_x2(BIGNUM *rr1, const BIGNUM *a1, const BIGNUM *p1,
+                                 const BIGNUM *m1, BN_MONT_CTX *in_mont1,
+                                 BIGNUM *rr2, const BIGNUM *a2, const BIGNUM *p2,
+                                 const BIGNUM *m2, BN_MONT_CTX *in_mont2,
+                                 BN_CTX *ctx);
 
 int BN_mask_bits(BIGNUM *a, int n);
 # ifndef OPENSSL_NO_STDIO
@@ -370,15 +379,20 @@ int BN_generate_prime_ex(BIGNUM *ret, int bits, int safe, const BIGNUM *add,
                          const BIGNUM *rem, BN_GENCB *cb);
 int BN_check_prime(const BIGNUM *p, BN_CTX *ctx, BN_GENCB *cb);
 
+# ifndef OPENSSL_NO_DEPRECATED_3_0
+OSSL_DEPRECATEDIN_3_0
 int BN_X931_generate_Xpq(BIGNUM *Xp, BIGNUM *Xq, int nbits, BN_CTX *ctx);
 
+OSSL_DEPRECATEDIN_3_0
 int BN_X931_derive_prime_ex(BIGNUM *p, BIGNUM *p1, BIGNUM *p2,
                             const BIGNUM *Xp, const BIGNUM *Xp1,
                             const BIGNUM *Xp2, const BIGNUM *e, BN_CTX *ctx,
                             BN_GENCB *cb);
+OSSL_DEPRECATEDIN_3_0
 int BN_X931_generate_prime_ex(BIGNUM *p, BIGNUM *p1, BIGNUM *p2, BIGNUM *Xp1,
                               BIGNUM *Xp2, const BIGNUM *Xp, const BIGNUM *e,
                               BN_CTX *ctx, BN_GENCB *cb);
+# endif
 
 BN_MONT_CTX *BN_MONT_CTX_new(void);
 int BN_mod_mul_montgomery(BIGNUM *r, const BIGNUM *a, const BIGNUM *b,

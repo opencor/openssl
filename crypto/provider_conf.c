@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -130,7 +130,7 @@ static int provider_conf_load(OSSL_LIB_CTX *libctx, const char *name,
     ok = provider_conf_params(prov, NULL, value, cnf);
 
     if (ok && activate) {
-        if (!ossl_provider_activate(prov)) {
+        if (!ossl_provider_activate(prov, 0)) {
             ok = 0;
         } else {
             if (activated_providers == NULL)

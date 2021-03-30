@@ -1236,9 +1236,11 @@ static int open_devcrypto(void)
 #ifdef CRIOGET
     if (ioctl(fd, CRIOGET, &cfd) < 0) {
         fprintf(stderr, "Could not create crypto fd: %s\n", strerror(errno));
+        close(fd);
         cfd = -1;
         return 0;
     }
+    close(fd);
 #else
     cfd = fd;
 #endif
@@ -1358,7 +1360,6 @@ void engine_load_devcrypto_int(void)
      * ENGINE_load_builtin_engines() perhaps).
      */
     ERR_pop_to_mark();
-}
 }
 
 #else

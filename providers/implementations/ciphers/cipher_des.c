@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,15 +13,14 @@
  */
 #include "internal/deprecated.h"
 
+#include <openssl/rand.h>
+#include <openssl/proverr.h>
 #include "prov/ciphercommon.h"
 #include "cipher_des.h"
-#include <openssl/rand.h>
 #include "prov/implementations.h"
 #include "prov/providercommon.h"
-#include "prov/providercommonerr.h"
 
-/* TODO(3.0) Figure out what flags need to be here */
-#define DES_FLAGS (EVP_CIPH_RAND_KEY)
+#define DES_FLAGS 0
 
 static OSSL_FUNC_cipher_freectx_fn des_freectx;
 static OSSL_FUNC_cipher_encrypt_init_fn des_einit;
@@ -72,7 +71,8 @@ static void des_freectx(void *vctx)
 }
 
 static int des_init(void *vctx, const unsigned char *key, size_t keylen,
-                    const unsigned char *iv, size_t ivlen, int enc)
+                    const unsigned char *iv, size_t ivlen,
+                    const OSSL_PARAM params[], int enc)
 {
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
 
@@ -90,24 +90,27 @@ static int des_init(void *vctx, const unsigned char *key, size_t keylen,
 
     if (key != NULL) {
         if (keylen != ctx->keylen) {
-            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEYLEN);
+            ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
             return 0;
         }
-        return ctx->hw->init(ctx, key, keylen);
+        if (!ctx->hw->init(ctx, key, keylen))
+            return 0;
     }
-    return 1;
+    return ossl_cipher_generic_set_ctx_params(ctx, params);
 }
 
 static int des_einit(void *vctx, const unsigned char *key, size_t keylen,
-                     const unsigned char *iv, size_t ivlen)
+                     const unsigned char *iv, size_t ivlen,
+                     const OSSL_PARAM params[])
 {
-    return des_init(vctx, key, keylen, iv, ivlen, 1);
+    return des_init(vctx, key, keylen, iv, ivlen, params, 1);
 }
 
 static int des_dinit(void *vctx, const unsigned char *key, size_t keylen,
-                     const unsigned char *iv, size_t ivlen)
+                     const unsigned char *iv, size_t ivlen,
+                     const OSSL_PARAM params[])
 {
-    return des_init(vctx, key, keylen, iv, ivlen, 0);
+    return des_init(vctx, key, keylen, iv, ivlen, params, 0);
 }
 
 static int des_generatekey(PROV_CIPHER_CTX *ctx, void *ptr)
@@ -149,7 +152,7 @@ static void *des_##lcmode##_newctx(void *provctx)                              \
 {                                                                              \
     return des_newctx(provctx, kbits, blkbits, ivbits,                         \
                       EVP_CIPH_##UCMODE##_MODE, flags,                         \
-                      PROV_CIPHER_HW_des_##lcmode());                          \
+                      ossl_prov_cipher_hw_des_##lcmode());                          \
 }                                                                              \
 static OSSL_FUNC_cipher_get_params_fn des_##lcmode##_get_params;               \
 static int des_##lcmode##_get_params(OSSL_PARAM params[])                      \

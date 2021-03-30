@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -176,6 +176,11 @@ EVP_KEYEXCH *EVP_KEYEXCH_fetch(OSSL_LIB_CTX *ctx, const char *algorithm,
 
 int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx)
 {
+    return EVP_PKEY_derive_init_ex(ctx, NULL);
+}
+
+int EVP_PKEY_derive_init_ex(EVP_PKEY_CTX *ctx, const OSSL_PARAM params[])
+{
     int ret;
     void *provkey = NULL;
     EVP_KEYEXCH *exchange = NULL;
@@ -183,7 +188,7 @@ int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx)
     const char *supported_exch = NULL;
 
     if (ctx == NULL) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+        ERR_raise(ERR_LIB_EVP, ERR_R_PASSED_NULL_PARAMETER);
         return -2;
     }
 
@@ -279,7 +284,7 @@ int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx)
         ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
         goto err;
     }
-    ret = exchange->init(ctx->op.kex.exchprovctx, provkey);
+    ret = exchange->init(ctx->op.kex.exchprovctx, provkey, params);
 
     return ret ? 1 : 0;
  err:
@@ -318,8 +323,8 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
     void *provkey = NULL;
 
     if (ctx == NULL) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-        return -2;
+        ERR_raise(ERR_LIB_EVP, ERR_R_PASSED_NULL_PARAMETER);
+        return -1;
     }
 
     if (!EVP_PKEY_CTX_IS_DERIVE_OP(ctx) || ctx->op.kex.exchprovctx == NULL)
@@ -344,10 +349,6 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
 #ifdef FIPS_MODULE
     return ret;
 #else
-    /*
-     * TODO(3.0) investigate the case where the operation is deemed legacy,
-     * but the given peer key is provider only.
-     */
     if (ctx->pmeth == NULL
         || !(ctx->pmeth->derive != NULL
              || ctx->pmeth->encrypt != NULL
@@ -359,7 +360,7 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
     if (ctx->operation != EVP_PKEY_OP_DERIVE
         && ctx->operation != EVP_PKEY_OP_ENCRYPT
         && ctx->operation != EVP_PKEY_OP_DECRYPT) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
 
@@ -413,13 +414,13 @@ int EVP_PKEY_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *pkeylen)
 {
     int ret;
 
-    if (ctx == NULL) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-        return -2;
+    if (ctx == NULL || pkeylen == NULL) {
+        ERR_raise(ERR_LIB_EVP, ERR_R_PASSED_NULL_PARAMETER);
+        return -1;
     }
 
     if (!EVP_PKEY_CTX_IS_DERIVE_OP(ctx)) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
+        ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_INITIALIZED);
         return -1;
     }
 
@@ -427,11 +428,11 @@ int EVP_PKEY_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *pkeylen)
         goto legacy;
 
     ret = ctx->op.kex.exchange->derive(ctx->op.kex.exchprovctx, key, pkeylen,
-                                       SIZE_MAX);
+                                       key != NULL ? *pkeylen : 0);
 
     return ret;
  legacy:
-    if (ctx ==  NULL || ctx->pmeth == NULL || ctx->pmeth->derive == NULL) {
+    if (ctx->pmeth == NULL || ctx->pmeth->derive == NULL) {
         ERR_raise(ERR_LIB_EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
         return -2;
     }
@@ -460,12 +461,14 @@ void EVP_KEYEXCH_do_all_provided(OSSL_LIB_CTX *libctx,
                        (void (*)(void *))EVP_KEYEXCH_free);
 }
 
-void EVP_KEYEXCH_names_do_all(const EVP_KEYEXCH *keyexch,
-                              void (*fn)(const char *name, void *data),
-                              void *data)
+int EVP_KEYEXCH_names_do_all(const EVP_KEYEXCH *keyexch,
+                             void (*fn)(const char *name, void *data),
+                             void *data)
 {
     if (keyexch->prov != NULL)
-        evp_names_do_all(keyexch->prov, keyexch->name_id, fn, data);
+        return evp_names_do_all(keyexch->prov, keyexch->name_id, fn, data);
+
+    return 1;
 }
 
 const OSSL_PARAM *EVP_KEYEXCH_gettable_ctx_params(const EVP_KEYEXCH *keyexch)
@@ -476,7 +479,7 @@ const OSSL_PARAM *EVP_KEYEXCH_gettable_ctx_params(const EVP_KEYEXCH *keyexch)
         return NULL;
 
     provctx = ossl_provider_ctx(EVP_KEYEXCH_provider(keyexch));
-    return keyexch->gettable_ctx_params(provctx);
+    return keyexch->gettable_ctx_params(NULL, provctx);
 }
 
 const OSSL_PARAM *EVP_KEYEXCH_settable_ctx_params(const EVP_KEYEXCH *keyexch)
@@ -486,5 +489,5 @@ const OSSL_PARAM *EVP_KEYEXCH_settable_ctx_params(const EVP_KEYEXCH *keyexch)
     if (keyexch == NULL || keyexch->settable_ctx_params == NULL)
         return NULL;
     provctx = ossl_provider_ctx(EVP_KEYEXCH_provider(keyexch));
-    return keyexch->settable_ctx_params(provctx);
+    return keyexch->settable_ctx_params(NULL, provctx);
 }

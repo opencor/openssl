@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -25,7 +25,7 @@ static const DH_GENTYPE_NAME2ID dhtype2id[]=
     { "generator", DH_PARAMGEN_TYPE_GENERATOR }
 };
 
-const char *dh_gen_type_id2name(int id)
+const char *ossl_dh_gen_type_id2name(int id)
 {
     size_t i;
 
@@ -36,7 +36,7 @@ const char *dh_gen_type_id2name(int id)
     return NULL;
 }
 
-int dh_gen_type_name2id(const char *name)
+int ossl_dh_gen_type_name2id(const char *name)
 {
     size_t i;
 

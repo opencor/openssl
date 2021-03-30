@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2018-2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -121,13 +121,13 @@ int ossl_rsa_fips186_4_gen_prob_primes(RSA *rsa, RSA_ACVP_TEST *test,
     BN_set_flags(rsa->q, BN_FLG_CONSTTIME);
 
     /* (Step 4) Generate p, Xp */
-    if (!bn_rsa_fips186_4_gen_prob_primes(rsa->p, Xpo, p1, p2, Xp, Xp1, Xp2,
-                                          nbits, e, ctx, cb))
+    if (!ossl_bn_rsa_fips186_4_gen_prob_primes(rsa->p, Xpo, p1, p2, Xp, Xp1, Xp2,
+                                               nbits, e, ctx, cb))
         goto err;
     for(;;) {
         /* (Step 5) Generate q, Xq*/
-        if (!bn_rsa_fips186_4_gen_prob_primes(rsa->q, Xqo, q1, q2, Xq, Xq1,
-                                              Xq2, nbits, e, ctx, cb))
+        if (!ossl_bn_rsa_fips186_4_gen_prob_primes(rsa->q, Xqo, q1, q2, Xq, Xq1,
+                                                   Xq2, nbits, e, ctx, cb))
             goto err;
 
         /* (Step 6) |Xp - Xq| > 2^(nbitlen/2 - 100) */
@@ -171,7 +171,8 @@ err:
  */
 int ossl_rsa_sp800_56b_validate_strength(int nbits, int strength)
 {
-    int s = (int)ifc_ffc_compute_security_bits(nbits);
+    int s = (int)ossl_ifc_ffc_compute_security_bits(nbits);
+
 #ifdef FIPS_MODULE
     if (s < RSA_FIPS1864_MIN_KEYGEN_STRENGTH
             || s > RSA_FIPS1864_MAX_KEYGEN_STRENGTH) {

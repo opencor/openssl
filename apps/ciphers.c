@@ -17,7 +17,7 @@
 #include "s_apps.h"
 
 typedef enum OPTION_choice {
-    OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+    OPT_COMMON,
     OPT_STDNAME,
     OPT_CONVERT,
     OPT_SSL3,
@@ -183,6 +183,7 @@ int ciphers_main(int argc, char **argv)
     if (convert != NULL) {
         BIO_printf(bio_out, "OpenSSL cipher name: %s\n",
                    OPENSSL_cipher_name(convert));
+        ret = 0;
         goto end;
     }
 

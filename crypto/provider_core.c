@@ -22,24 +22,31 @@
 #include "internal/provider.h"
 #include "internal/refcount.h"
 #include "internal/bio.h"
+#include "internal/core.h"
 #include "provider_local.h"
 #ifndef FIPS_MODULE
 # include <openssl/self_test.h>
 #endif
 
 static OSSL_PROVIDER *provider_new(const char *name,
-                                   OSSL_provider_init_fn *init_function);
+                                   OSSL_provider_init_fn *init_function,
+                                   STACK_OF(INFOPAIR) *parameters);
 
 /*-
  * Provider Object structure
  * =========================
  */
 
+#ifndef FIPS_MODULE
 typedef struct {
-    char *name;
-    char *value;
-} INFOPAIR;
-DEFINE_STACK_OF(INFOPAIR)
+    OSSL_PROVIDER *prov;
+    int (*create_cb)(const OSSL_CORE_HANDLE *provider, void *cbdata);
+    int (*remove_cb)(const OSSL_CORE_HANDLE *provider, void *cbdata);
+    int (*global_props_cb)(const char *props, void *cbdata);
+    void *cbdata;
+} OSSL_PROVIDER_CHILD_CB;
+DEFINE_STACK_OF(OSSL_PROVIDER_CHILD_CB)
+#endif
 
 struct provider_store_st;        /* Forward declaration */
 
@@ -48,7 +55,6 @@ struct ossl_provider_st {
     unsigned int flag_initialized:1;
     unsigned int flag_activated:1;
     unsigned int flag_fallback:1; /* Can be used as fallback */
-    unsigned int flag_activated_as_fallback:1;
 
     /* Getting and setting the flags require synchronization */
     CRYPTO_RWLOCK *flag_lock;
@@ -56,8 +62,7 @@ struct ossl_provider_st {
     /* OpenSSL library side data */
     CRYPTO_REF_COUNT refcnt;
     CRYPTO_RWLOCK *refcnt_lock;  /* For the ref counter */
-    CRYPTO_REF_COUNT activatecnt;
-    CRYPTO_RWLOCK *activatecnt_lock; /* For the activate counter */
+    int activatecnt;
     char *name;
     char *path;
     DSO *module;
@@ -93,8 +98,15 @@ struct ossl_provider_st {
     size_t operation_bits_sz;
     CRYPTO_RWLOCK *opbits_lock;
 
+#ifndef FIPS_MODULE
+    /* Whether this provider is the child of some other provider */
+    const OSSL_CORE_HANDLE *handle;
+    unsigned int ischild:1;
+#endif
+
     /* Provider side data */
     void *provctx;
+    const OSSL_DISPATCH *dispatch;
 };
 DEFINE_STACK_OF(OSSL_PROVIDER)
 
@@ -113,10 +125,17 @@ static int ossl_provider_cmp(const OSSL_PROVIDER * const *a,
  */
 
 struct provider_store_st {
+    OSSL_LIB_CTX *libctx;
     STACK_OF(OSSL_PROVIDER) *providers;
+    STACK_OF(OSSL_PROVIDER_CHILD_CB) *child_cbs;
+    CRYPTO_RWLOCK *default_path_lock;
     CRYPTO_RWLOCK *lock;
     char *default_path;
+    OSSL_PROVIDER_INFO *provinfo;
+    size_t numprovinfo;
+    size_t provinfosz;
     unsigned int use_fallbacks:1;
+    unsigned int freeing:1;
 };
 
 /*
@@ -132,60 +151,95 @@ static void provider_deactivate_free(OSSL_PROVIDER *prov)
     ossl_provider_free(prov);
 }
 
+#ifndef FIPS_MODULE
+static void ossl_provider_child_cb_free(OSSL_PROVIDER_CHILD_CB *cb)
+{
+    OPENSSL_free(cb);
+}
+#endif
+
+static void infopair_free(INFOPAIR *pair)
+{
+    OPENSSL_free(pair->name);
+    OPENSSL_free(pair->value);
+    OPENSSL_free(pair);
+}
+
+static INFOPAIR *infopair_copy(const INFOPAIR *src)
+{
+    INFOPAIR *dest = OPENSSL_zalloc(sizeof(*dest));
+
+    if (dest == NULL)
+        return NULL;
+    if (src->name != NULL) {
+        dest->name = OPENSSL_strdup(src->name);
+        if (dest->name == NULL)
+            goto err;
+    }
+    if (src->value != NULL) {
+        dest->value = OPENSSL_strdup(src->value);
+        if (dest->value == NULL)
+            goto err;
+    }
+    return dest;
+ err:
+    OPENSSL_free(dest->name);
+    OPENSSL_free(dest);
+    return NULL;
+}
+
+void ossl_provider_info_clear(OSSL_PROVIDER_INFO *info)
+{
+    OPENSSL_free(info->name);
+    OPENSSL_free(info->path);
+    sk_INFOPAIR_pop_free(info->parameters, infopair_free);
+}
+
 static void provider_store_free(void *vstore)
 {
     struct provider_store_st *store = vstore;
+    size_t i;
 
     if (store == NULL)
         return;
+    store->freeing = 1;
     OPENSSL_free(store->default_path);
     sk_OSSL_PROVIDER_pop_free(store->providers, provider_deactivate_free);
+#ifndef FIPS_MODULE
+    sk_OSSL_PROVIDER_CHILD_CB_pop_free(store->child_cbs,
+                                       ossl_provider_child_cb_free);
+#endif
+    CRYPTO_THREAD_lock_free(store->default_path_lock);
     CRYPTO_THREAD_lock_free(store->lock);
+    for (i = 0; i < store->numprovinfo; i++)
+        ossl_provider_info_clear(&store->provinfo[i]);
+    OPENSSL_free(store->provinfo);
     OPENSSL_free(store);
 }
 
 static void *provider_store_new(OSSL_LIB_CTX *ctx)
 {
     struct provider_store_st *store = OPENSSL_zalloc(sizeof(*store));
-    const struct predefined_providers_st *p = NULL;
 
     if (store == NULL
         || (store->providers = sk_OSSL_PROVIDER_new(ossl_provider_cmp)) == NULL
+        || (store->default_path_lock = CRYPTO_THREAD_lock_new()) == NULL
+#ifndef FIPS_MODULE
+        || (store->child_cbs = sk_OSSL_PROVIDER_CHILD_CB_new_null()) == NULL
+#endif
         || (store->lock = CRYPTO_THREAD_lock_new()) == NULL) {
         provider_store_free(store);
         return NULL;
     }
+    store->libctx = ctx;
     store->use_fallbacks = 1;
-
-    for (p = ossl_predefined_providers; p->name != NULL; p++) {
-        OSSL_PROVIDER *prov = NULL;
-
-        /*
-         * We use the internal constructor directly here,
-         * otherwise we get a call loop
-         */
-        prov = provider_new(p->name, p->init);
-
-        if (prov == NULL
-            || sk_OSSL_PROVIDER_push(store->providers, prov) == 0) {
-            ossl_provider_free(prov);
-            provider_store_free(store);
-            ERR_raise(ERR_LIB_CRYPTO, ERR_R_INTERNAL_ERROR);
-            return NULL;
-        }
-        prov->libctx = ctx;
-        prov->store = store;
-#ifndef FIPS_MODULE
-        prov->error_lib = ERR_get_next_error_library();
-#endif
-        if(p->is_fallback)
-            ossl_provider_set_fallback(prov);
-    }
 
     return store;
 }
 
 static const OSSL_LIB_CTX_METHOD provider_store_method = {
+    /* Needs to be freed before the child provider data is freed */
+    OSSL_LIB_CTX_METHOD_PRIORITY_1,
     provider_store_new,
     provider_store_free,
 };
@@ -215,6 +269,56 @@ int ossl_provider_disable_fallback_loading(OSSL_LIB_CTX *libctx)
     return 0;
 }
 
+#define BUILTINS_BLOCK_SIZE     10
+
+int ossl_provider_info_add_to_store(OSSL_LIB_CTX *libctx,
+                                    OSSL_PROVIDER_INFO *entry)
+{
+    struct provider_store_st *store = get_provider_store(libctx);
+    int ret = 0;
+
+    if (entry->name == NULL) {
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+
+    if (store == NULL) {
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
+
+    if (!CRYPTO_THREAD_write_lock(store->lock))
+        return 0;
+    if (store->provinfosz == 0) {
+        store->provinfo = OPENSSL_zalloc(sizeof(*store->provinfo)
+                                         * BUILTINS_BLOCK_SIZE);
+        if (store->provinfo == NULL) {
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+        store->provinfosz = BUILTINS_BLOCK_SIZE;
+    } else if (store->numprovinfo == store->provinfosz) {
+        OSSL_PROVIDER_INFO *tmpbuiltins;
+        size_t newsz = store->provinfosz + BUILTINS_BLOCK_SIZE;
+
+        tmpbuiltins = OPENSSL_realloc(store->provinfo,
+                                      sizeof(*store->provinfo) * newsz);
+        if (tmpbuiltins == NULL) {
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+        store->provinfo = tmpbuiltins;
+        store->provinfosz = newsz;
+    }
+    store->provinfo[store->numprovinfo] = *entry;
+    store->numprovinfo++;
+
+    ret = 1;
+ err:
+    CRYPTO_THREAD_unlock(store->lock);
+    return ret;
+}
+
 OSSL_PROVIDER *ossl_provider_find(OSSL_LIB_CTX *libctx, const char *name,
                                   int noconfig)
 {
@@ -230,12 +334,14 @@ OSSL_PROVIDER *ossl_provider_find(OSSL_LIB_CTX *libctx, const char *name,
          * Make sure any providers are loaded from config before we try to find
          * them.
          */
-        if (!noconfig)
-            OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
+        if (!noconfig) {
+            if (ossl_lib_ctx_is_default(libctx))
+                OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
+        }
 #endif
 
         tmpl.name = (char *)name;
-        if (!CRYPTO_THREAD_write_lock(store->lock))
+        if (!CRYPTO_THREAD_read_lock(store->lock))
             return NULL;
         if ((i = sk_OSSL_PROVIDER_find(store->providers, &tmpl)) == -1
             || (prov = sk_OSSL_PROVIDER_value(store->providers, i)) == NULL
@@ -253,25 +359,29 @@ OSSL_PROVIDER *ossl_provider_find(OSSL_LIB_CTX *libctx, const char *name,
  */
 
 static OSSL_PROVIDER *provider_new(const char *name,
-                                   OSSL_provider_init_fn *init_function)
+                                   OSSL_provider_init_fn *init_function,
+                                   STACK_OF(INFOPAIR) *parameters)
 {
     OSSL_PROVIDER *prov = NULL;
 
     if ((prov = OPENSSL_zalloc(sizeof(*prov))) == NULL
 #ifndef HAVE_ATOMICS
         || (prov->refcnt_lock = CRYPTO_THREAD_lock_new()) == NULL
-        || (prov->activatecnt_lock = CRYPTO_THREAD_lock_new()) == NULL
 #endif
-        || !ossl_provider_up_ref(prov) /* +1 One reference to be returned */
         || (prov->opbits_lock = CRYPTO_THREAD_lock_new()) == NULL
         || (prov->flag_lock = CRYPTO_THREAD_lock_new()) == NULL
-        || (prov->name = OPENSSL_strdup(name)) == NULL) {
+        || (prov->name = OPENSSL_strdup(name)) == NULL
+        || (prov->parameters = sk_INFOPAIR_deep_copy(parameters,
+                                                     infopair_copy,
+                                                     infopair_free)) == NULL) {
         ossl_provider_free(prov);
         ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
 
+    prov->refcnt = 1; /* 1 One reference to be returned */
     prov->init_function = init_function;
+
     return prov;
 }
 
@@ -281,14 +391,44 @@ int ossl_provider_up_ref(OSSL_PROVIDER *prov)
 
     if (CRYPTO_UP_REF(&prov->refcnt, &ref, prov->refcnt_lock) <= 0)
         return 0;
+
+#ifndef FIPS_MODULE
+    if (prov->ischild) {
+        if (!ossl_provider_up_ref_parent(prov, 0)) {
+            ossl_provider_free(prov);
+            return 0;
+        }
+    }
+#endif
+
     return ref;
 }
+
+#ifndef FIPS_MODULE
+static int provider_up_ref_intern(OSSL_PROVIDER *prov, int activate)
+{
+    if (activate)
+        return ossl_provider_activate(prov, 1, 0);
+
+    return ossl_provider_up_ref(prov);
+}
+
+static int provider_free_intern(OSSL_PROVIDER *prov, int deactivate)
+{
+    if (deactivate)
+        return ossl_provider_deactivate(prov);
+
+    ossl_provider_free(prov);
+    return 1;
+}
+#endif
 
 OSSL_PROVIDER *ossl_provider_new(OSSL_LIB_CTX *libctx, const char *name,
                                  OSSL_provider_init_fn *init_function,
                                  int noconfig)
 {
     struct provider_store_st *store = NULL;
+    OSSL_PROVIDER_INFO template;
     OSSL_PROVIDER *prov = NULL;
 
     if ((store = get_provider_store(libctx)) == NULL)
@@ -302,44 +442,138 @@ OSSL_PROVIDER *ossl_provider_new(OSSL_LIB_CTX *libctx, const char *name,
         return NULL;
     }
 
-    /* provider_new() generates an error, so no need here */
-    if ((prov = provider_new(name, init_function)) == NULL)
-        return NULL;
+    memset(&template, 0, sizeof(template));
+    if (init_function == NULL) {
+        const OSSL_PROVIDER_INFO *p;
+        size_t i;
 
-    if (!CRYPTO_THREAD_write_lock(store->lock))
-        return NULL;
-    if (!ossl_provider_up_ref(prov)) { /* +1 One reference for the store */
-        ossl_provider_free(prov); /* -1 Reference that was to be returned */
-        prov = NULL;
-    } else if (sk_OSSL_PROVIDER_push(store->providers, prov) == 0) {
-        ossl_provider_free(prov); /* -1 Store reference */
-        ossl_provider_free(prov); /* -1 Reference that was to be returned */
-        prov = NULL;
+        /* Check if this is a predefined builtin provider */
+        for (p = ossl_predefined_providers; p->name != NULL; p++) {
+            if (strcmp(p->name, name) == 0) {
+                template = *p;
+                break;
+            }
+        }
+        if (p->name == NULL) {
+            /* Check if this is a user added builtin provider */
+            if (!CRYPTO_THREAD_read_lock(store->lock))
+                return NULL;
+            for (i = 0, p = store->provinfo; i < store->numprovinfo; p++, i++) {
+                if (strcmp(p->name, name) == 0) {
+                    template = *p;
+                    break;
+                }
+            }
+            CRYPTO_THREAD_unlock(store->lock);
+        }
     } else {
-        prov->libctx = libctx;
-        prov->store = store;
-#ifndef FIPS_MODULE
-        prov->error_lib = ERR_get_next_error_library();
-#endif
+        template.init = init_function;
     }
-    CRYPTO_THREAD_unlock(store->lock);
 
-    if (prov == NULL)
-        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+    /* provider_new() generates an error, so no need here */
+    if ((prov = provider_new(name, template.init, template.parameters)) == NULL)
+        return NULL;
+
+    prov->libctx = libctx;
+#ifndef FIPS_MODULE
+    prov->error_lib = ERR_get_next_error_library();
+#endif
 
     /*
      * At this point, the provider is only partially "loaded".  To be
-     * fully "loaded", ossl_provider_activate() must also be called.
+     * fully "loaded", ossl_provider_activate() must also be called and it must
+     * then be added to the provider store.
      */
 
     return prov;
 }
 
-static void free_infopair(INFOPAIR *pair)
+/* Assumes that the store lock is held */
+static int create_provider_children(OSSL_PROVIDER *prov)
 {
-    OPENSSL_free(pair->name);
-    OPENSSL_free(pair->value);
-    OPENSSL_free(pair);
+    int ret = 1;
+#ifndef FIPS_MODULE
+    struct provider_store_st *store = prov->store;
+    OSSL_PROVIDER_CHILD_CB *child_cb;
+    int i, max;
+
+    max = sk_OSSL_PROVIDER_CHILD_CB_num(store->child_cbs);
+    for (i = 0; i < max; i++) {
+        /*
+         * This is newly activated (activatecnt == 1), so we need to
+         * create child providers as necessary.
+         */
+        child_cb = sk_OSSL_PROVIDER_CHILD_CB_value(store->child_cbs, i);
+        ret &= child_cb->create_cb((OSSL_CORE_HANDLE *)prov, child_cb->cbdata);
+    }
+#endif
+
+    return ret;
+}
+
+int ossl_provider_add_to_store(OSSL_PROVIDER *prov, OSSL_PROVIDER **actualprov,
+                               int retain_fallbacks)
+{
+    struct provider_store_st *store;
+    int idx;
+    OSSL_PROVIDER tmpl = { 0, };
+    OSSL_PROVIDER *actualtmp = NULL;
+
+    if ((store = get_provider_store(prov->libctx)) == NULL)
+        return 0;
+
+    if (!CRYPTO_THREAD_write_lock(store->lock))
+        return 0;
+
+    tmpl.name = (char *)prov->name;
+    idx = sk_OSSL_PROVIDER_find(store->providers, &tmpl);
+    if (idx == -1)
+        actualtmp = prov;
+    else
+        actualtmp = sk_OSSL_PROVIDER_value(store->providers, idx);
+
+    if (actualprov != NULL) {
+        if (!ossl_provider_up_ref(actualtmp)) {
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+            actualtmp = NULL;
+            goto err;
+        }
+        *actualprov = actualtmp;
+    }
+
+    if (idx == -1) {
+        if (sk_OSSL_PROVIDER_push(store->providers, prov) == 0)
+            goto err;
+        prov->store = store;
+        if (!create_provider_children(prov)) {
+            sk_OSSL_PROVIDER_delete_ptr(store->providers, prov);
+            goto err;
+        }
+        if (!retain_fallbacks)
+            store->use_fallbacks = 0;
+    }
+
+    CRYPTO_THREAD_unlock(store->lock);
+
+    if (actualtmp != prov) {
+        /*
+         * The provider is already in the store. Probably two threads
+         * independently initialised their own provider objects with the same
+         * name and raced to put them in the store. This thread lost. We
+         * deactivate the one we just created and use the one that already
+         * exists instead.
+         */
+        ossl_provider_deactivate(prov);
+        ossl_provider_free(prov);
+    }
+
+    return 1;
+
+ err:
+    CRYPTO_THREAD_unlock(store->lock);
+    if (actualprov != NULL)
+        ossl_provider_free(actualtmp);
+    return 0;
 }
 
 void ossl_provider_free(OSSL_PROVIDER *prov)
@@ -359,8 +593,7 @@ void ossl_provider_free(OSSL_PROVIDER *prov)
          */
         if (ref == 0) {
             if (prov->flag_initialized) {
-                if (prov->teardown != NULL)
-                    prov->teardown(prov->provctx);
+                ossl_provider_teardown(prov);
 #ifndef OPENSSL_NO_ERR
 # ifndef FIPS_MODULE
                 if (prov->error_strings != NULL) {
@@ -387,15 +620,19 @@ void ossl_provider_free(OSSL_PROVIDER *prov)
 #endif
             OPENSSL_free(prov->name);
             OPENSSL_free(prov->path);
-            sk_INFOPAIR_pop_free(prov->parameters, free_infopair);
+            sk_INFOPAIR_pop_free(prov->parameters, infopair_free);
             CRYPTO_THREAD_lock_free(prov->opbits_lock);
             CRYPTO_THREAD_lock_free(prov->flag_lock);
 #ifndef HAVE_ATOMICS
             CRYPTO_THREAD_lock_free(prov->refcnt_lock);
-            CRYPTO_THREAD_lock_free(prov->activatecnt_lock);
 #endif
             OPENSSL_free(prov);
         }
+#ifndef FIPS_MODULE
+        else if (prov->ischild) {
+            ossl_provider_free_parent(prov, 0);
+        }
+#endif
     }
 }
 
@@ -403,6 +640,7 @@ void ossl_provider_free(OSSL_PROVIDER *prov)
 int ossl_provider_set_module_path(OSSL_PROVIDER *prov, const char *module_path)
 {
     OPENSSL_free(prov->path);
+    prov->path = NULL;
     if (module_path == NULL)
         return 1;
     if ((prov->path = OPENSSL_strdup(module_path)) != NULL)
@@ -411,17 +649,17 @@ int ossl_provider_set_module_path(OSSL_PROVIDER *prov, const char *module_path)
     return 0;
 }
 
-int ossl_provider_add_parameter(OSSL_PROVIDER *prov,
-                                const char *name, const char *value)
+static int infopair_add(STACK_OF(INFOPAIR) **infopairsk, const char *name,
+                        const char *value)
 {
     INFOPAIR *pair = NULL;
 
     if ((pair = OPENSSL_zalloc(sizeof(*pair))) != NULL
-        && (prov->parameters != NULL
-            || (prov->parameters = sk_INFOPAIR_new_null()) != NULL)
+        && (*infopairsk != NULL
+            || (*infopairsk = sk_INFOPAIR_new_null()) != NULL)
         && (pair->name = OPENSSL_strdup(name)) != NULL
         && (pair->value = OPENSSL_strdup(value)) != NULL
-        && sk_INFOPAIR_push(prov->parameters, pair) > 0)
+        && sk_INFOPAIR_push(*infopairsk, pair) > 0)
         return 1;
 
     if (pair != NULL) {
@@ -431,6 +669,19 @@ int ossl_provider_add_parameter(OSSL_PROVIDER *prov,
     }
     ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
     return 0;
+}
+
+int ossl_provider_add_parameter(OSSL_PROVIDER *prov,
+                                const char *name, const char *value)
+{
+    return infopair_add(&prov->parameters, name, value);
+}
+
+int ossl_provider_info_add_parameter(OSSL_PROVIDER_INFO *provinfo,
+                                     const char *name,
+                                     const char *value)
+{
+    return infopair_add(&provinfo->parameters, name, value);
 }
 
 /*
@@ -461,10 +712,10 @@ int OSSL_PROVIDER_set_default_search_path(OSSL_LIB_CTX *libctx,
         }
     }
     if ((store = get_provider_store(libctx)) != NULL
-            && CRYPTO_THREAD_write_lock(store->lock)) {
+            && CRYPTO_THREAD_write_lock(store->default_path_lock)) {
         OPENSSL_free(store->default_path);
         store->default_path = p;
-        CRYPTO_THREAD_unlock(store->lock);
+        CRYPTO_THREAD_unlock(store->default_path_lock);
         return 1;
     }
     OPENSSL_free(p);
@@ -487,16 +738,8 @@ static int provider_init(OSSL_PROVIDER *prov)
 #endif
     int ok = 0;
 
-    /*
-     * The flag lock is used to lock init, not only because the flag is
-     * checked here and set at the end, but also because this function
-     * modifies a number of things in the provider structure that this
-     * function needs to perform under lock anyway.
-     */
-    if (!CRYPTO_THREAD_write_lock(prov->flag_lock))
-        goto end;
-    if (prov->flag_initialized) {
-        ok = 1;
+    if (!ossl_assert(!prov->flag_initialized)) {
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_INTERNAL_ERROR);
         goto end;
     }
 
@@ -513,6 +756,7 @@ static int provider_init(OSSL_PROVIDER *prov)
             const char *module_path = NULL;
             char *merged_path = NULL;
             const char *load_dir = NULL;
+            char *allocated_load_dir = NULL;
             struct provider_store_st *store;
 
             if ((prov->module = DSO_new()) == NULL) {
@@ -521,10 +765,20 @@ static int provider_init(OSSL_PROVIDER *prov)
             }
 
             if ((store = get_provider_store(prov->libctx)) == NULL
-                    || !CRYPTO_THREAD_read_lock(store->lock))
+                    || !CRYPTO_THREAD_read_lock(store->default_path_lock))
                 goto end;
-            load_dir = store->default_path;
-            CRYPTO_THREAD_unlock(store->lock);
+
+            if (store->default_path != NULL) {
+                allocated_load_dir = OPENSSL_strdup(store->default_path);
+                CRYPTO_THREAD_unlock(store->default_path_lock);
+                if (allocated_load_dir == NULL) {
+                    ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+                    goto end;
+                }
+                load_dir = allocated_load_dir;
+            } else {
+                CRYPTO_THREAD_unlock(store->default_path_lock);
+            }
 
             if (load_dir == NULL) {
                 load_dir = ossl_safe_getenv("OPENSSL_MODULES");
@@ -550,6 +804,7 @@ static int provider_init(OSSL_PROVIDER *prov)
 
             OPENSSL_free(merged_path);
             OPENSSL_free(allocated_path);
+            OPENSSL_free(allocated_load_dir);
         }
 
         if (prov->module != NULL)
@@ -567,6 +822,7 @@ static int provider_init(OSSL_PROVIDER *prov)
         goto end;
     }
     prov->provctx = tmp_provctx;
+    prov->dispatch = provider_dispatch;
 
     for (; provider_dispatch->function_id != 0; provider_dispatch++) {
         switch (provider_dispatch->function_id) {
@@ -660,74 +916,161 @@ static int provider_init(OSSL_PROVIDER *prov)
     ok = 1;
 
  end:
-    CRYPTO_THREAD_unlock(prov->flag_lock);
     return ok;
 }
 
+/*
+ * Deactivate a provider.
+ * Return -1 on failure and the activation count on success
+ */
 static int provider_deactivate(OSSL_PROVIDER *prov)
 {
-    int ref = 0;
+    int count;
+    struct provider_store_st *store;
 
     if (!ossl_assert(prov != NULL))
-        return 0;
+        return -1;
 
-    if (CRYPTO_DOWN_REF(&prov->activatecnt, &ref, prov->activatecnt_lock) <= 0)
-        return 0;
+    store = get_provider_store(prov->libctx);
+    if (store == NULL)
+        return -1;
 
-    if (ref < 1) {
-        if (!CRYPTO_THREAD_write_lock(prov->flag_lock))
-            return 0;
-        prov->flag_activated = 0;
-        CRYPTO_THREAD_unlock(prov->flag_lock);
+    if (!CRYPTO_THREAD_read_lock(store->lock))
+        return -1;
+    if (!CRYPTO_THREAD_write_lock(prov->flag_lock)) {
+        CRYPTO_THREAD_unlock(store->lock);
+        return -1;
     }
 
+#ifndef FIPS_MODULE
+    if (prov->activatecnt == 2 && prov->ischild) {
+        /*
+         * We have had a direct activation in this child libctx so we need to
+         * now down the ref count in the parent provider.
+         */
+        ossl_provider_free_parent(prov, 1);
+    }
+#endif
+
+    if ((count = --prov->activatecnt) < 1) {
+        prov->flag_activated = 0;
+#ifndef FIPS_MODULE
+        {
+            int i, max = sk_OSSL_PROVIDER_CHILD_CB_num(store->child_cbs);
+            OSSL_PROVIDER_CHILD_CB *child_cb;
+
+            for (i = 0; i < max; i++) {
+                child_cb = sk_OSSL_PROVIDER_CHILD_CB_value(store->child_cbs, i);
+                child_cb->remove_cb((OSSL_CORE_HANDLE *)prov, child_cb->cbdata);
+            }
+        }
+#endif
+    }
+
+    CRYPTO_THREAD_unlock(prov->flag_lock);
+    CRYPTO_THREAD_unlock(store->lock);
+
     /* We don't deinit here, that's done in ossl_provider_free() */
+    return count;
+}
+
+/*
+ * Activate a provider.
+ * Return -1 on failure and the activation count on success
+ */
+static int provider_activate(OSSL_PROVIDER *prov, int lock, int upcalls)
+{
+    int count = -1;
+    struct provider_store_st *store;
+    int ret = 1;
+
+    store = prov->store;
+    /*
+    * If the provider hasn't been added to the store, then we don't need
+    * any locks because we've not shared it with other threads.
+    */
+    if (store == NULL) {
+        lock = 0;
+        if (!provider_init(prov))
+            return -1;
+    }
+
+    if (lock && !CRYPTO_THREAD_read_lock(store->lock))
+        return -1;
+
+    if (lock && !CRYPTO_THREAD_write_lock(prov->flag_lock)) {
+        CRYPTO_THREAD_unlock(store->lock);
+        return -1;
+    }
+
+#ifndef FIPS_MODULE
+    if (prov->ischild && upcalls)
+        ret = ossl_provider_up_ref_parent(prov, 1);
+#endif
+
+    if (ret) {
+        count = ++prov->activatecnt;
+        prov->flag_activated = 1;
+
+        if (prov->activatecnt == 1 && store != NULL)
+            ret = create_provider_children(prov);
+    }
+
+    if (lock) {
+        CRYPTO_THREAD_unlock(prov->flag_lock);
+        CRYPTO_THREAD_unlock(store->lock);
+    }
+    if (!ret)
+        return -1;
+
+    return count;
+}
+
+static int provider_flush_store_cache(const OSSL_PROVIDER *prov)
+{
+    struct provider_store_st *store;
+    int freeing;
+
+    if ((store = get_provider_store(prov->libctx)) == NULL)
+        return 0;
+
+    if (!CRYPTO_THREAD_read_lock(store->lock))
+        return 0;
+    freeing = store->freeing;
+    CRYPTO_THREAD_unlock(store->lock);
+
+    if (!freeing)
+        return evp_method_store_flush(prov->libctx);
     return 1;
 }
 
-static int provider_activate(OSSL_PROVIDER *prov)
+int ossl_provider_activate(OSSL_PROVIDER *prov, int upcalls, int aschild)
 {
-    int ref = 0;
+    int count;
 
-    if (CRYPTO_UP_REF(&prov->activatecnt, &ref, prov->activatecnt_lock) <= 0)
-        return 0;
-
-    if (provider_init(prov)) {
-        if (!CRYPTO_THREAD_write_lock(prov->flag_lock))
-            return 0;
-        prov->flag_activated = 1;
-        CRYPTO_THREAD_unlock(prov->flag_lock);
-
-        return 1;
-    }
-
-    provider_deactivate(prov);
-    return 0;
-}
-
-int ossl_provider_activate(OSSL_PROVIDER *prov, int retain_fallbacks)
-{
     if (prov == NULL)
         return 0;
-    if (provider_activate(prov)) {
-        if (!retain_fallbacks) {
-            if (!CRYPTO_THREAD_write_lock(prov->store->lock)) {
-                provider_deactivate(prov);
-                return 0;
-            }
-            prov->store->use_fallbacks = 0;
-            CRYPTO_THREAD_unlock(prov->store->lock);
-        }
+#ifndef FIPS_MODULE
+    /*
+     * If aschild is true, then we only actually do the activation if the
+     * provider is a child. If its not, this is still success.
+     */
+    if (aschild && !prov->ischild)
         return 1;
-    }
+#endif
+    if ((count = provider_activate(prov, 1, upcalls)) > 0)
+        return count == 1 ? provider_flush_store_cache(prov) : 1;
+
     return 0;
 }
 
 int ossl_provider_deactivate(OSSL_PROVIDER *prov)
 {
-    if (prov == NULL)
+    int count;
+
+    if (prov == NULL || (count = provider_deactivate(prov)) < 0)
         return 0;
-    return provider_deactivate(prov);
+    return count == 0 ? provider_flush_store_cache(prov) : 1;
 }
 
 void *ossl_provider_ctx(const OSSL_PROVIDER *prov)
@@ -740,54 +1083,71 @@ void *ossl_provider_ctx(const OSSL_PROVIDER *prov)
  * and then sets store->use_fallbacks = 0, so the second call and so on is
  * effectively a no-op.
  */
-static void provider_activate_fallbacks(struct provider_store_st *store)
+static int provider_activate_fallbacks(struct provider_store_st *store)
 {
     int use_fallbacks;
-    int num_provs;
     int activated_fallback_count = 0;
-    int i;
+    int ret = 0;
+    const OSSL_PROVIDER_INFO *p;
 
     if (!CRYPTO_THREAD_read_lock(store->lock))
-        return;
+        return 0;
     use_fallbacks = store->use_fallbacks;
     CRYPTO_THREAD_unlock(store->lock);
     if (!use_fallbacks)
-        return;
+        return 1;
 
     if (!CRYPTO_THREAD_write_lock(store->lock))
-        return;
+        return 0;
     /* Check again, just in case another thread changed it */
     use_fallbacks = store->use_fallbacks;
     if (!use_fallbacks) {
         CRYPTO_THREAD_unlock(store->lock);
-        return;
+        return 1;
     }
 
-    num_provs = sk_OSSL_PROVIDER_num(store->providers);
-    for (i = 0; i < num_provs; i++) {
-        OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(store->providers, i);
+    for (p = ossl_predefined_providers; p->name != NULL; p++) {
+        OSSL_PROVIDER *prov = NULL;
 
-        if (ossl_provider_up_ref(prov)) {
-            if (prov->flag_fallback) {
-                if (provider_activate(prov)) {
-                    prov->flag_activated_as_fallback = 1;
-                    activated_fallback_count++;
-                }
-            }
+        if (!p->is_fallback)
+            continue;
+        /*
+         * We use the internal constructor directly here,
+         * otherwise we get a call loop
+         */
+        prov = provider_new(p->name, p->init, NULL);
+        if (prov == NULL)
+            goto err;
+        prov->libctx = store->libctx;
+#ifndef FIPS_MODULE
+        prov->error_lib = ERR_get_next_error_library();
+#endif
+
+        /*
+         * We are calling provider_activate while holding the store lock. This
+         * means the init function will be called while holding a lock. Normally
+         * we try to avoid calling a user callback while holding a lock.
+         * However, fallbacks are never third party providers so we accept this.
+         */
+        if (provider_activate(prov, 0, 0) < 0) {
             ossl_provider_free(prov);
+            goto err;
         }
+        prov->store = store;
+        if (sk_OSSL_PROVIDER_push(store->providers, prov) == 0) {
+            ossl_provider_free(prov);
+            goto err;
+        }
+        activated_fallback_count++;
     }
 
-    /*
-     * We assume that all fallbacks have been added to the store before
-     * any fallback is activated.
-     * TODO: We may have to reconsider this, IF we find ourselves adding
-     * fallbacks after any previous fallback has been activated.
-     */
-    if (activated_fallback_count > 0)
+    if (activated_fallback_count > 0) {
         store->use_fallbacks = 0;
-
+        ret = 1;
+    }
+ err:
     CRYPTO_THREAD_unlock(store->lock);
+    return ret;
 }
 
 int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
@@ -795,7 +1155,7 @@ int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
                                             void *cbdata),
                                   void *cbdata)
 {
-    int ret = 0, i, j;
+    int ret = 0, curr, max;
     struct provider_store_st *store = get_provider_store(ctx);
     STACK_OF(OSSL_PROVIDER) *provs = NULL;
 
@@ -804,12 +1164,14 @@ int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
      * Make sure any providers are loaded from config before we try to use
      * them.
      */
-    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
+    if (ossl_lib_ctx_is_default(ctx))
+        OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
 #endif
 
     if (store == NULL)
         return 1;
-    provider_activate_fallbacks(store);
+    if (!provider_activate_fallbacks(store))
+        return 0;
 
     /*
      * Under lock, grab a copy of the provider list and up_ref each
@@ -822,21 +1184,48 @@ int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
         CRYPTO_THREAD_unlock(store->lock);
         return 0;
     }
-    j = sk_OSSL_PROVIDER_num(provs);
-    for (i = 0; i < j; i++)
-        if (!ossl_provider_up_ref(sk_OSSL_PROVIDER_value(provs, i)))
+    max = sk_OSSL_PROVIDER_num(provs);
+    /*
+     * We work backwards through the stack so that we can safely delete items
+     * as we go.
+     */
+    for (curr = max - 1; curr >= 0; curr--) {
+        OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(provs, curr);
+
+        if (!CRYPTO_THREAD_write_lock(prov->flag_lock))
             goto err_unlock;
+        if (prov->flag_activated) {
+            if (!ossl_provider_up_ref(prov)){
+                CRYPTO_THREAD_unlock(prov->flag_lock);
+                goto err_unlock;
+            }
+            /*
+             * It's already activated, but we up the activated count to ensure
+             * it remains activated until after we've called the user callback.
+             */
+            if (provider_activate(prov, 0, 1) < 0) {
+                ossl_provider_free(prov);
+                CRYPTO_THREAD_unlock(prov->flag_lock);
+                goto err_unlock;
+            }
+        } else {
+            sk_OSSL_PROVIDER_delete(provs, curr);
+            max--;
+        }
+        CRYPTO_THREAD_unlock(prov->flag_lock);
+    }
     CRYPTO_THREAD_unlock(store->lock);
 
     /*
      * Now, we sweep through all providers not under lock
      */
-    for (j = 0; j < i; j++) {
-        OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(provs, j);
+    for (curr = 0; curr < max; curr++) {
+        OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(provs, curr);
 
-        if (prov->flag_activated && !cb(prov, cbdata))
+        if (!cb(prov, cbdata))
             goto finish;
     }
+    curr = -1;
 
     ret = 1;
     goto finish;
@@ -844,21 +1233,39 @@ int ossl_provider_doall_activated(OSSL_LIB_CTX *ctx,
  err_unlock:
     CRYPTO_THREAD_unlock(store->lock);
  finish:
-    /* The pop_free call doesn't do what we want on an error condition */
-    for (j = 0; j < i; j++)
-        ossl_provider_free(sk_OSSL_PROVIDER_value(provs, j));
+    /*
+     * The pop_free call doesn't do what we want on an error condition. We
+     * either start from the first item in the stack, or part way through if
+     * we only processed some of the items.
+     */
+    for (curr++; curr < max; curr++) {
+        OSSL_PROVIDER *prov = sk_OSSL_PROVIDER_value(provs, curr);
+
+        provider_deactivate(prov);
+        ossl_provider_free(prov);
+    }
     sk_OSSL_PROVIDER_free(provs);
     return ret;
 }
 
-int ossl_provider_available(OSSL_PROVIDER *prov)
+int OSSL_PROVIDER_available(OSSL_LIB_CTX *libctx, const char *name)
 {
-    if (prov != NULL) {
-        provider_activate_fallbacks(prov->store);
+    OSSL_PROVIDER *prov = NULL;
+    int available = 0;
+    struct provider_store_st *store = get_provider_store(libctx);
 
-        return prov->flag_activated;
+    if (store == NULL || !provider_activate_fallbacks(store))
+        return 0;
+
+    prov = ossl_provider_find(libctx, name, 0);
+    if (prov != NULL) {
+        if (!CRYPTO_THREAD_read_lock(prov->flag_lock))
+            return 0;
+        available = prov->flag_activated;
+        CRYPTO_THREAD_unlock(prov->flag_lock);
+        ossl_provider_free(prov);
     }
-    return 0;
+    return available;
 }
 
 /* Setters of Provider Object data */
@@ -909,6 +1316,14 @@ void *ossl_provider_prov_ctx(const OSSL_PROVIDER *prov)
     return NULL;
 }
 
+const OSSL_DISPATCH *ossl_provider_get0_dispatch(const OSSL_PROVIDER *prov)
+{
+    if (prov != NULL)
+        return prov->dispatch;
+
+    return NULL;
+}
+
 OSSL_LIB_CTX *ossl_provider_libctx(const OSSL_PROVIDER *prov)
 {
     return prov != NULL ? prov->libctx : NULL;
@@ -917,7 +1332,11 @@ OSSL_LIB_CTX *ossl_provider_libctx(const OSSL_PROVIDER *prov)
 /* Wrappers around calls to the provider */
 void ossl_provider_teardown(const OSSL_PROVIDER *prov)
 {
-    if (prov->teardown != NULL)
+    if (prov->teardown != NULL
+#ifndef FIPS_MODULE
+            && !prov->ischild
+#endif
+       )
         prov->teardown(prov->provctx);
 }
 
@@ -941,7 +1360,7 @@ int ossl_provider_self_test(const OSSL_PROVIDER *prov)
         return 1;
     ret = prov->self_test(prov->provctx);
     if (ret == 0)
-        evp_method_store_flush(ossl_provider_libctx(prov));
+        (void)provider_flush_store_cache(prov);
     return ret;
 }
 
@@ -977,6 +1396,33 @@ void ossl_provider_unquery_operation(const OSSL_PROVIDER *prov,
 {
     if (prov->unquery_operation != NULL)
         prov->unquery_operation(prov->provctx, operation_id, algs);
+}
+
+int ossl_provider_clear_all_operation_bits(OSSL_LIB_CTX *libctx)
+{
+    struct provider_store_st *store;
+    OSSL_PROVIDER *provider;
+    int i, num, res = 1;
+
+    if ((store = get_provider_store(libctx)) != NULL) {
+        if (!CRYPTO_THREAD_read_lock(store->lock))
+            return 0;
+        num = sk_OSSL_PROVIDER_num(store->providers);
+        for (i = 0; i < num; i++) {
+            provider = sk_OSSL_PROVIDER_value(store->providers, i);
+            if (!CRYPTO_THREAD_write_lock(provider->opbits_lock)) {
+                res = 0;
+                continue;
+            }
+            if (provider->operation_bits != NULL)
+                memset(provider->operation_bits, 0,
+                       provider->operation_bits_sz);
+            CRYPTO_THREAD_unlock(provider->opbits_lock);
+        }
+        CRYPTO_THREAD_unlock(store->lock);
+        return res;
+    }
+    return 0;
 }
 
 int ossl_provider_set_operation_bit(OSSL_PROVIDER *provider, size_t bitnum)
@@ -1025,6 +1471,160 @@ int ossl_provider_test_operation_bit(OSSL_PROVIDER *provider, size_t bitnum,
     return 1;
 }
 
+#ifndef FIPS_MODULE
+const OSSL_CORE_HANDLE *ossl_provider_get_parent(OSSL_PROVIDER *prov)
+{
+    return prov->handle;
+}
+
+int ossl_provider_is_child(const OSSL_PROVIDER *prov)
+{
+    return prov->ischild;
+}
+
+int ossl_provider_set_child(OSSL_PROVIDER *prov, const OSSL_CORE_HANDLE *handle)
+{
+    prov->handle = handle;
+    prov->ischild = 1;
+
+    return 1;
+}
+
+int ossl_provider_default_props_update(OSSL_LIB_CTX *libctx, const char *props)
+{
+#ifndef FIPS_MODULE
+    struct provider_store_st *store = NULL;
+    int i, max;
+    OSSL_PROVIDER_CHILD_CB *child_cb;
+
+    if ((store = get_provider_store(libctx)) == NULL)
+        return 0;
+
+    if (!CRYPTO_THREAD_read_lock(store->lock))
+        return 0;
+
+    max = sk_OSSL_PROVIDER_CHILD_CB_num(store->child_cbs);
+    for (i = 0; i < max; i++) {
+        child_cb = sk_OSSL_PROVIDER_CHILD_CB_value(store->child_cbs, i);
+        child_cb->global_props_cb(props, child_cb->cbdata);
+    }
+
+    CRYPTO_THREAD_unlock(store->lock);
+#endif
+    return 1;
+}
+
+static int ossl_provider_register_child_cb(const OSSL_CORE_HANDLE *handle,
+                                           int (*create_cb)(
+                                               const OSSL_CORE_HANDLE *provider,
+                                               void *cbdata),
+                                           int (*remove_cb)(
+                                               const OSSL_CORE_HANDLE *provider,
+                                               void *cbdata),
+                                           int (*global_props_cb)(
+                                               const char *props,
+                                               void *cbdata),
+                                           void *cbdata)
+{
+    /*
+     * This is really an OSSL_PROVIDER that we created and cast to
+     * OSSL_CORE_HANDLE originally. Therefore it is safe to cast it back.
+     */
+    OSSL_PROVIDER *thisprov = (OSSL_PROVIDER *)handle;
+    OSSL_PROVIDER *prov;
+    OSSL_LIB_CTX *libctx = thisprov->libctx;
+    struct provider_store_st *store = NULL;
+    int ret = 0, i, max;
+    OSSL_PROVIDER_CHILD_CB *child_cb;
+    char *propsstr = NULL;
+
+    if ((store = get_provider_store(libctx)) == NULL)
+        return 0;
+
+    child_cb = OPENSSL_malloc(sizeof(*child_cb));
+    if (child_cb == NULL)
+        return 0;
+    child_cb->prov = thisprov;
+    child_cb->create_cb = create_cb;
+    child_cb->remove_cb = remove_cb;
+    child_cb->global_props_cb = global_props_cb;
+    child_cb->cbdata = cbdata;
+
+    if (!CRYPTO_THREAD_write_lock(store->lock)) {
+        OPENSSL_free(child_cb);
+        return 0;
+    }
+    propsstr = evp_get_global_properties_str(libctx, 0);
+
+    if (propsstr != NULL) {
+        global_props_cb(propsstr, cbdata);
+        OPENSSL_free(propsstr);
+    }
+    max = sk_OSSL_PROVIDER_num(store->providers);
+    for (i = 0; i < max; i++) {
+        prov = sk_OSSL_PROVIDER_value(store->providers, i);
+
+        if (!CRYPTO_THREAD_read_lock(prov->flag_lock))
+            break;
+        /*
+         * We hold the lock while calling the user callback. This means that the
+         * user callback must be short and simple and not do anything likely to
+         * cause a deadlock.
+         */
+        if (prov->flag_activated
+                && !create_cb((OSSL_CORE_HANDLE *)prov, cbdata))
+            break;
+        CRYPTO_THREAD_unlock(prov->flag_lock);
+    }
+    if (i == max) {
+        /* Success */
+        ret = sk_OSSL_PROVIDER_CHILD_CB_push(store->child_cbs, child_cb);
+    }
+    if (i != max || ret <= 0) {
+        /* Failed during creation. Remove everything we just added */
+        for (; i >= 0; i--) {
+            prov = sk_OSSL_PROVIDER_value(store->providers, i);
+            remove_cb((OSSL_CORE_HANDLE *)prov, cbdata);
+        }
+        OPENSSL_free(child_cb);
+        ret = 0;
+    }
+    CRYPTO_THREAD_unlock(store->lock);
+
+    return ret;
+}
+
+static void ossl_provider_deregister_child_cb(const OSSL_CORE_HANDLE *handle)
+{
+    /*
+     * This is really an OSSL_PROVIDER that we created and cast to
+     * OSSL_CORE_HANDLE originally. Therefore it is safe to cast it back.
+     */
+    OSSL_PROVIDER *thisprov = (OSSL_PROVIDER *)handle;
+    OSSL_LIB_CTX *libctx = thisprov->libctx;
+    struct provider_store_st *store = NULL;
+    int i, max;
+    OSSL_PROVIDER_CHILD_CB *child_cb;
+
+    if ((store = get_provider_store(libctx)) == NULL)
+        return;
+
+    if (!CRYPTO_THREAD_write_lock(store->lock))
+        return;
+    max = sk_OSSL_PROVIDER_CHILD_CB_num(store->child_cbs);
+    for (i = 0; i < max; i++) {
+        child_cb = sk_OSSL_PROVIDER_CHILD_CB_value(store->child_cbs, i);
+        if (child_cb->prov == thisprov) {
+            /* Found an entry */
+            sk_OSSL_PROVIDER_CHILD_CB_delete(store->child_cbs, i);
+            OPENSSL_free(child_cb);
+            break;
+        }
+    }
+    CRYPTO_THREAD_unlock(store->lock);
+}
+#endif
+
 /*-
  * Core functions for the provider
  * ===============================
@@ -1064,6 +1664,8 @@ static OSSL_FUNC_core_vset_error_fn core_vset_error;
 static OSSL_FUNC_core_set_error_mark_fn core_set_error_mark;
 static OSSL_FUNC_core_clear_last_error_mark_fn core_clear_last_error_mark;
 static OSSL_FUNC_core_pop_error_to_mark_fn core_pop_error_to_mark;
+static OSSL_FUNC_core_obj_add_sigid_fn core_obj_add_sigid;
+static OSSL_FUNC_core_obj_create_fn core_obj_create;
 #endif
 
 static const OSSL_PARAM *core_gettable_params(const OSSL_CORE_HANDLE *handle)
@@ -1123,7 +1725,8 @@ static OPENSSL_CORE_CTX *core_get_libctx(const OSSL_CORE_HANDLE *handle)
 }
 
 static int core_thread_start(const OSSL_CORE_HANDLE *handle,
-                             OSSL_thread_stop_handler_fn handfn)
+                             OSSL_thread_stop_handler_fn handfn,
+                             void *arg)
 {
     /*
      * We created this object originally and we know it is actually an
@@ -1131,7 +1734,7 @@ static int core_thread_start(const OSSL_CORE_HANDLE *handle,
      */
     OSSL_PROVIDER *prov = (OSSL_PROVIDER *)handle;
 
-    return ossl_init_thread_start(prov, prov->provctx, handfn);
+    return ossl_init_thread_start(prov, arg, handfn);
 }
 
 /*
@@ -1193,6 +1796,39 @@ static int core_pop_error_to_mark(const OSSL_CORE_HANDLE *handle)
 {
     return ERR_pop_to_mark();
 }
+
+static int core_obj_add_sigid(const OSSL_CORE_HANDLE *prov,
+                              const char *sign_name, const char *digest_name,
+                              const char *pkey_name)
+{
+    int sign_nid = OBJ_txt2nid(sign_name);
+    int digest_nid = OBJ_txt2nid(digest_name);
+    int pkey_nid = OBJ_txt2nid(pkey_name);
+
+    if (sign_nid == NID_undef)
+        return 0;
+
+    /*
+     * Check if it already exists. This is a success if so (even if we don't
+     * have nids for the digest/pkey)
+     */
+    if (OBJ_find_sigid_algs(sign_nid, NULL, NULL))
+        return 1;
+
+    if (digest_nid == NID_undef
+            || pkey_nid == NID_undef)
+        return 0;
+
+    return OBJ_add_sigid(sign_nid, digest_nid, pkey_nid);
+}
+
+static int core_obj_create(const OSSL_CORE_HANDLE *prov, const char *oid,
+                           const char *sn, const char *ln)
+{
+    /* Check if it already exists and create it if not */
+    return OBJ_txt2nid(oid) != NID_undef
+           || OBJ_create(oid, sn, ln) != NID_undef;
+}
 #endif /* FIPS_MODULE */
 
 /*
@@ -1242,7 +1878,24 @@ static const OSSL_DISPATCH core_dispatch_[] = {
     { OSSL_FUNC_CRYPTO_SECURE_ALLOCATED,
         (void (*)(void))CRYPTO_secure_allocated },
     { OSSL_FUNC_OPENSSL_CLEANSE, (void (*)(void))OPENSSL_cleanse },
-
+#ifndef FIPS_MODULE
+    { OSSL_FUNC_PROVIDER_REGISTER_CHILD_CB,
+        (void (*)(void))ossl_provider_register_child_cb },
+    { OSSL_FUNC_PROVIDER_DEREGISTER_CHILD_CB,
+        (void (*)(void))ossl_provider_deregister_child_cb },
+    { OSSL_FUNC_PROVIDER_NAME,
+        (void (*)(void))OSSL_PROVIDER_get0_name },
+    { OSSL_FUNC_PROVIDER_GET0_PROVIDER_CTX,
+        (void (*)(void))OSSL_PROVIDER_get0_provider_ctx },
+    { OSSL_FUNC_PROVIDER_GET0_DISPATCH,
+        (void (*)(void))OSSL_PROVIDER_get0_dispatch },
+    { OSSL_FUNC_PROVIDER_UP_REF,
+        (void (*)(void))provider_up_ref_intern },
+    { OSSL_FUNC_PROVIDER_FREE,
+        (void (*)(void))provider_free_intern },
+    { OSSL_FUNC_CORE_OBJ_ADD_SIGID, (void (*)(void))core_obj_add_sigid },
+    { OSSL_FUNC_CORE_OBJ_CREATE, (void (*)(void))core_obj_create },
+#endif
     { 0, NULL }
 };
 static const OSSL_DISPATCH *core_dispatch = core_dispatch_;

@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -47,8 +47,12 @@ $out = outname();
 ok(run(app(["openssl", "x509", "-ext", "subjectAltName", "-in", $utf8_pem, "-noout", "-out", $out])));
 is(cmp_text($out, srctop_file($folder, "san.utf8")), 0, 'Comparing othername for IDN domain');
 
-ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-verify_email", "学生\@elementary.school.example.com", "-CAfile", $ascii_chain_pem, $ascii_pem])));
-ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-verify_email", "医生\@大学.example.com", "-CAfile", $utf8_chain_pem, $utf8_pem])));
+SKIP: {
+    skip "Unicode tests disabled on MingW", 2 if $^O =~ /^msys$/;
+
+    ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-verify_email", "学生\@elementary.school.example.com", "-CAfile", $ascii_chain_pem, $ascii_pem])));
+    ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-verify_email", "医生\@大学.example.com", "-CAfile", $utf8_chain_pem, $utf8_pem])));
+}
 
 ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-CAfile", $ascii_chain_pem, $ascii_pem])));
 ok(run(app(["openssl", "verify", "-nameopt", "utf8", "-no_check_time", "-CAfile", $utf8_chain_pem, $utf8_pem])));

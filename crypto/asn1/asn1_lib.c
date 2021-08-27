@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -52,8 +52,10 @@ int ASN1_get_object(const unsigned char **pp, long *plength, int *ptag,
     int tag, xclass, inf;
     long max = omax;
 
-    if (!max)
-        goto err;
+    if (omax <= 0) {
+        ERR_raise(ERR_LIB_ASN1, ASN1_R_TOO_SMALL);
+        return 0x80;
+    }
     ret = (*p & V_ASN1_CONSTRUCTED);
     xclass = (*p & V_ASN1_PRIVATE);
     i = *p & V_ASN1_PRIMITIVE_TAG;
@@ -153,7 +155,7 @@ static int asn1_get_length(const unsigned char **pp, int *inf, long *rl,
 }
 
 /*
- * class 0 is constructed constructed == 2 for indefinite length constructed
+ * constructed == 2 for indefinite length constructed
  */
 void ASN1_put_object(unsigned char **pp, int constructed, int length, int tag,
                      int xclass)
@@ -299,7 +301,12 @@ int ASN1_STRING_set(ASN1_STRING *str, const void *_data, int len_in)
     }
     if ((size_t)str->length <= len || str->data == NULL) {
         c = str->data;
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        /* No NUL terminator in fuzzing builds */
+        str->data = OPENSSL_realloc(c, len);
+#else
         str->data = OPENSSL_realloc(c, len + 1);
+#endif
         if (str->data == NULL) {
             ERR_raise(ERR_LIB_ASN1, ERR_R_MALLOC_FAILURE);
             str->data = c;
@@ -309,8 +316,13 @@ int ASN1_STRING_set(ASN1_STRING *str, const void *_data, int len_in)
     str->length = len;
     if (data != NULL) {
         memcpy(str->data, data, len);
-        /* an allowance for strings :-) */
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        /*
+         * Add a NUL terminator. This should not be necessary - but we add it as
+         * a safety precaution
+         */
         str->data[len] = '\0';
+#endif
     }
     return 1;
 }
@@ -411,9 +423,9 @@ unsigned char *ASN1_STRING_data(ASN1_STRING *x)
 }
 #endif
 
+/* |max_len| excludes NUL terminator and may be 0 to indicate no restriction */
 char *ossl_sk_ASN1_UTF8STRING2text(STACK_OF(ASN1_UTF8STRING) *text,
-                                   const char *sep,
-                                   size_t max_len /* excluding NUL terminator */)
+                                   const char *sep, size_t max_len)
 {
     int i;
     ASN1_UTF8STRING *current;
@@ -421,26 +433,27 @@ char *ossl_sk_ASN1_UTF8STRING2text(STACK_OF(ASN1_UTF8STRING) *text,
     char *result = NULL;
     char *p;
 
-    if (!ossl_assert(sep != NULL))
-        return NULL;
+    if (sep == NULL)
+        sep = "";
     sep_len = strlen(sep);
 
-    for (i = 0; i < sk_ASN1_UTF8STRING_num(text); ++i) {
+    for (i = 0; i < sk_ASN1_UTF8STRING_num(text); i++) {
         current = sk_ASN1_UTF8STRING_value(text, i);
         if (i > 0)
             length += sep_len;
         length += ASN1_STRING_length(current);
-        if (length > max_len)
+        if (max_len != 0 && length > max_len)
             return NULL;
     }
     if ((result = OPENSSL_malloc(length + 1)) == NULL)
         return NULL;
 
-    for (i = 0, p = result; i < sk_ASN1_UTF8STRING_num(text); ++i) {
+    p = result;
+    for (i = 0; i < sk_ASN1_UTF8STRING_num(text); i++) {
         current = sk_ASN1_UTF8STRING_value(text, i);
         length = ASN1_STRING_length(current);
         if (i > 0 && sep_len > 0) {
-            strncpy(p, sep, sep_len + 1);
+            strncpy(p, sep, sep_len + 1); /* using + 1 to silence gcc warning */
             p += sep_len;
         }
         strncpy(p, (const char *)ASN1_STRING_get0_data(current), length);

@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,6 +12,7 @@
 #include "e_os.h"
 #include "internal/cryptlib.h"
 #include <stdio.h>
+#include <string.h>
 #include "crypto/ctype.h"
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
@@ -36,17 +37,23 @@ static int ipv6_hex(unsigned char *out, const char *in, int inlen);
 
 /* Add a CONF_VALUE name value pair to stack */
 
-int X509V3_add_value(const char *name, const char *value,
-                     STACK_OF(CONF_VALUE) **extlist)
+static int x509v3_add_len_value(const char *name, const char *value,
+                                size_t vallen, STACK_OF(CONF_VALUE) **extlist)
 {
     CONF_VALUE *vtmp = NULL;
     char *tname = NULL, *tvalue = NULL;
     int sk_allocated = (*extlist == NULL);
 
-    if (name && (tname = OPENSSL_strdup(name)) == NULL)
+    if (name != NULL && (tname = OPENSSL_strdup(name)) == NULL)
         goto err;
-    if (value && (tvalue = OPENSSL_strdup(value)) == NULL)
-        goto err;
+    if (value != NULL) {
+        /* We don't allow embeded NUL characters */
+        if (memchr(value, 0, vallen) != NULL)
+            goto err;
+        tvalue = OPENSSL_strndup(value, vallen);
+        if (tvalue == NULL)
+            goto err;
+    }
     if ((vtmp = OPENSSL_malloc(sizeof(*vtmp))) == NULL)
         goto err;
     if (sk_allocated && (*extlist = sk_CONF_VALUE_new_null()) == NULL)
@@ -69,10 +76,26 @@ int X509V3_add_value(const char *name, const char *value,
     return 0;
 }
 
+int X509V3_add_value(const char *name, const char *value,
+                     STACK_OF(CONF_VALUE) **extlist)
+{
+    return x509v3_add_len_value(name, value,
+                                value != NULL ? strlen((const char *)value) : 0,
+                                extlist);
+}
+
 int X509V3_add_value_uchar(const char *name, const unsigned char *value,
                            STACK_OF(CONF_VALUE) **extlist)
 {
-    return X509V3_add_value(name, (const char *)value, extlist);
+    return x509v3_add_len_value(name, (const char *)value,
+                                value != NULL ? strlen((const char *)value) : 0,
+                                extlist);
+}
+
+int x509v3_add_len_value_uchar(const char *name, const unsigned char *value,
+                               size_t vallen, STACK_OF(CONF_VALUE) **extlist)
+{
+    return x509v3_add_len_value(name, (const char *)value, vallen, extlist);
 }
 
 /* Free function for STACK_OF(CONF_VALUE) */
@@ -506,17 +529,25 @@ static int append_ia5(STACK_OF(OPENSSL_STRING) **sk,
     /* First some sanity checks */
     if (email->type != V_ASN1_IA5STRING)
         return 1;
-    if (!email->data || !email->length)
+    if (email->data == NULL || email->length == 0)
+        return 1;
+    if (memchr(email->data, 0, email->length) != NULL)
         return 1;
     if (*sk == NULL)
         *sk = sk_OPENSSL_STRING_new(sk_strcmp);
     if (*sk == NULL)
         return 0;
+
+    emtmp = OPENSSL_strndup((char *)email->data, email->length);
+    if (emtmp == NULL)
+        return 0;
+
     /* Don't add duplicates */
-    if (sk_OPENSSL_STRING_find(*sk, (char *)email->data) != -1)
+    if (sk_OPENSSL_STRING_find(*sk, emtmp) != -1) {
+        OPENSSL_free(emtmp);
         return 1;
-    emtmp = OPENSSL_strdup((char *)email->data);
-    if (emtmp == NULL || !sk_OPENSSL_STRING_push(*sk, emtmp)) {
+    }
+    if (!sk_OPENSSL_STRING_push(*sk, emtmp)) {
         OPENSSL_free(emtmp); /* free on push failure */
         X509_email_free(*sk);
         *sk = NULL;
@@ -991,7 +1022,6 @@ char *ossl_ipaddr_to_asc(unsigned char *p, int len)
     case 4: /* IPv4 */
         BIO_snprintf(buf, sizeof(buf), "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
         break;
-        /* TODO possibly combine with static i2r_address() in v3_addr.c */
     case 16: /* IPv6 */
         for (out = buf, i = 8, remain = sizeof(buf);
              i-- > 0 && bytes >= 0;
@@ -1097,12 +1127,16 @@ int ossl_a2i_ipadd(unsigned char *ipout, const char *ipasc)
 
 static int ipv4_from_asc(unsigned char *v4, const char *in)
 {
-    int a0, a1, a2, a3;
+    const char *p;
+    int a0, a1, a2, a3, n;
 
-    if (sscanf(in, "%d.%d.%d.%d", &a0, &a1, &a2, &a3) != 4)
+    if (sscanf(in, "%d.%d.%d.%d%n", &a0, &a1, &a2, &a3, &n) != 4)
         return 0;
     if ((a0 < 0) || (a0 > 255) || (a1 < 0) || (a1 > 255)
         || (a2 < 0) || (a2 > 255) || (a3 < 0) || (a3 > 255))
+        return 0;
+    p = in + n;
+    if (!(*p == '\0' || ossl_isspace(*p)))
         return 0;
     v4[0] = a0;
     v4[1] = a1;

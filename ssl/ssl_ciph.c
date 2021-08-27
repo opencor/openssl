@@ -133,7 +133,7 @@ static int ssl_cipher_info_find(const ssl_cipher_table * table,
  * is engine-provided, we'll fill it only if corresponding EVP_PKEY_METHOD is
  * found
  */
-static int ssl_mac_pkey_id[SSL_MD_NUM_IDX] = {
+static const int default_mac_pkey_id[SSL_MD_NUM_IDX] = {
     /* MD5, SHA, GOST94, MAC89 */
     EVP_PKEY_HMAC, EVP_PKEY_HMAC, EVP_PKEY_HMAC, NID_undef,
     /* SHA256, SHA384, GOST2012_256, MAC89-12 */
@@ -346,7 +346,7 @@ int ssl_load_ciphers(SSL_CTX *ctx)
         if (md == NULL) {
             ctx->disabled_mac_mask |= t->mask;
         } else {
-            int tmpsize = EVP_MD_size(md);
+            int tmpsize = EVP_MD_get_size(md);
             if (!ossl_assert(tmpsize >= 0))
                 return 0;
             ctx->ssl_mac_secret_size[i] = tmpsize;
@@ -395,29 +395,33 @@ int ssl_load_ciphers(SSL_CTX *ctx)
      * Check for presence of GOST 34.10 algorithms, and if they are not
      * present, disable appropriate auth and key exchange
      */
-    ssl_mac_pkey_id[SSL_MD_GOST89MAC_IDX] = get_optional_pkey_id(SN_id_Gost28147_89_MAC);
-    if (ssl_mac_pkey_id[SSL_MD_GOST89MAC_IDX])
+    memcpy(ctx->ssl_mac_pkey_id, default_mac_pkey_id,
+           sizeof(ctx->ssl_mac_pkey_id));
+
+    ctx->ssl_mac_pkey_id[SSL_MD_GOST89MAC_IDX] =
+        get_optional_pkey_id(SN_id_Gost28147_89_MAC);
+    if (ctx->ssl_mac_pkey_id[SSL_MD_GOST89MAC_IDX])
         ctx->ssl_mac_secret_size[SSL_MD_GOST89MAC_IDX] = 32;
     else
         ctx->disabled_mac_mask |= SSL_GOST89MAC;
 
-    ssl_mac_pkey_id[SSL_MD_GOST89MAC12_IDX] =
+    ctx->ssl_mac_pkey_id[SSL_MD_GOST89MAC12_IDX] =
         get_optional_pkey_id(SN_gost_mac_12);
-    if (ssl_mac_pkey_id[SSL_MD_GOST89MAC12_IDX])
+    if (ctx->ssl_mac_pkey_id[SSL_MD_GOST89MAC12_IDX])
         ctx->ssl_mac_secret_size[SSL_MD_GOST89MAC12_IDX] = 32;
     else
         ctx->disabled_mac_mask |= SSL_GOST89MAC12;
 
-    ssl_mac_pkey_id[SSL_MD_MAGMAOMAC_IDX] =
+    ctx->ssl_mac_pkey_id[SSL_MD_MAGMAOMAC_IDX] =
         get_optional_pkey_id(SN_magma_mac);
-    if (ssl_mac_pkey_id[SSL_MD_MAGMAOMAC_IDX])
+    if (ctx->ssl_mac_pkey_id[SSL_MD_MAGMAOMAC_IDX])
         ctx->ssl_mac_secret_size[SSL_MD_MAGMAOMAC_IDX] = 32;
     else
         ctx->disabled_mac_mask |= SSL_MAGMAOMAC;
 
-    ssl_mac_pkey_id[SSL_MD_KUZNYECHIKOMAC_IDX] =
+    ctx->ssl_mac_pkey_id[SSL_MD_KUZNYECHIKOMAC_IDX] =
         get_optional_pkey_id(SN_kuznyechik_mac);
-    if (ssl_mac_pkey_id[SSL_MD_KUZNYECHIKOMAC_IDX])
+    if (ctx->ssl_mac_pkey_id[SSL_MD_KUZNYECHIKOMAC_IDX])
         ctx->ssl_mac_secret_size[SSL_MD_KUZNYECHIKOMAC_IDX] = 32;
     else
         ctx->disabled_mac_mask |= SSL_KUZNYECHIKOMAC;
@@ -557,13 +561,14 @@ int ssl_cipher_get_evp(SSL_CTX *ctx, const SSL_SESSION *s,
         }
         *md = ctx->ssl_digest_methods[i];
         if (mac_pkey_type != NULL)
-            *mac_pkey_type = ssl_mac_pkey_id[i];
+            *mac_pkey_type = ctx->ssl_mac_pkey_id[i];
         if (mac_secret_size != NULL)
             *mac_secret_size = ctx->ssl_mac_secret_size[i];
     }
 
-    if ((*enc != NULL) &&
-        (*md != NULL || (EVP_CIPHER_flags(*enc) & EVP_CIPH_FLAG_AEAD_CIPHER))
+    if ((*enc != NULL)
+        && (*md != NULL 
+            || (EVP_CIPHER_get_flags(*enc) & EVP_CIPH_FLAG_AEAD_CIPHER))
         && (!mac_pkey_type || *mac_pkey_type != NID_undef)) {
         const EVP_CIPHER *evp = NULL;
 
@@ -1538,7 +1543,6 @@ STACK_OF(SSL_CIPHER) *ssl_create_cipher_list(SSL_CTX *ctx,
 
     /*
      * Partially overrule strength sort to prefer TLS 1.2 ciphers/PRFs.
-     * TODO(openssl-team): is there an easier way to accomplish all this?
      */
     ssl_cipher_apply_rule(0, 0, 0, 0, 0, TLS1_2_VERSION, 0, CIPHER_BUMP, -1,
                           &head, &tail);
@@ -2168,7 +2172,7 @@ int ssl_cipher_get_overhead(const SSL_CIPHER *c, size_t *mac_overhead,
         if (e_md == NULL)
             return 0;
 
-        mac = EVP_MD_size(e_md);
+        mac = EVP_MD_get_size(e_md);
         if (c->algorithm_enc != SSL_eNULL) {
             int cipher_nid = SSL_CIPHER_get_cipher_nid(c);
             const EVP_CIPHER *e_ciph = EVP_get_cipherbynid(cipher_nid);
@@ -2176,12 +2180,12 @@ int ssl_cipher_get_overhead(const SSL_CIPHER *c, size_t *mac_overhead,
             /* If it wasn't AEAD or SSL_eNULL, we expect it to be a
                known CBC cipher. */
             if (e_ciph == NULL ||
-                EVP_CIPHER_mode(e_ciph) != EVP_CIPH_CBC_MODE)
+                EVP_CIPHER_get_mode(e_ciph) != EVP_CIPH_CBC_MODE)
                 return 0;
 
             in = 1; /* padding length byte */
-            out = EVP_CIPHER_iv_length(e_ciph);
-            blk = EVP_CIPHER_block_size(e_ciph);
+            out = EVP_CIPHER_get_iv_length(e_ciph);
+            blk = EVP_CIPHER_get_block_size(e_ciph);
         }
     }
 

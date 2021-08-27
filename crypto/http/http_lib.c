@@ -7,14 +7,13 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <stdio.h>       /* for sscanf() */
+#include <string.h>
 #include <openssl/http.h>
 #include <openssl/httperr.h>
 #include <openssl/bio.h> /* for BIO_snprintf() */
 #include <openssl/err.h>
-#include <string.h>
 #include "internal/cryptlib.h" /* for ossl_assert() */
-
-#include "http_local.h"
 
 static void init_pstring(char **pstr)
 {
@@ -87,11 +86,10 @@ int OSSL_parse_url(const char *url, char **pscheme, char **puser, char **phost,
     /* parse host name/address as far as needed here */
     if (host[0] == '[') {
         /* ipv6 literal, which may include ':' */
-        host++;
-        host_end = strchr(host, ']');
+        host_end = strchr(host + 1, ']');
         if (host_end == NULL)
             goto parse_err;
-        p = host_end + 1;
+        p = ++host_end;
     } else {
         /* look for start of optional port, path, query, or fragment */
         host_end = strchr(host, ':');
@@ -113,7 +111,7 @@ int OSSL_parse_url(const char *url, char **pscheme, char **puser, char **phost,
     /* remaining port spec handling is also done for the default values */
     /* make sure a decimal port number is given */
     if (!sscanf(port, "%u", &portnum) || portnum > 65535) {
-        ERR_raise(ERR_LIB_HTTP, HTTP_R_INVALID_PORT_NUMBER);
+        ERR_raise_data(ERR_LIB_HTTP, HTTP_R_INVALID_PORT_NUMBER, "%s", port);
         goto err;
     }
     for (port_end = port; '0' <= *port_end && *port_end <= '9'; port_end++)
@@ -240,7 +238,8 @@ int OSSL_HTTP_parse_url(const char *url, int *pssl, char **puser, char **phost,
     return 0;
 }
 
-int ossl_http_use_proxy(const char *no_proxy, const char *server)
+/* Respect no_proxy, taking default value from environment variable(s) */
+static int use_proxy(const char *no_proxy, const char *server)
 {
     size_t sl;
     const char *found = NULL;
@@ -257,6 +256,7 @@ int ossl_http_use_proxy(const char *no_proxy, const char *server)
         no_proxy = getenv("no_proxy");
     if (no_proxy == NULL)
         no_proxy = getenv(OPENSSL_NO_PROXY);
+
     if (no_proxy != NULL)
         found = strstr(no_proxy, server);
     while (found != NULL
@@ -266,12 +266,10 @@ int ossl_http_use_proxy(const char *no_proxy, const char *server)
     return found == NULL;
 }
 
-const char *ossl_http_adapt_proxy(const char *proxy, const char *no_proxy,
+/* Take default value from environment variable(s), respect no_proxy */
+const char *OSSL_HTTP_adapt_proxy(const char *proxy, const char *no_proxy,
                                   const char *server, int use_ssl)
 {
-    const int http_len = strlen(OSSL_HTTP_PREFIX);
-    const int https_len = strlen(OSSL_HTTPS_PREFIX);
-
     /*
      * using environment variable names, both lowercase and uppercase variants,
      * compatible with other HTTP client implementations like wget, curl and git
@@ -281,16 +279,8 @@ const char *ossl_http_adapt_proxy(const char *proxy, const char *no_proxy,
     if (proxy == NULL)
         proxy = getenv(use_ssl ? OPENSSL_HTTP_PROXY :
                        OPENSSL_HTTPS_PROXY);
-    if (proxy == NULL)
-        return NULL;
 
-    /* skip any leading "http://" or "https://" */
-    if (strncmp(proxy, OSSL_HTTP_PREFIX, http_len) == 0)
-        proxy += http_len;
-    else if (strncmp(proxy, OSSL_HTTPS_PREFIX, https_len) == 0)
-        proxy += https_len;
-
-    if (*proxy == '\0' || !ossl_http_use_proxy(no_proxy, server))
+    if (proxy == NULL || *proxy == '\0' || !use_proxy(no_proxy, server))
         return NULL;
     return proxy;
 }

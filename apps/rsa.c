@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* Necessary for legacy RSA public key export */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <openssl/opensslconf.h>
 
 #include <stdio.h>
@@ -25,7 +28,7 @@
 #include <openssl/encoder.h>
 
 /*
- * TODO: This include is to get OSSL_KEYMGMT_SELECT_*, which feels a bit
+ * This include is to get OSSL_KEYMGMT_SELECT_*, which feels a bit
  * much just for those macros...  they might serve better as EVP macros.
  */
 #include <openssl/core_dispatch.h>
@@ -37,7 +40,7 @@
 #endif
 
 typedef enum OPTION_choice {
-    OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
+    OPT_COMMON,
     OPT_INFORM, OPT_OUTFORM, OPT_ENGINE, OPT_IN, OPT_OUT,
     OPT_PUBIN, OPT_PUBOUT, OPT_PASSOUT, OPT_PASSIN,
     OPT_RSAPUBKEY_IN, OPT_RSAPUBKEY_OUT,
@@ -86,17 +89,47 @@ const OPTIONS rsa_options[] = {
     {NULL}
 };
 
+static int try_legacy_encoding(EVP_PKEY *pkey, int outformat, int pubout,
+                               BIO *out)
+{
+    int ret = 0;
+#ifndef OPENSSL_NO_DEPRECATED_3_0
+    const RSA *rsa = EVP_PKEY_get0_RSA(pkey);
+
+    if (rsa == NULL)
+        return 0;
+
+    if (outformat == FORMAT_ASN1) {
+        if (pubout == 2)
+            ret = i2d_RSAPublicKey_bio(out, rsa) > 0;
+        else
+            ret = i2d_RSA_PUBKEY_bio(out, rsa) > 0;
+    } else if (outformat == FORMAT_PEM) {
+        if (pubout == 2)
+            ret = PEM_write_bio_RSAPublicKey(out, rsa) > 0;
+        else
+            ret = PEM_write_bio_RSA_PUBKEY(out, rsa) > 0;
+# ifndef OPENSSL_NO_DSA
+    } else if (outformat == FORMAT_MSBLOB || outformat == FORMAT_PVK) {
+        ret = i2b_PublicKey_bio(out, pkey) > 0;
+# endif
+    }
+#endif
+
+    return ret;
+}
+
 int rsa_main(int argc, char **argv)
 {
     ENGINE *e = NULL;
     BIO *out = NULL;
     EVP_PKEY *pkey = NULL;
     EVP_PKEY_CTX *pctx;
-    const EVP_CIPHER *enc = NULL;
+    EVP_CIPHER *enc = NULL;
     char *infile = NULL, *outfile = NULL, *ciphername = NULL, *prog;
     char *passin = NULL, *passout = NULL, *passinarg = NULL, *passoutarg = NULL;
     int private = 0;
-    int informat = FORMAT_PEM, outformat = FORMAT_PEM, text = 0, check = 0;
+    int informat = FORMAT_UNDEF, outformat = FORMAT_PEM, text = 0, check = 0;
     int noout = 0, modulus = 0, pubin = 0, pubout = 0, ret = 1;
     int pvk_encr = DEFAULT_PVK_ENCR_STRENGTH;
     OPTION_CHOICE o;
@@ -204,7 +237,7 @@ int rsa_main(int argc, char **argv)
     }
 
     if (pubin) {
-        int tmpformat = -1;
+        int tmpformat = FORMAT_UNDEF;
 
         if (pubin == 2) {
             if (informat == FORMAT_PEM)
@@ -322,7 +355,7 @@ int rsa_main(int argc, char **argv)
             if (traditional)
                 output_structure = "pkcs1"; /* "type-specific" would work too */
             else
-                output_structure = "pkcs8";
+                output_structure = "PrivateKeyInfo";
         }
     }
 
@@ -331,8 +364,26 @@ int rsa_main(int argc, char **argv)
                                          output_type, output_structure,
                                          NULL);
     if (OSSL_ENCODER_CTX_get_num_encoders(ectx) == 0) {
-        BIO_printf(bio_err, "%s format not supported\n", output_type);
+        if ((!pubout && !pubin)
+            || !try_legacy_encoding(pkey, outformat, pubout, out))
+            BIO_printf(bio_err, "%s format not supported\n", output_type);
+        else
+            ret = 0;
         goto end;
+    }
+
+    /* Passphrase setup */
+    if (enc != NULL)
+        OSSL_ENCODER_CTX_set_cipher(ectx, EVP_CIPHER_get0_name(enc), NULL);
+
+    /* Default passphrase prompter */
+    if (enc != NULL || outformat == FORMAT_PVK) {
+        OSSL_ENCODER_CTX_set_passphrase_ui(ectx, get_ui_method(), NULL);
+        if (passout != NULL)
+            /* When passout given, override the passphrase prompter */
+            OSSL_ENCODER_CTX_set_passphrase(ectx,
+                                            (const unsigned char *)passout,
+                                            strlen(passout));
     }
 
     /* PVK is a bit special... */
@@ -357,6 +408,7 @@ int rsa_main(int argc, char **argv)
     release_engine(e);
     BIO_free_all(out);
     EVP_PKEY_free(pkey);
+    EVP_CIPHER_free(enc);
     OPENSSL_free(passin);
     OPENSSL_free(passout);
     return ret;

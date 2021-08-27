@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -79,7 +79,7 @@ STACK_OF(X509_ATTRIBUTE) *X509at_add1_attr(STACK_OF(X509_ATTRIBUTE) **x,
 
     if (x == NULL) {
         ERR_raise(ERR_LIB_X509, ERR_R_PASSED_NULL_PARAMETER);
-        goto err2;
+        return NULL;
     }
 
     if (*x == NULL) {

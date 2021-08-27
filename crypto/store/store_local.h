@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -54,7 +54,7 @@ struct ossl_store_search_st {
      * Used by OSSL_STORE_SEARCH_BY_NAME and
      * OSSL_STORE_SEARCH_BY_ISSUER_SERIAL
      */
-    X509_NAME *name; /* TODO constify this; leads to API incompatibility */
+    X509_NAME *name;
 
     /* Used by OSSL_STORE_SEARCH_BY_ISSUER_SERIAL */
     const ASN1_INTEGER *serial;
@@ -92,7 +92,7 @@ struct ossl_store_loader_st {
     OSSL_STORE_load_fn load;
     OSSL_STORE_eof_fn eof;
     OSSL_STORE_error_fn error;
-    OSSL_STORE_close_fn close;
+    OSSL_STORE_close_fn closefn;
     OSSL_STORE_open_ex_fn open_ex;
 #endif
 
@@ -100,6 +100,7 @@ struct ossl_store_loader_st {
     OSSL_PROVIDER *prov;
     int scheme_id;
     const char *propdef;
+    const char *description;
 
     CRYPTO_REF_COUNT refcnt;
     CRYPTO_RWLOCK *lock;

@@ -16,7 +16,11 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_x509");
 
-plan tests => 15;
+plan tests => 18;
+
+# Prevent MSys2 filename munging for arguments that look like file paths but
+# aren't
+$ENV{MSYS2_ARG_CONV_EXCL} = "/CN=";
 
 require_ok(srctop_file("test", "recipes", "tconversion.pl"));
 
@@ -24,6 +28,8 @@ my @certs = qw(test certs);
 my $pem = srctop_file(@certs, "cyrillic.pem");
 my $out_msb = "out-cyrillic.msb";
 my $out_utf8 = "out-cyrillic.utf8";
+my $der = "cyrillic.der";
+my $der2 = "cyrillic.der";
 my $msb = srctop_file(@certs, "cyrillic.msb");
 my $utf = srctop_file(@certs, "cyrillic.utf8");
 
@@ -36,8 +42,9 @@ ok(run(app(["openssl", "x509", "-text", "-in", $pem, "-out", $out_utf8,
 is(cmp_text($out_utf8, $utf),
    0, 'Comparing utf8 output with cyrillic.utf8');
 
- SKIP: {
+SKIP: {
     skip "DES disabled", 1 if disabled("des");
+    skip "Platform doesn't support command line UTF-8", 1 if $^O =~ /^(VMS|msys)$/;
 
     my $p12 = srctop_file("test", "shibboleth.pfx");
     my $p12pass = "σύνθημα γνώρισμα";
@@ -46,6 +53,16 @@ is(cmp_text($out_utf8, $utf),
                 "-passin", "pass:$p12pass"])));
     # not unlinking $out_pem
 }
+
+ok(!run(app(["openssl", "x509", "-in", $pem, "-inform", "DER",
+             "-out", $der, "-outform", "DER"])),
+   "Checking failure of mismatching -inform DER");
+ok(run(app(["openssl", "x509", "-in", $pem, "-inform", "PEM",
+            "-out", $der, "-outform", "DER"])),
+   "Conversion to DER");
+ok(!run(app(["openssl", "x509", "-in", $der, "-inform", "PEM",
+             "-out", $der2, "-outform", "DER"])),
+   "Checking failure of mismatching -inform PEM");
 
 # producing and checking self-issued (but not self-signed) cert
 my $subj = "/CN=CA"; # using same DN as in issuer of ee-cert.pem
@@ -115,6 +132,6 @@ ok(test_errors("RC2-40-CBC", "v3-certs-RC2.p12", '-passin', 'pass:v3-certs'),
 SKIP: {
     skip "sm2 not disabled", 1 if !disabled("sm2");
 
-    ok(test_errors("unknown group|unsupported algorithm", "sm2.pem", '-text'),
+    ok(test_errors("Unable to load Public Key", "sm2.pem", '-text'),
        "error loading unsupported sm2 cert");
 }

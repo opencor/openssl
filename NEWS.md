@@ -20,11 +20,15 @@ OpenSSL 3.0
 
 ### Major changes between OpenSSL 1.1.1 and OpenSSL 3.0 [under development]
 
+  * Added migration guide to man7
+  * Implemented support for fully "pluggable" TLSv1.3 groups
+  * Added suport for Kernel TLS (KTLS)
   * Changed the license to the Apache License v2.0.
   * Moved all variations of the EVP ciphers CAST5, BF, IDEA, SEED, RC2,
     RC4, RC5, and DES to the legacy provider.
   * Moved the EVP digests MD2, MD4, MDC2, WHIRLPOOL and RIPEMD-160 to the legacy
     provider.
+  * Added convenience functions for generating asymmetric key pairs.
   * Deprecated the `OCSP_REQ_CTX` type and functions.
   * Deprecated the `EC_KEY` and `EC_KEY_METHOD` types and functions.
   * Deprecated the `RSA` and `RSA_METHOD` types and functions.
@@ -35,12 +39,8 @@ OpenSSL 3.0
   * Deprecated the `ENGINE` API.
   * Added `OSSL_LIB_CTX`, a libcrypto library context.
   * Interactive mode is removed from the 'openssl' program.
-  * The X25519, X448, Ed25519, Ed448 and SHAKE256 algorithms are included in
-    the FIPS provider.  None have the "fips=yes" property set and, as such,
-    will not be accidentially used.
-  * The algorithm specific public key command line applications have
-    been deprecated.  These include dhparam, gendsa and others.  The pkey
-    alternatives should be used instead: pkey, pkeyparam and genpkey.
+  * The X25519, X448, Ed25519, Ed448, SHAKE128 and SHAKE256 algorithms are
+    included in the FIPS provider.
   * X509 certificates signed using SHA1 are no longer allowed at security
     level 1 or higher. The default security level for TLS is 1, so
     certificates signed using SHA1 are by default no longer trusted to
@@ -51,8 +51,10 @@ OpenSSL 3.0
     also covering CRMF (RFC 4211) and HTTP transfer (RFC 6712).
     It is part of the crypto lib and adds a 'cmp' app with a demo configuration.
     All widely used CMP features are supported for both clients and servers.
-  * Added a proper HTTP(S) client to libcrypto supporting GET and POST,
-    redirection, plain and ASN.1-encoded contents, proxies, and timeouts.
+  * Added a proper HTTP client supporting GET with optional redirection, POST,
+    arbitrary request and response content types, TLS, persistent connections,
+    connections via HTTP(s) proxies, connections and exchange via user-defined
+    BIOs (allowing implicit connections), and timeout checks.
   * Added util/check-format.pl for checking adherence to the coding guidelines.
   * Added OSSL_ENCODER, a generic encoder API.
   * Added OSSL_PARAM_BLD, an easier to use API to OSSL_PARAM.
@@ -69,10 +71,12 @@ OpenSSL 3.0
   * Changed our version number scheme and set the next major release to
     3.0.0
   * Added EVP_MAC, an EVP layer MAC API, and a generic EVP_PKEY to EVP_MAC
-    bridge.
+    bridge.  Supported MACs are: BLAKE2, CMAC, GMAC, HMAC, KMAC, POLY1305
+    and SIPHASH.
   * Removed the heartbeat message in DTLS feature.
-  * Added EVP_KDF, an EVP layer KDF API, and a generic EVP_PKEY to EVP_KDF
-    bridge.
+  * Added EVP_KDF, an EVP layer KDF and PRF API, and a generic EVP_PKEY to
+    EVP_KDF bridge.  Supported KDFs are: HKDF, KBKDF, KRB5 KDF, PBKDF2,
+    PKCS12 KDF, SCRYPT, SSH KDF, SSKDF, TLS1 PRF, X9.42 KDF and X9.63 KDF.
   * All of the low-level MD2, MD4, MD5, MDC2, RIPEMD160, SHA1, SHA224,
     SHA256, SHA384, SHA512 and Whirlpool digest functions have been
     deprecated.
@@ -85,7 +89,12 @@ OpenSSL 3.0
 OpenSSL 1.1.1
 -------------
 
-### Major changes between OpenSSL 1.1.1j and OpenSSL 1.1.1k [under development]
+### Major changes between OpenSSL 1.1.1k and OpenSSL 1.1.1l [24 Aug 2021]
+
+  * Fixed an SM2 Decryption Buffer Overflow ([CVE-2021-3711])
+  * Fixed various read buffer overruns processing ASN.1 strings ([CVE-2021-3712])
+
+### Major changes between OpenSSL 1.1.1j and OpenSSL 1.1.1k [25 Mar 2021]
 
   * Fixed a problem with verifying a certificate chain when using the
     X509_V_FLAG_X509_STRICT flag ([CVE-2021-3450])

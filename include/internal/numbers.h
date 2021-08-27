@@ -61,8 +61,24 @@
 #  define UINT64_MAX __MAXUINT__(uint64_t)
 # endif
 
+# ifndef INT128_MAX
+#  if defined(__SIZEOF_INT128__) && __SIZEOF_INT128__ == 16
+typedef __int128_t int128_t;
+typedef __uint128_t uint128_t;
+#   define INT128_MIN __MININT__(int128_t)
+#   define INT128_MAX __MAXINT__(int128_t)
+#   define UINT128_MAX __MAXUINT__(uint128_t)
+#  endif
+# endif
+
 # ifndef SIZE_MAX
 #  define SIZE_MAX __MAXUINT__(size_t)
+# endif
+
+# ifndef OSSL_INTMAX_MAX
+#  define OSSL_INTMAX_MIN __MININT__(ossl_intmax_t)
+#  define OSSL_INTMAX_MAX __MAXINT__(ossl_intmax_t)
+#  define OSSL_UINTMAX_MAX __MAXUINT__(ossl_uintmax_t)
 # endif
 
 #endif

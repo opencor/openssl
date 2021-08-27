@@ -278,8 +278,10 @@ static int server_ocsp_cb(SSL *s, void *arg)
      * For the purposes of testing we just send back a dummy OCSP response
      */
     *resp = *(unsigned char *)arg;
-    if (!SSL_set_tlsext_status_ocsp_resp(s, resp, 1))
+    if (!SSL_set_tlsext_status_ocsp_resp(s, resp, 1)) {
+        OPENSSL_free(resp);
         return SSL_TLSEXT_ERR_ALERT_FATAL;
+    }
 
     return SSL_TLSEXT_ERR_OK;
 }
@@ -1196,13 +1198,7 @@ static handshake_status_t handshake_status(peer_status_t last_status,
             /* The client failed immediately before sending the ClientHello */
             return client_spoke_last ? CLIENT_ERROR : INTERNAL_ERROR;
         case PEER_SUCCESS:
-            /*
-             * First peer succeeded but second peer errored.
-             * TODO(emilia): we should be able to continue here (with some
-             * application data?) to ensure the first peer receives the
-             * alert / close_notify.
-             * (No tests currently exercise this branch.)
-             */
+            /* First peer succeeded but second peer errored. */
             return client_spoke_last ? CLIENT_ERROR : SERVER_ERROR;
         case PEER_RETRY:
             /* We errored; let the peer finish. */
@@ -1240,7 +1236,7 @@ static int pkey_type(EVP_PKEY *pkey)
             return NID_undef;
         return OBJ_txt2nid(name);
     }
-    return EVP_PKEY_id(pkey);
+    return EVP_PKEY_get_id(pkey);
 }
 
 static int peer_pkey_type(SSL *s)

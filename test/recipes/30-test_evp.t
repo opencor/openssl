@@ -22,6 +22,7 @@ use lib bldtop_dir('.');
 
 my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
 my $no_legacy = disabled('legacy') || ($ENV{NO_LEGACY} // 0);
+my $no_des = disabled("des");
 my $no_dh = disabled("dh");
 my $no_dsa = disabled("dsa");
 my $no_ec = disabled("ec");
@@ -41,12 +42,15 @@ my @files = qw(
                 evpciph_aes_common.txt
                 evpciph_aes_cts.txt
                 evpciph_aes_wrap.txt
+                evpciph_aes_stitched.txt
                 evpciph_des3_common.txt
                 evpkdf_hkdf.txt
+                evpkdf_pbkdf1.txt
                 evpkdf_pbkdf2.txt
                 evpkdf_ss.txt
                 evpkdf_ssh.txt
                 evpkdf_tls12_prf.txt
+                evpkdf_tls13_kdf.txt
                 evpkdf_x942.txt
                 evpkdf_x963.txt
                 evpmac_common.txt
@@ -56,7 +60,14 @@ my @files = qw(
                 evppkey_rsa_common.txt
                 evprand.txt
               );
-push @files, qw(evppkey_ffdhe.txt) unless $no_dh;
+push @files, qw(
+                evppkey_ffdhe.txt
+                evppkey_dh.txt
+               ) unless $no_dh;
+push @files, qw(
+                evpkdf_x942_des.txt
+                evpmac_cmac_des.txt
+               ) unless $no_des;
 push @files, qw(evppkey_dsa.txt) unless $no_dsa;
 push @files, qw(evppkey_ecx.txt) unless $no_ec;
 push @files, qw(
@@ -65,7 +76,7 @@ push @files, qw(
                 evppkey_ecdsa.txt
                 evppkey_kas.txt
                 evppkey_mismatch.txt
-              ) unless $no_ec || $no_gost;
+               ) unless $no_ec || $no_gost;
 
 # A list of tests that only run with the default provider
 # (i.e. The algorithms are not present in the fips provider)
@@ -75,12 +86,14 @@ my @defltfiles = qw(
                      evpciph_aria.txt 
                      evpciph_bf.txt
                      evpciph_camellia.txt
+                     evpciph_camellia_cts.txt
                      evpciph_cast5.txt
                      evpciph_chacha.txt
                      evpciph_des.txt
                      evpciph_idea.txt
                      evpciph_rc2.txt
                      evpciph_rc4.txt
+                     evpciph_rc4_stitched.txt
                      evpciph_rc5.txt
                      evpciph_seed.txt
                      evpciph_sm4.txt
@@ -168,7 +181,7 @@ SKIP: {
     ok(test_errors(key => 'server-dsa-pubkey.pem',
                    out => 'server-dsa-pubkey.err',
                    args => [ '-pubin' ],
-                   expected => 'unsupported algorithm'),
+                   expected => 'unsupported'),
        "expected error loading unsupported dsa public key");
 }
 

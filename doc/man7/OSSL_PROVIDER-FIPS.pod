@@ -18,7 +18,7 @@ defined:
 
 =over 4
 
-=item "provider=default"
+=item "provider=fips"
 
 =item "fips=yes"
 
@@ -62,7 +62,7 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item AES, see L<EVP_CIPHER-AES(7)>
 
-=item DES-EDE3 (TrippleDES), see L<EVP_CIPHER-DES(7)>
+=item DES-EDE3 (TripleDES), see L<EVP_CIPHER-DES(7)>
 
 =back
 
@@ -86,13 +86,15 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item HKDF, see L<EVP_KDF-HKDF(7)>
 
+=item TLS13-KDF, see L<EVP_KDF-TLS13_KDF(7)>
+
 =item SSKDF, see L<EVP_KDF-SSKDF(7)>
 
 =item PBKDF2, see L<EVP_KDF-PBKDF2(7)>
 
 =item SSHKDF, see L<EVP_KDF-SSHKDF(7)>
 
-=item TLS1-PRF, see L<EVP_KDF-TLS1-PRF(7)>
+=item TLS1-PRF, see L<EVP_KDF-TLS1_PRF(7)>
 
 =item KBKDF, see L<EVP_KDF-KBKDF(7)>
 
@@ -114,11 +116,7 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item X25519, see L<EVP_KEYEXCH-X25519(7)>
 
-This has the property "provider=fips,fips=no"
-
 =item X448, see L<EVP_KEYEXCH-X448(7)>
-
-This has the property "provider=fips,fips=no"
 
 =back
 
@@ -129,6 +127,10 @@ This has the property "provider=fips,fips=no"
 =item DSA, see L<EVP_KEYEXCH-DSA(7)>
 
 =item RSA, see L<EVP_SIGNATURE-RSA(7)>
+
+=item X25519, see L<EVP_SIGNATURE-ED25519(7)>
+
+=item X448, see L<EVP_SIGNATURE-ED448(7)>
 
 =item HMAC, see L<EVP_SIGNATURE-HMAC(7)>
 
@@ -269,6 +271,8 @@ Key generation tests used with the "Pairwise_Consistency_Test" type.
 
 =item "AES_GCM" (B<OSSL_SELF_TEST_DESC_CIPHER_AES_GCM>)
 
+=item "AES_ECB_Decrypt" (B<OSSL_SELF_TEST_DESC_CIPHER_AES_ECB>)
+
 =item "TDES" (B<OSSL_SELF_TEST_DESC_CIPHER_TDES>)
 
 Symmetric cipher tests used with the "KAT_Cipher" type.
@@ -296,6 +300,10 @@ Signature tests used with the "KAT_Signature" type.
 Key agreement tests used with the "KAT_KA" type.
 
 =item "HKDF" (B<OSSL_SELF_TEST_DESC_KDF_HKDF>)
+
+=item "TLS13_KDF_EXTRACT" (B<OSSL_SELF_TEST_DESC_KDF_TLS13_EXTRACT>)
+
+=item "TLS13_KDF_EXPAND" (B<OSSL_SELF_TEST_DESC_KDF_TLS13_EXPAND>)
 
 =item "SSKDF" (B<OSSL_SELF_TEST_DESC_KDF_SSKDF>)
 
@@ -391,7 +399,7 @@ The type and functions described here were added in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

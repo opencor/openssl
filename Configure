@@ -1,6 +1,6 @@
 #! /usr/bin/env perl
 # -*- mode: perl; -*-
-# Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -27,7 +27,7 @@ use OpenSSL::config;
 my $orig_death_handler = $SIG{__DIE__};
 $SIG{__DIE__} = \&death_handler;
 
-my $usage="Usage: Configure [no-<cipher> ...] [enable-<cipher> ...] [-Dxxx] [-lxxx] [-Lxxx] [-fxxx] [-Kxxx] [no-hw-xxx|no-hw] [[no-]threads] [[no-]shared] [[no-]zlib|zlib-dynamic] [no-asm] [no-egd] [sctp] [386] [--prefix=DIR] [--openssldir=OPENSSLDIR] [--with-xxx[=vvv]] [--config=FILE] os/compiler[:flags]\n";
+my $usage="Usage: Configure [no-<feature> ...] [enable-<feature> ...] [-Dxxx] [-lxxx] [-Lxxx] [-fxxx] [-Kxxx] [no-hw-xxx|no-hw] [[no-]threads] [[no-]thread-pool] [[no-]default-thread-pool] [[no-]shared] [[no-]zlib|zlib-dynamic] [no-asm] [no-egd] [sctp] [386] [--prefix=DIR] [--openssldir=OPENSSLDIR] [--with-xxx[=vvv]] [--config=FILE] os/compiler[:flags]\n";
 
 my $banner = <<"EOF";
 
@@ -81,6 +81,10 @@ EOF
 # [no-]threads  [don't] try to create a library that is suitable for
 #               multithreaded applications (default is "threads" if we
 #               know how to do it)
+# [no-]thread-pool
+#               [don't] allow thread pool functionality
+# [no-]default-thread-pool
+#               [don't] allow default thread pool functionality
 # [no-]shared   [don't] try to create shared libraries when supported.
 # [no-]pic      [don't] try to build position independent code when supported.
 #               If disabled, it also disables shared and dynamic-engine.
@@ -88,8 +92,10 @@ EOF
 # no-egd        do not compile support for the entropy-gathering daemon APIs
 # [no-]zlib     [don't] compile support for zlib compression.
 # zlib-dynamic  Like "zlib", but the zlib library is expected to be a shared
-#               library and will be loaded in run-time by the OpenSSL library.
+#               library and will be loaded at run-time by the OpenSSL library.
 # sctp          include SCTP support
+# enable-quic   include QUIC support (currently just for developers as the
+#               implementation is by no means complete and usable)
 # no-uplink     Don't build support for UPLINK interface.
 # enable-weak-ssl-ciphers
 #               Enable weak ciphers that are disabled by default.
@@ -410,11 +416,14 @@ my @disablables = (
     "autoload-config",
     "bf",
     "blake2",
+    "brotli",
+    "brotli-dynamic",
     "buildtest-c++",
     "bulk",
     "cached-fetch",
     "camellia",
     "capieng",
+    "winstore",
     "cast",
     "chacha",
     "cmac",
@@ -423,6 +432,7 @@ my @disablables = (
     "comp",
     "crypto-mdebug",
     "ct",
+    "default-thread-pool",
     "deprecated",
     "des",
     "devcryptoeng",
@@ -467,6 +477,7 @@ my @disablables = (
     "poly1305",
     "posix-io",
     "psk",
+    "quic",
     "rc2",
     "rc4",
     "rc5",
@@ -492,6 +503,8 @@ my @disablables = (
     "static-engine",
     "stdio",
     "tests",
+    "tfo",
+    "thread-pool",
     "threads",
     "tls",
     "trace",
@@ -504,6 +517,8 @@ my @disablables = (
     "whirlpool",
     "zlib",
     "zlib-dynamic",
+    "zstd",
+    "zstd-dynamic",
     );
 foreach my $proto ((@tls, @dtls))
         {
@@ -535,6 +550,8 @@ my %deprecated_disablables = (
 our %disabled = ( # "what"         => "comment"
                   "fips"                => "default",
                   "asan"                => "default",
+                  "brotli"              => "default",
+                  "brotli-dynamic"      => "default",
                   "buildtest-c++"       => "default",
                   "crypto-mdebug"       => "default",
                   "crypto-mdebug-backtrace" => "default",
@@ -547,16 +564,20 @@ our %disabled = ( # "what"         => "comment"
                   "ktls"                => "default",
                   "md2"                 => "default",
                   "msan"                => "default",
+                  "quic"                => "default",
                   "rc5"                 => "default",
                   "sctp"                => "default",
                   "ssl3"                => "default",
                   "ssl3-method"         => "default",
+                  "tfo"                 => "default",
                   "trace"               => "default",
                   "ubsan"               => "default",
                   "unit-test"           => "default",
                   "weak-ssl-ciphers"    => "default",
                   "zlib"                => "default",
                   "zlib-dynamic"        => "default",
+                  "zstd"                => "default",
+                  "zstd-dynamic"        => "default",
                 );
 
 # Note: => pair form used for aesthetics, not to truly make a hash table
@@ -576,6 +597,7 @@ my @disable_cascades = (
                              "seed", "siphash", "siv",
                              "sm3", "sm4", "srp",
                              "srtp", "ssl3-method", "ssl-trace",
+                             "tfo",
                              "ts", "ui-console", "whirlpool",
                              "fips-securitychecks" ],
     sub { $config{processor} eq "386" }
@@ -583,10 +605,12 @@ my @disable_cascades = (
     "ssl"               => [ "ssl3" ],
     "ssl3-method"       => [ "ssl3" ],
     "zlib"              => [ "zlib-dynamic" ],
+    "brotli"            => [ "brotli-dynamic" ],
+    "zstd"              => [ "zstd-dynamic" ],
     "des"               => [ "mdc2" ],
     "ec"                => [ "ec2m", "ecdsa", "ecdh", "sm2", "gost" ],
-    "dgram"             => [ "dtls", "sctp" ],
-    "sock"              => [ "dgram" ],
+    "dgram"             => [ "dtls", "quic", "sctp" ],
+    "sock"              => [ "dgram", "tfo" ],
     "dtls"              => [ @dtls ],
     sub { 0 == scalar grep { !$disabled{$_} } @dtls }
                         => [ "dtls" ],
@@ -603,7 +627,7 @@ my @disable_cascades = (
     # Without shared libraries, dynamic engines aren't possible.
     # This is due to them having to link with libcrypto and register features
     # using the ENGINE functionality, and since that relies on global tables,
-    # those *have* to be exacty the same as the ones accessed from the app,
+    # those *have* to be exactly the same as the ones accessed from the app,
     # which cannot be guaranteed if shared libraries aren't present.
     # (note that even with shared libraries, both the app and dynamic engines
     # must be linked with the same library)
@@ -628,7 +652,7 @@ my @disable_cascades = (
     "stdio"             => [ "apps", "capieng", "egd" ],
     "apps"              => [ "tests" ],
     "tests"             => [ "external-tests" ],
-    "comp"              => [ "zlib" ],
+    "comp"              => [ "zlib", "brotli", "zstd" ],
     "sm3"               => [ "sm2" ],
     sub { !$disabled{"unit-test"} } => [ "heartbeats" ],
 
@@ -640,6 +664,9 @@ my @disable_cascades = (
     "cmp"               => [ "crmf" ],
 
     "fips"              => [ "fips-securitychecks", "acvp-tests" ],
+
+    "threads"           => [ "thread-pool" ],
+    "thread-pool"       => [ "default-thread-pool" ],
 
     "deprecated-3.0"    => [ "engine", "srp" ]
     );
@@ -886,6 +913,14 @@ while (@argvcopy)
                         {
                         delete $disabled{"zlib"};
                         }
+                elsif ($1 eq "brotli-dynamic")
+                        {
+                        delete $disabled{"brotli"};
+                        }
+                elsif ($1 eq "zstd-dynamic")
+                        {
+                        delete $disabled{"zstd"};
+                        }
                 my $algo = $1;
                 delete $disabled{$algo};
 
@@ -961,6 +996,22 @@ while (@argvcopy)
                 elsif (/^--with-zlib-include=(.*)$/)
                         {
                         $withargs{zlib_include}=$1;
+                        }
+                elsif (/^--with-brotli-lib=(.*)$/)
+                        {
+                        $withargs{brotli_lib}=$1;
+                        }
+                elsif (/^--with-brotli-include=(.*)$/)
+                        {
+                        $withargs{brotli_include}=$1;
+                        }
+                elsif (/^--with-zstd-lib=(.*)$/)
+                        {
+                        $withargs{zstd_lib}=$1;
+                        }
+                elsif (/^--with-zstd-include=(.*)$/)
+                        {
+                        $withargs{zstd_include}=$1;
                         }
                 elsif (/^--with-fuzzer-lib=(.*)$/)
                         {
@@ -1502,9 +1553,7 @@ unless ($disabled{asan} || defined $detected_sanitizers{asan}) {
 }
 
 unless ($disabled{ubsan} || defined $detected_sanitizers{ubsan}) {
-    # -DPEDANTIC or -fnosanitize=alignment may also be required on some
-    # platforms.
-    push @{$config{cflags}}, "-fsanitize=undefined", "-fno-sanitize-recover=all";
+    push @{$config{cflags}}, "-fsanitize=undefined", "-fno-sanitize-recover=all", "-DPEDANTIC";
 }
 
 unless ($disabled{msan} || defined $detected_sanitizers{msan}) {
@@ -1549,7 +1598,7 @@ my %predefined_CXX = $config{CXX}
 
 unless ($disabled{asm}) {
     # big endian systems can use ELFv2 ABI
-    if ($target eq "linux-ppc64") {
+    if ($target eq "linux-ppc64" || $target eq "BSD-ppc64") {
         $target{perlasm_scheme} = "linux64v2" if ($predefined_C{_CALL_ELF} == 2);
     }
 }
@@ -1680,20 +1729,7 @@ $config{CFLAGS} = [ map { $_ eq '--ossl-strict-warnings'
 unless ($disabled{afalgeng}) {
     $config{afalgeng}="";
     if (grep { $_ eq 'afalgeng' } @{$target{enable}}) {
-        my $minver = 4*10000 + 1*100 + 0;
-        if ($config{CROSS_COMPILE} eq "") {
-            my $verstr = `uname -r`;
-            my ($ma, $mi1, $mi2) = split("\\.", $verstr);
-            ($mi2) = $mi2 =~ /(\d+)/;
-            my $ver = $ma*10000 + $mi1*100 + $mi2;
-            if ($ver < $minver) {
-                disable('too-old-kernel', 'afalgeng');
-            } else {
-                push @{$config{engdirs}}, "afalg";
-            }
-        } else {
-            disable('cross-compiling', 'afalgeng');
-        }
+        push @{$config{engdirs}}, "afalg";
     } else {
         disable('not-linux', 'afalgeng');
     }
@@ -1716,26 +1752,25 @@ unless ($disabled{devcryptoeng}) {
 
 unless ($disabled{ktls}) {
     $config{ktls}="";
+    my $cc = $config{CROSS_COMPILE}.$config{CC};
     if ($target =~ m/^linux/) {
-        my $usr = "/usr/$config{cross_compile_prefix}";
-        chop($usr);
-        if ($config{cross_compile_prefix} eq "") {
-            $usr = "/usr";
-        }
-        my $minver = (4 << 16) + (13 << 8) + 0;
-        my @verstr = split(" ",`cat $usr/include/linux/version.h | grep LINUX_VERSION_CODE`);
-
-        if ($verstr[2] < $minver) {
+        system("printf '#include <sys/types.h>\n#include <linux/tls.h>' | $cc -E - >/dev/null 2>&1");
+        if ($? != 0) {
             disable('too-old-kernel', 'ktls');
         }
     } elsif ($target =~ m/^BSD/) {
-        my $cc = $config{CROSS_COMPILE}.$config{CC};
         system("printf '#include <sys/types.h>\n#include <sys/ktls.h>' | $cc -E - >/dev/null 2>&1");
         if ($? != 0) {
             disable('too-old-freebsd', 'ktls');
         }
     } else {
         disable('not-linux-or-freebsd', 'ktls');
+    }
+}
+
+unless ($disabled{winstore}) {
+    unless ($target =~ /^(?:Cygwin|mingw|VC-|BC-)/) {
+        disable('not-windows', 'winstore');
     }
 }
 
@@ -1800,7 +1835,7 @@ my %skipdir = ();
 my %disabled_info = ();         # For configdata.pm
 foreach my $what (sort keys %disabled) {
     # There are deprecated disablables that translate to themselves.
-    # They cause disabling cascades, but should otherwise not regiter.
+    # They cause disabling cascades, but should otherwise not register.
     next if $deprecated_disablables{$what};
     # The generated $disabled{"deprecated-x.y"} entries are special
     # and treated properly elsewhere
@@ -1810,7 +1845,7 @@ foreach my $what (sort keys %disabled) {
 
     if (!grep { $what eq $_ } ( 'buildtest-c++', 'fips', 'threads', 'shared',
                                 'module', 'pic', 'dynamic-engine', 'makedepend',
-                                'zlib-dynamic', 'zlib', 'sse2', 'legacy' )) {
+                                'sse2', 'legacy' )) {
         (my $WHAT = uc $what) =~ s|-|_|g;
         my $skipdir = $what;
 
@@ -2211,9 +2246,10 @@ if ($builder eq "unified") {
                                 \$attributes{depends}, $+{ATTRIBS},
                                 tokenize($expand_variables->($+{VALUE})))
                          if !@skip || $skip[$#skip] > 0; },
-            qr/^\s* GENERATE ${index_re} \s* = \s* ${value_re} \s* $/x
+            qr/^\s* GENERATE ${index_re} ${attribs_re} \s* = \s* ${value_re} \s* $/x
             => sub { $push_to->(\%generate, $expand_variables->($+{INDEX}),
-                                undef, undef, $expand_variables->($+{VALUE}))
+                                \$attributes{generate}, $+{ATTRIBS},
+                                $expand_variables->($+{VALUE}))
                          if !@skip || $skip[$#skip] > 0; },
             qr/^\s* (?:\#.*)? $/x => sub { },
             "OTHERWISE" => sub { die "Something wrong with this line:\n$_\nat $sourced/$f" },
@@ -2381,6 +2417,10 @@ EOF
             $check_generate{$ddest}->{$generator[0]}++;
 
             $unified_info{generate}->{$ddest} = [ @generator ];
+            # Fix up associated attributes
+            $unified_info{attributes}->{generate}->{$ddest} =
+                $attributes{generate}->{$dest}->{$gen}
+                if defined $attributes{generate}->{$dest}->{$gen};
         }
 
         foreach (keys %depends) {
@@ -2771,7 +2811,7 @@ EOF
                                   keys %{$unified_info{htmldocs} // {}}),
                                  (map { @{$unified_info{mandocs}->{$_} // []} }
                                   keys %{$unified_info{mandocs} // {}}) ] );
-    foreach my $type (keys %loopinfo) {
+    foreach my $type (sort keys %loopinfo) {
         foreach my $product (@{$loopinfo{$type}}) {
             my %dirs = ();
             my $pd = dirname($product);
@@ -2792,7 +2832,7 @@ EOF
                 push @{$unified_info{dirinfo}->{$d}->{deps}}, $_
                     if $d ne $pd;
             }
-            foreach (keys %dirs) {
+            foreach (sort keys %dirs) {
                 push @{$unified_info{dirinfo}->{$_}->{products}->{$type}},
                     $product;
             }
@@ -2827,7 +2867,6 @@ my %template_vars = (
     user_crossable => \@user_crossable,
 );
 my $configdata_outname = 'configdata.pm';
-print "Creating $configdata_outname\n";
 open CONFIGDATA, ">$configdata_outname.new"
     or die "Trying to create $configdata_outname.new: $!";
 my $configdata_tmplname = cleanfile($srcdir, "configdata.pm.in", $blddir);
@@ -2843,12 +2882,14 @@ $configdata_tmpl->fill_in(
               ] }
 ) or die $Text::Template::ERROR;
 close CONFIGDATA;
+
 rename "$configdata_outname.new", $configdata_outname;
 if ($builder_platform eq 'unix') {
     my $mode = (0755 & ~umask);
     chmod $mode, 'configdata.pm'
         or warn sprintf("WARNING: Couldn't change mode for 'configdata.pm' to 0%03o: %s\n",$mode,$!);
 }
+print "Created $configdata_outname\n";
 
 print "Running $configdata_outname\n";
 my $perlcmd = (quotify("maybeshell", $config{PERL}))[0];
@@ -3169,25 +3210,25 @@ sub resolve_config {
         }
     }
 
-    foreach (sort keys %all_keys) {
-        my $previous = $combined_inheritance{$_};
+    foreach my $key (sort keys %all_keys) {
+        my $previous = $combined_inheritance{$key};
 
         # Current target doesn't have a value for the current key?
         # Assign it the default combiner, the rest of this loop body
         # will handle it just like any other coderef.
-        if (!exists $table{$target}->{$_}) {
-            $table{$target}->{$_} = $default_combiner;
+        if (!exists $table{$target}->{$key}) {
+            $table{$target}->{$key} = $default_combiner;
         }
 
-        $table{$target}->{$_} = process_values($table{$target}->{$_},
-                                               $combined_inheritance{$_},
-                                               $target, $_);
-        unless(defined($table{$target}->{$_})) {
-            delete $table{$target}->{$_};
+        $table{$target}->{$key} = process_values($table{$target}->{$key},
+                                               $combined_inheritance{$key},
+                                               $target, $key);
+        unless(defined($table{$target}->{$key})) {
+            delete $table{$target}->{$key};
         }
 #        if ($extra_checks &&
-#            $previous && !($add_called ||  $previous ~~ $table{$target}->{$_})) {
-#            warn "$_ got replaced in $target\n";
+#            $previous && !($add_called ||  $previous ~~ $table{$target}->{$key})) {
+#            warn "$key got replaced in $target\n";
 #        }
     }
 

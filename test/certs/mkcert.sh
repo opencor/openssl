@@ -195,6 +195,23 @@ genpc() {
 	 -set_serial 2 -days "${DAYS}"
 }
 
+geneeconfig() {
+    local key=$1; shift
+    local cert=$1; shift
+    local cakey=$1; shift
+    local ca=$1; shift
+    local conf=$1; shift
+
+    exts=$(printf "%s\n%s\n%s\n%s\n" \
+        "subjectKeyIdentifier = hash" \
+        "authorityKeyIdentifier = keyid" \
+        "basicConstraints = CA:false"; \
+        echo "$conf")
+
+    cert "$cert" "$exts" -CA "${ca}.pem" -CAkey "${cakey}.pem" \
+        -set_serial 2 -days "${DAYS}"
+}
+
 # Usage: $0 geneealt keyname certname cakeyname cacertname alt1 alt2 ...
 #
 # Note: takes csr on stdin, so must be used with $0 req like this:
@@ -206,26 +223,24 @@ geneealt() {
     local cakey=$1; shift
     local ca=$1; shift
 
-    exts=$(printf "%s\n%s\n%s\n%s\n" \
-	    "subjectKeyIdentifier = hash" \
-	    "authorityKeyIdentifier = keyid" \
-	    "basicConstraints = CA:false" \
-	    "subjectAltName = @alts";
+    conf=$(echo "subjectAltName = @alts"
            echo "[alts]";
-           for x in "$@"; do echo $x; done)
-    cert "$cert" "$exts" -CA "${ca}.pem" -CAkey "${cakey}.pem" \
-	 -set_serial 2 -days "${DAYS}"
+           for x in "$@"; do echo "$x"; done)
+
+    geneeconfig $key $cert $cakey $ca "$conf"
 }
 
 genee() {
     local OPTIND=1
     local purpose=serverAuth
+    local ku=
 
-    while getopts p: o
+    while getopts p:k: o
     do
         case $o in
         p) purpose="$OPTARG";;
-        *) echo "Usage: $0 genee [-p EKU] cn keyname certname cakeyname cacertname" >&2
+        k) ku="keyUsage = $OPTARG";;
+        *) echo "Usage: $0 genee [-k KU] [-p EKU] cn keyname certname cakeyname cacertname" >&2
            return 1;;
         esac
     done
@@ -241,6 +256,7 @@ genee() {
 	    "subjectKeyIdentifier = hash" \
 	    "authorityKeyIdentifier = keyid, issuer" \
 	    "basicConstraints = CA:false" \
+            "$ku" \
 	    "extendedKeyUsage = $purpose" \
 	    "subjectAltName = @alts" "DNS=${cn}")
     csr=$(req "$key" "CN = $cn") || return 1

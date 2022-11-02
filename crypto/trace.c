@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -18,8 +18,6 @@
 #include "internal/nelem.h"
 #include "internal/refcount.h"
 #include "crypto/cryptlib.h"
-
-#include "e_os.h"                /* strcasecmp for Windows */
 
 #ifndef OPENSSL_NO_TRACE
 
@@ -136,19 +134,31 @@ static const struct trace_category_st trace_categories[] = {
     TRACE_CATEGORY_(PKCS12_DECRYPT),
     TRACE_CATEGORY_(X509V3_POLICY),
     TRACE_CATEGORY_(BN_CTX),
+    TRACE_CATEGORY_(CMP),
     TRACE_CATEGORY_(STORE),
     TRACE_CATEGORY_(DECODER),
     TRACE_CATEGORY_(ENCODER),
-    TRACE_CATEGORY_(REF_COUNT)
-};
+    TRACE_CATEGORY_(REF_COUNT),
+    TRACE_CATEGORY_(HTTP),
+}; /* KEEP THIS LIST IN SYNC with #define OSSL_TRACE_CATEGORY_... in trace.h */
 
 const char *OSSL_trace_get_category_name(int num)
 {
     size_t i;
 
+    /*
+     * Partial check that OSSL_TRACE_CATEGORY_... macros
+     * are synced with trace_categories array
+     */
+#ifndef OPENSSL_NO_ENGINE
+    if (!ossl_assert(OSSL_TRACE_CATEGORY_NUM == OSSL_NELEM(trace_categories)))
+        return NULL;
+#endif
+
     for (i = 0; i < OSSL_NELEM(trace_categories); i++)
         if (trace_categories[i].num == num)
             return trace_categories[i].name;
+
     return NULL; /* not found */
 }
 
@@ -156,9 +166,13 @@ int OSSL_trace_get_category_num(const char *name)
 {
     size_t i;
 
+    if (name == NULL)
+        return -1;
+
     for (i = 0; i < OSSL_NELEM(trace_categories); i++)
-        if (strcasecmp(name, trace_categories[i].name) == 0)
+        if (OPENSSL_strcasecmp(name, trace_categories[i].name) == 0)
             return trace_categories[i].num;
+
     return -1; /* not found */
 }
 
@@ -496,6 +510,8 @@ void OSSL_trace_end(int category, BIO * channel)
     char *suffix = NULL;
 
     category = ossl_trace_get_category(category);
+    if (category < 0)
+        return;
     suffix = trace_channels[category].suffix;
     if (channel != NULL
         && ossl_assert(channel == current_channel)) {

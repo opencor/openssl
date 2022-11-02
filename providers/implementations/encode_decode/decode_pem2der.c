@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -33,7 +33,11 @@ static int read_pem(PROV_CTX *provctx, OSSL_CORE_BIO *cin,
                     unsigned char **data, long *len)
 {
     BIO *in = ossl_bio_new_from_core_bio(provctx, cin);
-    int ok = (PEM_read_bio(in, pem_name, pem_header, data, len) > 0);
+    int ok;
+
+    if (in == NULL)
+        return 0;
+    ok = (PEM_read_bio(in, pem_name, pem_header, data, len) > 0);
 
     BIO_free(in);
     return ok;
@@ -115,6 +119,7 @@ static int pem2der_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
         { PEM_STRING_DSAPARAMS, OSSL_OBJECT_PKEY, "DSA", "type-specific" },
         { PEM_STRING_ECPRIVATEKEY, OSSL_OBJECT_PKEY, "EC", "type-specific" },
         { PEM_STRING_ECPARAMETERS, OSSL_OBJECT_PKEY, "EC", "type-specific" },
+        { PEM_STRING_SM2PARAMETERS, OSSL_OBJECT_PKEY, "SM2", "type-specific" },
         { PEM_STRING_RSA, OSSL_OBJECT_PKEY, "RSA", "type-specific" },
         { PEM_STRING_RSA_PUBLIC, OSSL_OBJECT_PKEY, "RSA", "type-specific" },
 
@@ -123,10 +128,10 @@ static int pem2der_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
          * though there is no provider interface to handle such objects, yet.
          * However, this is beneficial for the OSSL_STORE result handler.
          */
-        { PEM_STRING_X509, OSSL_OBJECT_CERT, NULL, NULL },
-        { PEM_STRING_X509_TRUSTED, OSSL_OBJECT_CERT, NULL, NULL },
-        { PEM_STRING_X509_OLD, OSSL_OBJECT_CERT, NULL, NULL },
-        { PEM_STRING_X509_CRL, OSSL_OBJECT_CRL, NULL, NULL }
+        { PEM_STRING_X509, OSSL_OBJECT_CERT, NULL, "Certificate" },
+        { PEM_STRING_X509_TRUSTED, OSSL_OBJECT_CERT, NULL, "Certificate" },
+        { PEM_STRING_X509_OLD, OSSL_OBJECT_CERT, NULL, "Certificate" },
+        { PEM_STRING_X509_CRL, OSSL_OBJECT_CRL, NULL, "CertificateList" }
     };
     struct pem2der_ctx_st *ctx = vctx;
     char *pem_name = NULL, *pem_header = NULL;
@@ -178,6 +183,7 @@ static int pem2der_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
         char *data_type = (char *)pem_name_map[i].data_type;
         char *data_structure = (char *)pem_name_map[i].data_structure;
 
+        objtype = pem_name_map[i].object_type;
         if (data_type != NULL)
             *p++ =
                 OSSL_PARAM_construct_utf8_string(OSSL_OBJECT_PARAM_DATA_TYPE,

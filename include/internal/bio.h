@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -27,6 +27,8 @@ struct bio_method_st {
     int (*create) (BIO *);
     int (*destroy) (BIO *);
     long (*callback_ctrl) (BIO *, int, BIO_info_cb *);
+    int (*bsendmmsg) (BIO *, BIO_MSG *, size_t, size_t, uint64_t, size_t *);
+    int (*brecvmmsg) (BIO *, BIO_MSG *, size_t, size_t, uint64_t, size_t *);
 };
 
 void bio_free_ex_data(BIO *bio);
@@ -48,9 +50,9 @@ int bread_conv(BIO *bio, char *data, size_t datal, size_t *read);
  * BIO_FLAGS_KTLS_TX_CTRL_MSG means we are about to send a ctrl message next.
  * BIO_FLAGS_KTLS_RX means we are using ktls with this BIO for receiving.
  */
-# define BIO_FLAGS_KTLS_TX          0x800
 # define BIO_FLAGS_KTLS_TX_CTRL_MSG 0x1000
 # define BIO_FLAGS_KTLS_RX          0x2000
+# define BIO_FLAGS_KTLS_TX          0x4000
 
 /* KTLS related controls and flags */
 # define BIO_set_ktls_flag(b, is_tx) \

@@ -248,6 +248,12 @@ int ASN1_object_size(int constructed, int length, int tag)
     return ret + length;
 }
 
+void ossl_asn1_string_set_bits_left(ASN1_STRING *str, unsigned int num)
+{
+    str->flags &= ~0x07;
+    str->flags |= ASN1_STRING_FLAG_BITS_LEFT | (num & 0x07);
+}
+
 int ASN1_STRING_copy(ASN1_STRING *dst, const ASN1_STRING *str)
 {
     if (str == NULL)
@@ -303,12 +309,11 @@ int ASN1_STRING_set(ASN1_STRING *str, const void *_data, int len_in)
         c = str->data;
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
         /* No NUL terminator in fuzzing builds */
-        str->data = OPENSSL_realloc(c, len);
+        str->data = OPENSSL_realloc(c, len != 0 ? len : 1);
 #else
         str->data = OPENSSL_realloc(c, len + 1);
 #endif
         if (str->data == NULL) {
-            ERR_raise(ERR_LIB_ASN1, ERR_R_MALLOC_FAILURE);
             str->data = c;
             return 0;
         }
@@ -316,7 +321,11 @@ int ASN1_STRING_set(ASN1_STRING *str, const void *_data, int len_in)
     str->length = len;
     if (data != NULL) {
         memcpy(str->data, data, len);
-#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        /* Set the unused byte to something non NUL and printable. */
+        if (len == 0)
+            str->data[len] = '~';
+#else
         /*
          * Add a NUL terminator. This should not be necessary - but we add it as
          * a safety precaution
@@ -344,10 +353,8 @@ ASN1_STRING *ASN1_STRING_type_new(int type)
     ASN1_STRING *ret;
 
     ret = OPENSSL_zalloc(sizeof(*ret));
-    if (ret == NULL) {
-        ERR_raise(ERR_LIB_ASN1, ERR_R_MALLOC_FAILURE);
+    if (ret == NULL)
         return NULL;
-    }
     ret->type = type;
     return ret;
 }
@@ -384,7 +391,8 @@ int ASN1_STRING_cmp(const ASN1_STRING *a, const ASN1_STRING *b)
 
     i = (a->length - b->length);
     if (i == 0) {
-        i = memcmp(a->data, b->data, a->length);
+        if (a->length != 0)
+            i = memcmp(a->data, b->data, a->length);
         if (i == 0)
             return a->type - b->type;
         else

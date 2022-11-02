@@ -51,7 +51,7 @@ static int rsa_validate_keypair_multiprime(const RSA *key, BN_GENCB *cb)
     if (i == NULL || j == NULL || k == NULL || l == NULL
             || m == NULL || ctx == NULL) {
         ret = -1;
-        ERR_raise(ERR_LIB_RSA, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_RSA, ERR_R_BN_LIB);
         goto err;
     }
 
@@ -245,7 +245,7 @@ int ossl_rsa_validate_pairwise(const RSA *key)
 #ifdef FIPS_MODULE
     return ossl_rsa_sp800_56b_check_keypair(key, NULL, -1, RSA_bits(key));
 #else
-    return rsa_validate_keypair_multiprime(key, NULL);
+    return rsa_validate_keypair_multiprime(key, NULL) > 0;
 #endif
 }
 

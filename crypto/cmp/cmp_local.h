@@ -78,7 +78,7 @@ struct ossl_cmp_ctx_st {
     X509 *cert; /* protection cert used to identify and sign for MSG_SIG_ALG */
     STACK_OF(X509) *chain; /* (cached) chain of protection cert including it */
     EVP_PKEY *pkey; /* the key pair corresponding to cert */
-    ASN1_OCTET_STRING *referenceValue; /* optional user name for MSG_MAC_ALG */
+    ASN1_OCTET_STRING *referenceValue; /* optional username for MSG_MAC_ALG */
     ASN1_OCTET_STRING *secretValue; /* password/shared secret for MSG_MAC_ALG */
     /* PBMParameters for MSG_MAC_ALG */
     size_t pbm_slen; /* salt length, currently fixed to 16 */
@@ -369,13 +369,15 @@ DECLARE_ASN1_FUNCTIONS(OSSL_CMP_ERRORMSGCONTENT)
  *      -- as is used to create and verify the certificate signature
  *      certReqId   INTEGER,
  *      -- to match this confirmation with the corresponding req/rep
- *      statusInfo  PKIStatusInfo OPTIONAL
+ *      statusInfo  PKIStatusInfo OPTIONAL,
+ *      hashAlg [0] AlgorithmIdentifier OPTIONAL
  *   }
  */
 struct ossl_cmp_certstatus_st {
     ASN1_OCTET_STRING *certHash;
     ASN1_INTEGER *certReqId;
     OSSL_CMP_PKISI *statusInfo;
+    X509_ALGOR *hashAlg; /* 0 */
 } /* OSSL_CMP_CERTSTATUS */;
 DECLARE_ASN1_FUNCTIONS(OSSL_CMP_CERTSTATUS)
 typedef STACK_OF(OSSL_CMP_CERTSTATUS) OSSL_CMP_CERTCONFIRMCONTENT;
@@ -446,7 +448,7 @@ DECLARE_ASN1_FUNCTIONS(OSSL_CMP_POLLREPCONTENT)
 
 /*-
  * PKIHeader ::= SEQUENCE {
- *     pvno                INTEGER     { cmp1999(1), cmp2000(2) },
+ *     pvno                INTEGER     { cmp1999(1), cmp2000(2), cmp2021(3) },
  *     sender              GeneralName,
  *     -- identifies the sender
  *     recipient           GeneralName,
@@ -777,7 +779,7 @@ int ossl_cmp_print_log(OSSL_CMP_severity level, const OSSL_CMP_CTX *ctx,
 # define ossl_cmp_info(ctx, msg)  ossl_cmp_log(INFO,  ctx, msg)
 # define ossl_cmp_debug(ctx, msg) ossl_cmp_log(DEBUG, ctx, msg)
 # define ossl_cmp_trace(ctx, msg) ossl_cmp_log(TRACE, ctx, msg)
-int ossl_cmp_ctx_set0_validatedSrvCert(OSSL_CMP_CTX *ctx, X509 *cert);
+int ossl_cmp_ctx_set1_validatedSrvCert(OSSL_CMP_CTX *ctx, X509 *cert);
 int ossl_cmp_ctx_set_status(OSSL_CMP_CTX *ctx, int status);
 int ossl_cmp_ctx_set0_statusString(OSSL_CMP_CTX *ctx,
                                    OSSL_CMP_PKIFREETEXT *text);

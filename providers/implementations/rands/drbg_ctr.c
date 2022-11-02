@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2011-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,7 +14,6 @@
 #include <openssl/rand.h>
 #include <openssl/aes.h>
 #include <openssl/proverr.h>
-#include "e_os.h" /* strcasecmp */
 #include "crypto/modes.h"
 #include "internal/thread_once.h"
 #include "prov/implementations.h"
@@ -539,7 +538,7 @@ static int drbg_ctr_init(PROV_DRBG *drbg)
     if (ctr->ctx_ctr == NULL)
         ctr->ctx_ctr = EVP_CIPHER_CTX_new();
     if (ctr->ctx_ecb == NULL || ctr->ctx_ctr == NULL) {
-        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_PROV, ERR_R_EVP_LIB);
         goto err;
     }
 
@@ -566,7 +565,7 @@ static int drbg_ctr_init(PROV_DRBG *drbg)
         if (ctr->ctx_df == NULL)
             ctr->ctx_df = EVP_CIPHER_CTX_new();
         if (ctr->ctx_df == NULL) {
-            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_PROV, ERR_R_EVP_LIB);
             goto err;
         }
         /* Set key schedule for df_key */
@@ -590,10 +589,8 @@ static int drbg_ctr_new(PROV_DRBG *drbg)
     PROV_DRBG_CTR *ctr;
 
     ctr = OPENSSL_secure_zalloc(sizeof(*ctr));
-    if (ctr == NULL) {
-        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+    if (ctr == NULL)
         return 0;
-    }
 
     ctr->use_df = 1;
     drbg->data = ctr;
@@ -690,14 +687,12 @@ static int drbg_ctr_set_ctx_params(void *vctx, const OSSL_PARAM params[])
         if (p->data_type != OSSL_PARAM_UTF8_STRING
                 || p->data_size < ctr_str_len)
             return 0;
-        if (strcasecmp("CTR", base + p->data_size - ctr_str_len) != 0) {
+        if (OPENSSL_strcasecmp("CTR", base + p->data_size - ctr_str_len) != 0) {
             ERR_raise(ERR_LIB_PROV, PROV_R_REQUIRE_CTR_MODE_CIPHER);
             return 0;
         }
-        if ((ecb = OPENSSL_strndup(base, p->data_size)) == NULL) {
-            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        if ((ecb = OPENSSL_strndup(base, p->data_size)) == NULL)
             return 0;
-        }
         strcpy(ecb + p->data_size - ecb_str_len, "ECB");
         EVP_CIPHER_free(ctr->cipher_ecb);
         EVP_CIPHER_free(ctr->cipher_ctr);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -29,11 +29,12 @@
 #include "prov/providercommon.h"
 #include "prov/implementations.h"
 #include "prov/provider_util.h"
-#include "e_os.h"
+#include "internal/e_os.h"
 
 #define HKDF_MAXBUF 2048
 
 static OSSL_FUNC_kdf_newctx_fn kdf_hkdf_new;
+static OSSL_FUNC_kdf_dupctx_fn kdf_hkdf_dup;
 static OSSL_FUNC_kdf_freectx_fn kdf_hkdf_free;
 static OSSL_FUNC_kdf_reset_fn kdf_hkdf_reset;
 static OSSL_FUNC_kdf_derive_fn kdf_hkdf_derive;
@@ -93,9 +94,7 @@ static void *kdf_hkdf_new(void *provctx)
     if (!ossl_prov_is_running())
         return NULL;
 
-    if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL)
-        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
-    else
+    if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) != NULL)
         ctx->provctx = provctx;
     return ctx;
 }
@@ -124,6 +123,36 @@ static void kdf_hkdf_reset(void *vctx)
     OPENSSL_cleanse(ctx->info, ctx->info_len);
     memset(ctx, 0, sizeof(*ctx));
     ctx->provctx = provctx;
+}
+
+static void *kdf_hkdf_dup(void *vctx)
+{
+    const KDF_HKDF *src = (const KDF_HKDF *)vctx;
+    KDF_HKDF *dest;
+
+    dest = kdf_hkdf_new(src->provctx);
+    if (dest != NULL) {
+        if (!ossl_prov_memdup(src->salt, src->salt_len, &dest->salt,
+                              &dest->salt_len)
+                || !ossl_prov_memdup(src->key, src->key_len,
+                                     &dest->key , &dest->key_len)
+                || !ossl_prov_memdup(src->prefix, src->prefix_len,
+                                     &dest->prefix, &dest->prefix_len)
+                || !ossl_prov_memdup(src->label, src->label_len,
+                                     &dest->label, &dest->label_len)
+                || !ossl_prov_memdup(src->data, src->data_len,
+                                     &dest->data, &dest->data_len)
+                || !ossl_prov_digest_copy(&dest->digest, &src->digest))
+            goto err;
+        memcpy(dest->info, src->info, sizeof(dest->info));
+        dest->info_len = src->info_len;
+        dest->mode = src->mode;
+    }
+    return dest;
+
+ err:
+    kdf_hkdf_free(dest);
+    return NULL;
 }
 
 static size_t kdf_hkdf_size(KDF_HKDF *ctx)
@@ -199,11 +228,11 @@ static int hkdf_common_set_ctx_params(KDF_HKDF *ctx, const OSSL_PARAM params[])
 
     if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_MODE)) != NULL) {
         if (p->data_type == OSSL_PARAM_UTF8_STRING) {
-            if (strcasecmp(p->data, "EXTRACT_AND_EXPAND") == 0) {
+            if (OPENSSL_strcasecmp(p->data, "EXTRACT_AND_EXPAND") == 0) {
                 ctx->mode = EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND;
-            } else if (strcasecmp(p->data, "EXTRACT_ONLY") == 0) {
+            } else if (OPENSSL_strcasecmp(p->data, "EXTRACT_ONLY") == 0) {
                 ctx->mode = EVP_KDF_HKDF_MODE_EXTRACT_ONLY;
-            } else if (strcasecmp(p->data, "EXPAND_ONLY") == 0) {
+            } else if (OPENSSL_strcasecmp(p->data, "EXPAND_ONLY") == 0) {
                 ctx->mode = EVP_KDF_HKDF_MODE_EXPAND_ONLY;
             } else {
                 ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_MODE);
@@ -313,6 +342,7 @@ static const OSSL_PARAM *kdf_hkdf_gettable_ctx_params(ossl_unused void *ctx,
 
 const OSSL_DISPATCH ossl_kdf_hkdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_hkdf_new },
+    { OSSL_FUNC_KDF_DUPCTX, (void(*)(void))kdf_hkdf_dup },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_hkdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_hkdf_reset },
     { OSSL_FUNC_KDF_DERIVE, (void(*)(void))kdf_hkdf_derive },
@@ -728,6 +758,7 @@ static const OSSL_PARAM *kdf_tls1_3_settable_ctx_params(ossl_unused void *ctx,
 
 const OSSL_DISPATCH ossl_kdf_tls1_3_kdf_functions[] = {
     { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_hkdf_new },
+    { OSSL_FUNC_KDF_DUPCTX, (void(*)(void))kdf_hkdf_dup },
     { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_hkdf_free },
     { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_hkdf_reset },
     { OSSL_FUNC_KDF_DERIVE, (void(*)(void))kdf_tls1_3_derive },

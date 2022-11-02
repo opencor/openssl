@@ -414,6 +414,8 @@ sub _parse_features {
         my $def = $';
 
         if ($def =~ m{^ZLIB$})                      { $features{$&} =  $op; }
+        if ($def =~ m{^BROTLI$})                    { $features{$&} =  $op; }
+        if ($def =~ m{^ZSTD$})                      { $features{$&} =  $op; }
         if ($def =~ m{^OPENSSL_USE_})               { $features{$'} =  $op; }
         if ($def =~ m{^OPENSSL_NO_})                { $features{$'} = !$op; }
     }
@@ -622,8 +624,6 @@ sub set_version {
     # '*' is for "we don't care"
     my $version = shift // '*';
     my $baseversion = shift // '*';
-
-    $version =~ s|-.*||g;
 
     if ($baseversion eq '*') {
         $baseversion = $version;

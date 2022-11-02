@@ -47,7 +47,8 @@ BIGNUM *bn_mod_inverse_no_branch(BIGNUM *in,
     if (R == NULL)
         goto err;
 
-    BN_one(X);
+    if (!BN_one(X))
+        goto err;
     BN_zero(Y);
     if (BN_copy(B, a) == NULL)
         goto err;
@@ -235,7 +236,8 @@ BIGNUM *int_bn_mod_inverse(BIGNUM *in,
     if (R == NULL)
         goto err;
 
-    BN_one(X);
+    if (!BN_one(X))
+        goto err;
     BN_zero(Y);
     if (BN_copy(B, a) == NULL)
         goto err;
@@ -520,7 +522,7 @@ BIGNUM *BN_mod_inverse(BIGNUM *in,
     if (ctx == NULL) {
         ctx = new_ctx = BN_CTX_new_ex(NULL);
         if (ctx == NULL) {
-            ERR_raise(ERR_LIB_BN, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_BN, ERR_R_BN_LIB);
             return NULL;
         }
     }

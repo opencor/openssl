@@ -70,11 +70,23 @@ int ossl_ecx_key_fromdata(ECX_KEY *ecx, const OSSL_PARAM params[],
     if (param_pub_key == NULL && param_priv_key == NULL)
         return 0;
 
-    if (param_priv_key != NULL
-        && !OSSL_PARAM_get_octet_string(param_priv_key,
-                                        (void **)&ecx->privkey, ecx->keylen,
-                                        &privkeylen))
-        return 0;
+    if (param_priv_key != NULL) {
+        if (!OSSL_PARAM_get_octet_string(param_priv_key,
+                                         (void **)&ecx->privkey, ecx->keylen,
+                                         &privkeylen))
+            return 0;
+        if (privkeylen != ecx->keylen) {
+            /*
+             * Invalid key length. We will clear what we've received now. We
+             * can't leave it to ossl_ecx_key_free() because that will call
+             * OPENSSL_secure_clear_free() and assume the correct key length
+             */
+            OPENSSL_secure_clear_free(ecx->privkey, privkeylen);
+            ecx->privkey = NULL;
+            return 0;
+        }
+    }
+
 
     pubkey = ecx->pubkey;
     if (param_pub_key != NULL
@@ -83,8 +95,7 @@ int ossl_ecx_key_fromdata(ECX_KEY *ecx, const OSSL_PARAM params[],
                                          sizeof(ecx->pubkey), &pubkeylen))
         return 0;
 
-    if ((param_pub_key != NULL && pubkeylen != ecx->keylen)
-        || (param_priv_key != NULL && privkeylen != ecx->keylen))
+    if ((param_pub_key != NULL && pubkeylen != ecx->keylen))
         return 0;
 
     if (param_pub_key == NULL && !ossl_ecx_public_from_private(ecx))
@@ -99,10 +110,8 @@ ECX_KEY *ossl_ecx_key_dup(const ECX_KEY *key, int selection)
 {
     ECX_KEY *ret = OPENSSL_zalloc(sizeof(*ret));
 
-    if (ret == NULL) {
-        ERR_raise(ERR_LIB_EC, ERR_R_MALLOC_FAILURE);
+    if (ret == NULL)
         return NULL;
-    }
 
     ret->lock = CRYPTO_THREAD_lock_new();
     if (ret->lock == NULL) {
@@ -127,8 +136,10 @@ ECX_KEY *ossl_ecx_key_dup(const ECX_KEY *key, int selection)
 
     if ((selection & OSSL_KEYMGMT_SELECT_PRIVATE_KEY) != 0
         && key->privkey != NULL) {
-        if (ossl_ecx_key_allocate_privkey(ret) == NULL)
+        if (ossl_ecx_key_allocate_privkey(ret) == NULL) {
+            ERR_raise(ERR_LIB_EC, ERR_R_EC_LIB);
             goto err;
+        }
         memcpy(ret->privkey, key->privkey, ret->keylen);
     }
 
@@ -136,7 +147,6 @@ ECX_KEY *ossl_ecx_key_dup(const ECX_KEY *key, int selection)
 
 err:
     ossl_ecx_key_free(ret);
-    ERR_raise(ERR_LIB_EC, ERR_R_MALLOC_FAILURE);
     return NULL;
 }
 
@@ -175,7 +185,7 @@ ECX_KEY *ossl_ecx_key_op(const X509_ALGOR *palg,
 
     key = ossl_ecx_key_new(libctx, KEYNID2TYPE(id), 1, propq);
     if (key == NULL) {
-        ERR_raise(ERR_LIB_EC, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_EC, ERR_R_EC_LIB);
         return 0;
     }
     pubkey = key->pubkey;
@@ -185,7 +195,7 @@ ECX_KEY *ossl_ecx_key_op(const X509_ALGOR *palg,
     } else {
         privkey = ossl_ecx_key_allocate_privkey(key);
         if (privkey == NULL) {
-            ERR_raise(ERR_LIB_EC, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_EC, ERR_R_EC_LIB);
             goto err;
         }
         if (op == KEY_OP_KEYGEN) {

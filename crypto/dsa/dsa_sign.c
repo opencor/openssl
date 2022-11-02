@@ -34,8 +34,7 @@ int DSA_sign_setup(DSA *dsa, BN_CTX *ctx_in, BIGNUM **kinvp, BIGNUM **rp)
 DSA_SIG *DSA_SIG_new(void)
 {
     DSA_SIG *sig = OPENSSL_zalloc(sizeof(*sig));
-    if (sig == NULL)
-        ERR_raise(ERR_LIB_DSA, ERR_R_MALLOC_FAILURE);
+
     return sig;
 }
 
@@ -65,7 +64,8 @@ DSA_SIG *d2i_DSA_SIG(DSA_SIG **psig, const unsigned char **ppin, long len)
         sig->r = BN_new();
     if (sig->s == NULL)
         sig->s = BN_new();
-    if (ossl_decode_der_dsa_sig(sig->r, sig->s, ppin, (size_t)len) == 0) {
+    if (sig->r == NULL || sig->s == NULL
+        || ossl_decode_der_dsa_sig(sig->r, sig->s, ppin, (size_t)len) == 0) {
         if (psig == NULL || *psig == NULL)
             DSA_SIG_free(sig);
         return NULL;

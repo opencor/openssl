@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,7 +12,6 @@
 #include "internal/nelem.h"
 #include "ssltestlib.h"
 #include "../testutil.h"
-#include "e_os.h" /* for ossl_sleep() etc. */
 
 #ifdef OPENSSL_SYS_UNIX
 # include <unistd.h>
@@ -49,7 +48,7 @@ const BIO_METHOD *bio_f_tls_dump_filter(void)
     if (method_tls_dump == NULL) {
         method_tls_dump = BIO_meth_new(BIO_TYPE_TLS_DUMP_FILTER,
                                         "TLS dump filter");
-        if (   method_tls_dump == NULL
+        if (method_tls_dump == NULL
             || !BIO_meth_set_write(method_tls_dump, tls_dump_write)
             || !BIO_meth_set_read(method_tls_dump, tls_dump_read)
             || !BIO_meth_set_puts(method_tls_dump, tls_dump_puts)
@@ -263,7 +262,7 @@ static void mempacket_free(MEMPACKET *pkt)
 
 typedef struct mempacket_test_ctx_st {
     STACK_OF(MEMPACKET) *pkts;
-    unsigned int epoch;
+    uint16_t epoch;
     unsigned int currrec;
     unsigned int currpkt;
     unsigned int lastpkt;
@@ -350,8 +349,8 @@ static int mempacket_test_read(BIO *bio, char *out, int outl)
     unsigned int seq, offset, len, epoch;
 
     BIO_clear_retry_flags(bio);
-    thispkt = sk_MEMPACKET_value(ctx->pkts, 0);
-    if (thispkt == NULL || thispkt->num != ctx->currpkt) {
+    if ((thispkt = sk_MEMPACKET_value(ctx->pkts, 0)) == NULL
+        || thispkt->num != ctx->currpkt) {
         /* Probably run out of data */
         BIO_set_retry_read(bio);
         return -1;
@@ -406,8 +405,124 @@ static int mempacket_test_read(BIO *bio, char *out, int outl)
     }
 
     memcpy(out, thispkt->data, outl);
+
     mempacket_free(thispkt);
     return outl;
+}
+
+/*
+ * Look for records from different epochs and swap them around
+ */
+int mempacket_swap_epoch(BIO *bio)
+{
+    MEMPACKET_TEST_CTX *ctx = BIO_get_data(bio);
+    MEMPACKET *thispkt;
+    int rem, len, prevlen = 0, pktnum;
+    unsigned char *rec, *prevrec = NULL, *tmp;
+    unsigned int epoch;
+    int numpkts = sk_MEMPACKET_num(ctx->pkts);
+
+    if (numpkts <= 0)
+        return 0;
+
+    /*
+     * If there are multiple packets we only look in the last one. This should
+     * always be the one where any epoch change occurs.
+     */
+    thispkt = sk_MEMPACKET_value(ctx->pkts, numpkts - 1);
+    if (thispkt == NULL)
+        return 0;
+
+    for (rem = thispkt->len, rec = thispkt->data; rem > 0; rem -= len, rec += len) {
+        if (rem < DTLS1_RT_HEADER_LENGTH)
+            return 0;
+        epoch = (rec[EPOCH_HI] << 8) | rec[EPOCH_LO];
+        len = ((rec[RECORD_LEN_HI] << 8) | rec[RECORD_LEN_LO])
+                + DTLS1_RT_HEADER_LENGTH;
+        if (rem < len)
+            return 0;
+
+        /* Assumes the epoch change does not happen on the first record */
+        if (epoch != ctx->epoch) {
+            if (prevrec == NULL)
+                return 0;
+
+            /*
+             * We found 2 records with different epochs. Take a copy of the
+             * earlier record
+             */
+            tmp = OPENSSL_malloc(prevlen);
+            if (tmp == NULL)
+                return 0;
+
+            memcpy(tmp, prevrec, prevlen);
+            /*
+             * Move everything from this record onwards, including any trailing
+             * records, and overwrite the earlier record
+             */
+            memmove(prevrec, rec, rem);
+            thispkt->len -= prevlen;
+            pktnum = thispkt->num;
+
+            /*
+             * Create a new packet for the earlier record that we took out and
+             * add it to the end of the packet list.
+             */
+            thispkt = OPENSSL_malloc(sizeof(*thispkt));
+            if (thispkt == NULL) {
+                OPENSSL_free(tmp);
+                return 0;
+            }
+            thispkt->type = INJECT_PACKET;
+            thispkt->data = tmp;
+            thispkt->len = prevlen;
+            thispkt->num = pktnum + 1;
+            if (sk_MEMPACKET_insert(ctx->pkts, thispkt, numpkts) <= 0) {
+                OPENSSL_free(tmp);
+                OPENSSL_free(thispkt);
+                return 0;
+            }
+
+            return 1;
+        }
+        prevrec = rec;
+        prevlen = len;
+    }
+
+    return 0;
+}
+
+/* Take the last and penultimate packets and swap them around */
+int mempacket_swap_recent(BIO *bio)
+{
+    MEMPACKET_TEST_CTX *ctx = BIO_get_data(bio);
+    MEMPACKET *thispkt;
+    int numpkts = sk_MEMPACKET_num(ctx->pkts);
+
+    /* We need at least 2 packets to be able to swap them */
+    if (numpkts <= 1)
+        return 0;
+
+    /* Get the penultimate packet */
+    thispkt = sk_MEMPACKET_value(ctx->pkts, numpkts - 2);
+    if (thispkt == NULL)
+        return 0;
+
+    if (sk_MEMPACKET_delete(ctx->pkts, numpkts - 2) != thispkt)
+        return 0;
+
+    /* Re-add it to the end of the list */
+    thispkt->num++;
+    if (sk_MEMPACKET_insert(ctx->pkts, thispkt, numpkts - 1) <= 0)
+        return 0;
+
+    /* We also have to adjust the packet number of the other packet */
+    thispkt = sk_MEMPACKET_value(ctx->pkts, numpkts - 2);
+    if (thispkt == NULL)
+        return 0;
+    thispkt->num--;
+
+    return 1;
 }
 
 int mempacket_test_inject(BIO *bio, const char *in, int inl, int pktnum,
@@ -469,7 +584,9 @@ int mempacket_test_inject(BIO *bio, const char *in, int inl, int pktnum,
         thispkt->type = type;
     }
 
-    for(i = 0; (looppkt = sk_MEMPACKET_value(ctx->pkts, i)) != NULL; i++) {
+    for (i = 0; i < sk_MEMPACKET_num(ctx->pkts); i++) {
+        if (!TEST_ptr(looppkt = sk_MEMPACKET_value(ctx->pkts, i)))
+            goto err;
         /* Check if we found the right place to insert this packet */
         if (looppkt->num > thispkt->num) {
             if (sk_MEMPACKET_insert(ctx->pkts, thispkt, i) == 0)
@@ -767,7 +884,7 @@ static int set_nb(int fd)
 {
     int flags;
 
-    flags = fcntl(fd,F_GETFL,0);
+    flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1)
         return flags;
     flags = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -806,7 +923,7 @@ int create_test_sockets(int *cfdp, int *sfdp)
     if (set_nb(afd) == -1)
         goto out;
 
-    while (sfd == -1 || !cfd_connected ) {
+    while (sfd == -1 || !cfd_connected) {
         sfd = accept(afd, NULL, 0);
         if (sfd == -1 && errno != EAGAIN)
             goto out;
@@ -939,11 +1056,29 @@ int create_ssl_objects(SSL_CTX *serverctx, SSL_CTX *clientctx, SSL **sssl,
  * attempt could be restarted by a subsequent call to this function.
  */
 int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
-                               int read)
+                               int read, int listen)
 {
-    int retc = -1, rets = -1, err, abortctr = 0;
+    int retc = -1, rets = -1, err, abortctr = 0, ret = 0;
     int clienterr = 0, servererr = 0;
     int isdtls = SSL_is_dtls(serverssl);
+#ifndef OPENSSL_NO_SOCK
+    BIO_ADDR *peer = NULL;
+
+    if (listen) {
+        if (!isdtls) {
+            TEST_error("DTLSv1_listen requested for non-DTLS object\n");
+            return 0;
+        }
+        peer = BIO_ADDR_new();
+        if (!TEST_ptr(peer))
+            return 0;
+    }
+#else
+    if (listen) {
+        TEST_error("DTLSv1_listen requested in a no-sock build\n");
+        return 0;
+    }
+#endif
 
     do {
         err = SSL_ERROR_WANT_WRITE;
@@ -960,13 +1095,29 @@ int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
             clienterr = 1;
         }
         if (want != SSL_ERROR_NONE && err == want)
-            return 0;
+            goto err;
 
         err = SSL_ERROR_WANT_WRITE;
         while (!servererr && rets <= 0 && err == SSL_ERROR_WANT_WRITE) {
-            rets = SSL_accept(serverssl);
-            if (rets <= 0)
-                err = SSL_get_error(serverssl, rets);
+#ifndef OPENSSL_NO_SOCK
+            if (listen) {
+                rets = DTLSv1_listen(serverssl, peer);
+                if (rets < 0) {
+                    err = SSL_ERROR_SSL;
+                } else if (rets == 0) {
+                    err = SSL_ERROR_WANT_READ;
+                } else {
+                    /* Success - stop listening and call SSL_accept from now on */
+                    listen = 0;
+                    rets = 0;
+                }
+            } else
+#endif
+            {
+                rets = SSL_accept(serverssl);
+                if (rets <= 0)
+                    err = SSL_get_error(serverssl, rets);
+            }
         }
 
         if (!servererr && rets <= 0
@@ -978,9 +1129,9 @@ int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
             servererr = 1;
         }
         if (want != SSL_ERROR_NONE && err == want)
-            return 0;
+            goto err;
         if (clienterr && servererr)
-            return 0;
+            goto err;
         if (isdtls && read) {
             unsigned char buf[20];
 
@@ -989,20 +1140,20 @@ int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
                 if (SSL_read(serverssl, buf, sizeof(buf)) > 0) {
                     /* We don't expect this to succeed! */
                     TEST_info("Unexpected SSL_read() success!");
-                    return 0;
+                    goto err;
                 }
             }
             if (retc > 0 && rets <= 0) {
                 if (SSL_read(clientssl, buf, sizeof(buf)) > 0) {
                     /* We don't expect this to succeed! */
                     TEST_info("Unexpected SSL_read() success!");
-                    return 0;
+                    goto err;
                 }
             }
         }
         if (++abortctr == MAXLOOPS) {
             TEST_info("No progress made");
-            return 0;
+            goto err;
         }
         if (isdtls && abortctr <= 50 && (abortctr % 10) == 0) {
             /*
@@ -1010,11 +1161,16 @@ int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
              * give the DTLS timer a chance to do something. We only do this for
              * the first few times to prevent hangs.
              */
-            ossl_sleep(50);
+            OSSL_sleep(50);
         }
     } while (retc <=0 || rets <= 0);
 
-    return 1;
+    ret = 1;
+ err:
+#ifndef OPENSSL_NO_SOCK
+    BIO_ADDR_free(peer);
+#endif
+    return ret;
 }
 
 /*
@@ -1027,7 +1183,7 @@ int create_ssl_connection(SSL *serverssl, SSL *clientssl, int want)
     unsigned char buf;
     size_t readbytes;
 
-    if (!create_bare_ssl_connection(serverssl, clientssl, want, 1))
+    if (!create_bare_ssl_connection(serverssl, clientssl, want, 1, 0))
         return 0;
 
     /*

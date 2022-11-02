@@ -39,9 +39,9 @@ B<openssl> B<req>
 [B<-set_serial> I<n>]
 [B<-newhdr>]
 [B<-copy_extensions> I<arg>]
-[B<-addext> I<ext>]
 [B<-extensions> I<section>]
 [B<-reqexts> I<section>]
+[B<-addext> I<ext>]
 [B<-precert>]
 [B<-utf8>]
 [B<-reqopt>]
@@ -70,18 +70,24 @@ for use as root CAs for example.
 
 Print out a usage message.
 
-=item B<-inform> B<DER>|B<PEM>, B<-outform> B<DER>|B<PEM>
+=item B<-inform> B<DER>|B<PEM>
 
-The input and output formats; unspecified by default.
+The CSR input file format to use; by default PEM is tried first.
+See L<openssl-format-options(1)> for details.
+
+=item B<-outform> B<DER>|B<PEM>
+
+The output format; unspecified by default.
 See L<openssl-format-options(1)> for details.
 
 The data is a PKCS#10 object.
 
 =item B<-in> I<filename>
 
-This specifies the input filename to read a request from or standard input
-if this option is not specified. A request is only read if the creation
-options (B<-new> or B<-newkey>) are not specified.
+This specifies the input filename to read a request from.
+This defaults to standard input unless B<-x509> or B<-CA> is specified.
+A request is only read if the creation options
+(B<-new> or B<-newkey> or B<-precert>) are not specified.
 
 =item B<-sigopt> I<nm>:I<v>
 
@@ -156,8 +162,13 @@ else by default an RSA key with 2048 bits length.
 
 =item B<-newkey> I<arg>
 
-This option creates a new certificate request and a new private
-key. The argument takes one of several forms.
+This option is used to generate a new private key unless B<-key> is given.
+It is subsequently used as if it was given using the B<-key> option.
+
+This option implies the B<-new> flag to create a new certificate request
+or a new certificate in case B<-x509> is used.
+
+The argument takes one of several forms.
 
 [B<rsa:>]I<nbits> generates an RSA key I<nbits> in size.
 If I<nbits> is omitted, i.e., B<-newkey> B<rsa> is specified,
@@ -193,9 +204,14 @@ See L<openssl-genpkey(1)/KEY GENERATION OPTIONS> for more details.
 
 =item B<-key> I<filename>|I<uri>
 
-This specifies the key to include and to use for request self-signature
-and for self-signing certificates produced with the B<-x509> option.
-It also accepts PKCS#8 format private keys for PEM format files.
+This option provides the private key for signing a new certificate or
+certificate request.
+Unless B<-in> is given, the corresponding public key is placed in
+the new certificate or certificate request, resulting in a self-signature.
+
+For certificate signing this option is overridden by the B<-CA> option.
+
+This option also accepts PKCS#8 format private keys for PEM format files.
 
 =item B<-keyform> B<DER>|B<PEM>|B<P12>|B<ENGINE>
 
@@ -268,6 +284,8 @@ This option outputs a certificate instead of a certificate request.
 This is typically used to generate test certificates.
 It is implied by the B<-CA> option.
 
+This option implies the B<-new> flag if B<-in> is not given.
+
 If an existing request is specified with the B<-in> option, it is converted
 to the a certificate; otherwise a request is created from scratch.
 
@@ -277,8 +295,9 @@ a large random number will be used for the serial number.
 Unless the B<-copy_extensions> option is used,
 X.509 extensions are not copied from any provided request input file.
 
-X.509 extensions to be added can be specified in the configuration file
-or using the B<-addext> option.
+X.509 extensions to be added can be specified in the configuration file,
+possibly using the B<-config> and B<-extensions> options,
+and/or using the B<-addext> option.
 
 =item B<-CA> I<filename>|I<uri>
 
@@ -317,6 +336,15 @@ all extensions in the request are copied to the certificate.
 The main use of this option is to allow a certificate request to supply
 values for certain extensions such as subjectAltName.
 
+=item B<-extensions> I<section>,
+B<-reqexts> I<section>
+
+Can be used to override the name of the configuration file section
+from which X.509 extensions are included
+in the certificate (when B<-x509> is in use) or certificate request.
+This allows several different sections to be used in the same configuration
+file to specify requests for a variety of purposes.
+
 =item B<-addext> I<ext>
 
 Add a specific extension to the certificate (if B<-x509> is in use)
@@ -324,16 +352,6 @@ or certificate request.  The argument must have the form of
 a key=value pair as it would appear in a config file.
 
 This option can be given multiple times.
-
-=item B<-extensions> I<section>
-
-=item B<-reqexts> I<section>
-
-These options specify alternative sections to include certificate
-extensions (if B<-x509> is in use) or certificate request extensions.
-This allows several different sections to
-be used in the same configuration file to specify requests for
-a variety of purposes.
 
 =item B<-precert>
 
@@ -401,8 +419,7 @@ The options available are described in detail below.
 
 =over 4
 
-=item B<input_password>
-=item B<output_password>
+=item B<input_password>, B<output_password>
 
 The passwords for the input private key file (if present) and
 the output private key file (if one will be created). The
@@ -750,6 +767,8 @@ has no effect.
 
 The B<-engine> option was deprecated in OpenSSL 3.0.
 The <-nodes> option was deprecated in OpenSSL 3.0, too; use B<-noenc> instead.
+
+The B<-reqexts> option has been made an alias of B<-extensions> in OpenSSL 3.2.
 
 =head1 COPYRIGHT
 

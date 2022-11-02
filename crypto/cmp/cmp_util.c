@@ -53,8 +53,7 @@ static OSSL_CMP_severity parse_level(const char *level)
     if (end_level == NULL)
         return -1;
 
-    if (strncmp(level, OSSL_CMP_LOG_PREFIX,
-                strlen(OSSL_CMP_LOG_PREFIX)) == 0)
+    if (HAS_PREFIX(level, OSSL_CMP_LOG_PREFIX))
         level += strlen(OSSL_CMP_LOG_PREFIX);
     len = end_level - level;
     if (len > max_level_len)
@@ -101,8 +100,8 @@ const char *ossl_cmp_log_parse_metadata(const char *buf,
                     *file = OPENSSL_strndup(p_file, p_line - 1 - p_file);
                     /* no real problem if OPENSSL_strndup() returns NULL */
                     *line = (int)line_number;
-                    msg = strchr(p_level, ':') + 1;
-                    if (*msg == ' ')
+                    msg = strchr(p_level, ':');
+                    if (msg != NULL && *++msg == ' ')
                         msg++;
                 }
             }

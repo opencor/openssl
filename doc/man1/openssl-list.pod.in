@@ -12,6 +12,7 @@ B<openssl list>
 [B<-verbose>]
 [B<-select> I<name>]
 [B<-1>]
+[B<-all-algorithms>]
 [B<-commands>]
 [B<-standard-commands>]
 [B<-digest-algorithms>]
@@ -72,6 +73,40 @@ Only list algorithms that match this name.
 List the commands, digest-commands, or cipher-commands in a single column.
 If used, this option must be given first.
 
+=item B<-all-algorithms>
+
+Display lists of all algorithms.  These include:
+
+=over 4
+
+=item Asymmetric ciphers
+
+=item Decoders
+
+=item Digests
+
+=item Encoders
+
+=item Key derivation algorithms (KDF)
+
+=item Key encapsulation methods (KEM)
+
+=item Key exchange algorithms (KEX)
+
+=item Key managers
+
+=item Message authentication code algorithms (MAC)
+
+=item Random number generators (RNG, DRBG)
+
+=item Signature algorithms
+
+=item Store loaders
+
+=item Symmetric ciphers
+
+=back
+
 =item B<-commands>
 
 Display a list of standard commands.
@@ -94,10 +129,10 @@ This option is deprecated. Use B<cipher-algorithms> instead.
 Display a list of cipher commands, which are typically used as input
 to the L<openssl-enc(1)> or L<openssl-speed(1)> commands.
 
-=item B<-digest-algorithms>, B<-kdf-algorithms>, B<-mac-algorithms>,
-B<-cipher-algorithms>
+=item B<-cipher-algorithms>, B<-digest-algorithms>, B<-kdf-algorithms>,
+B<-mac-algorithms>,
 
-Display a list of cipher, digest, kdf and mac algorithms.
+Display a list of symmetric cipher, digest, kdf and mac algorithms.
 See L</Display of algorithm names> for a description of how names are
 displayed.
 

@@ -19,7 +19,7 @@ int create_ssl_ctx_pair(OSSL_LIB_CTX *libctx, const SSL_METHOD *sm,
 int create_ssl_objects(SSL_CTX *serverctx, SSL_CTX *clientctx, SSL **sssl,
                        SSL **cssl, BIO *s_to_c_fbio, BIO *c_to_s_fbio);
 int create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
-                               int read);
+                               int read, int listen);
 int create_ssl_objects2(SSL_CTX *serverctx, SSL_CTX *clientctx, SSL **sssl,
                        SSL **cssl, int sfd, int cfd);
 int create_test_sockets(int *cfd, int *sfd);
@@ -49,6 +49,8 @@ void bio_s_always_retry_free(void);
 #define MEMPACKET_CTRL_GET_DROP_REC         (3 << 15)
 #define MEMPACKET_CTRL_SET_DUPLICATE_REC    (4 << 15)
 
+int mempacket_swap_epoch(BIO *bio);
+int mempacket_swap_recent(BIO *bio);
 int mempacket_test_inject(BIO *bio, const char *in, int inl, int pktnum,
                           int type);
 

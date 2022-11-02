@@ -13,7 +13,6 @@
 #include <openssl/err.h>
 #include <openssl/params.h>
 #include <openssl/evp.h>
-#include <openssl/err.h>
 #include <openssl/proverr.h>
 #include "internal/nelem.h"
 #include "internal/sizes.h"
@@ -73,10 +72,8 @@ static void *eddsa_newctx(void *provctx, const char *propq_unused)
         return NULL;
 
     peddsactx = OPENSSL_zalloc(sizeof(PROV_EDDSA_CTX));
-    if (peddsactx == NULL) {
-        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+    if (peddsactx == NULL)
         return NULL;
-    }
 
     peddsactx->libctx = PROV_LIBCTX_OF(provctx);
 
@@ -97,6 +94,14 @@ static int eddsa_digest_signverify_init(void *vpeddsactx, const char *mdname,
 
     if (mdname != NULL && mdname[0] != '\0') {
         ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_DIGEST);
+        return 0;
+    }
+
+    if (edkey == NULL) {
+        if (peddsactx->key != NULL)
+            /* there is nothing to do on reinit */
+            return 1;
+        ERR_raise(ERR_LIB_PROV, PROV_R_NO_KEY_SET);
         return 0;
     }
 
@@ -124,6 +129,7 @@ static int eddsa_digest_signverify_init(void *vpeddsactx, const char *mdname,
     default:
         /* Should never happen */
         ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
+        ossl_ecx_key_free(edkey);
         return 0;
     }
     if (ret && WPACKET_finish(&pkt)) {
@@ -156,8 +162,14 @@ int ed25519_digest_sign(void *vpeddsactx, unsigned char *sigret,
         return 0;
     }
 #ifdef S390X_EC_ASM
-    if (S390X_CAN_SIGN(ED25519))
-        return s390x_ed25519_digestsign(edkey, sigret, tbs, tbslen);
+    if (S390X_CAN_SIGN(ED25519)) {
+	    if (s390x_ed25519_digestsign(edkey, sigret, tbs, tbslen) == 0) {
+		    ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SIGN);
+		    return 0;
+	    }
+	    *siglen = ED25519_SIGSIZE;
+	    return 1;
+    }
 #endif /* S390X_EC_ASM */
     if (ossl_ed25519_sign(sigret, tbs, tbslen, edkey->pubkey, edkey->privkey,
                           peddsactx->libctx, NULL) == 0) {
@@ -187,8 +199,14 @@ int ed448_digest_sign(void *vpeddsactx, unsigned char *sigret,
         return 0;
     }
 #ifdef S390X_EC_ASM
-    if (S390X_CAN_SIGN(ED448))
-        return s390x_ed448_digestsign(edkey, sigret, tbs, tbslen);
+    if (S390X_CAN_SIGN(ED448)) {
+        if (s390x_ed448_digestsign(edkey, sigret, tbs, tbslen) == 0) {
+		ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SIGN);
+		return 0;
+	}
+	*siglen = ED448_SIGSIZE;
+	return 1;
+    }
 #endif /* S390X_EC_ASM */
     if (ossl_ed448_sign(peddsactx->libctx, sigret, tbs, tbslen, edkey->pubkey,
                         edkey->privkey, NULL, 0, edkey->propq) == 0) {

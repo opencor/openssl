@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -26,7 +26,6 @@
 #include "prov/providercommon.h"
 #include "prov/provider_ctx.h"
 #include "prov/macsignature.h"
-#include "e_os.h" /* strcasecmp */
 
 static OSSL_FUNC_keymgmt_new_fn mac_new;
 static OSSL_FUNC_keymgmt_free_fn mac_free;
@@ -109,7 +108,7 @@ int ossl_mac_key_up_ref(MAC_KEY *mackey)
 
     /* This is effectively doing a new operation on the MAC_KEY and should be
      * adequately guarded again modules' error states.  However, both current
-     * calls here are guarded propery in signature/mac_legacy.c.  Thus, it
+     * calls here are guarded properly in signature/mac_legacy.c.  Thus, it
      * could be removed here.  The concern is that something in the future
      * might call this function without adequate guards.  It's a cheap call,
      * it seems best to leave it even though it is currently redundant.
@@ -195,10 +194,8 @@ static int mac_key_fromdata(MAC_KEY *key, const OSSL_PARAM params[])
         OPENSSL_secure_clear_free(key->priv_key, key->priv_key_len);
         /* allocate at least one byte to distinguish empty key from no key set */
         key->priv_key = OPENSSL_secure_malloc(p->data_size > 0 ? p->data_size : 1);
-        if (key->priv_key == NULL) {
-            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        if (key->priv_key == NULL)
             return 0;
-        }
         memcpy(key->priv_key, p->data, p->data_size);
         key->priv_key_len = p->data_size;
     }
@@ -211,10 +208,8 @@ static int mac_key_fromdata(MAC_KEY *key, const OSSL_PARAM params[])
         }
         OPENSSL_free(key->properties);
         key->properties = OPENSSL_strdup(p->data);
-        if (key->properties == NULL) {
-            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        if (key->properties == NULL)
             return 0;
-        }
     }
 
     if (key->cmac && !ossl_prov_cipher_load_from_params(&key->cipher, params,
@@ -430,10 +425,8 @@ static int mac_gen_set_params(void *genctx, const OSSL_PARAM params[])
             return 0;
         }
         gctx->priv_key = OPENSSL_secure_malloc(p->data_size);
-        if (gctx->priv_key == NULL) {
-            ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        if (gctx->priv_key == NULL)
             return 0;
-        }
         memcpy(gctx->priv_key, p->data, p->data_size);
         gctx->priv_key_len = p->data_size;
     }
@@ -487,7 +480,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
         return NULL;
 
     if ((key = ossl_mac_key_new(gctx->libctx, 0)) == NULL) {
-        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_PROV, ERR_R_PROV_LIB);
         return NULL;
     }
 
@@ -508,6 +501,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
      * of this can be removed and we will only support the EVP_KDF APIs.
      */
     if (!ossl_prov_cipher_copy(&key->cipher, &gctx->cipher)) {
+        ossl_mac_key_free(key);
         ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
         return NULL;
     }

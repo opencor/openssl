@@ -63,8 +63,8 @@ Source code tarballs of the official releases can be downloaded from
 The OpenSSL project does not distribute the toolkit in binary form.
 
 However, for a large variety of operating systems precompiled versions
-of the OpenSSL toolkit are available. In particular on Linux and other
-Unix operating systems it is normally recommended to link against the
+of the OpenSSL toolkit are available. In particular, on Linux and other
+Unix operating systems, it is normally recommended to link against the
 precompiled shared libraries provided by the distributor or vendor.
 
 For Testing and Development
@@ -94,7 +94,7 @@ GitHub and clone your public fork instead.
 
     git clone https://github.com/yourname/openssl.git
 
-This is necessary, because all development of OpenSSL nowadays is done via
+This is necessary because all development of OpenSSL nowadays is done via
 GitHub pull requests. For more details, see [Contributing](#contributing).
 
 Build and Install
@@ -113,8 +113,8 @@ document.
  * [Notes on Perl](NOTES-PERL.md)
  * [Notes on Valgrind](NOTES-VALGRIND.md)
 
-Specific notes on upgrading to OpenSSL 3.0 from previous versions, as well as
-known issues are available on the [OpenSSL 3.0 Wiki] page.
+Specific notes on upgrading to OpenSSL 3.0 from previous versions can be found
+in the [migration_guide(7ossl)] manual page.
 
 Documentation
 =============
@@ -126,13 +126,14 @@ The manual pages for the master branch and all current stable releases are
 available online.
 
 - [OpenSSL master](https://www.openssl.org/docs/manmaster)
+- [OpenSSL 3.0](https://www.openssl.org/docs/man3.0)
 - [OpenSSL 1.1.1](https://www.openssl.org/docs/man1.1.1)
 
 Wiki
 ----
 
 There is a Wiki at [wiki.openssl.org] which is currently not very active.
-It contains a lot of useful information, not all of which is up to date.
+It contains a lot of useful information, not all of which is up-to-date.
 
 License
 =======
@@ -147,7 +148,7 @@ Support
 =======
 
 There are various ways to get in touch. The correct channel depends on
-your requirement. see the [SUPPORT](SUPPORT.md) file for more details.
+your requirement. See the [SUPPORT](SUPPORT.md) file for more details.
 
 Contributing
 ============
@@ -159,13 +160,13 @@ Legalities
 ==========
 
 A number of nations restrict the use or export of cryptography. If you are
-potentially subject to such restrictions you should seek legal advice before
+potentially subject to such restrictions, you should seek legal advice before
 attempting to develop or distribute cryptographic code.
 
 Copyright
 =========
 
-Copyright (c) 1998-2021 The OpenSSL Project
+Copyright (c) 1998-2022 The OpenSSL Project
 
 Copyright (c) 1995-1998 Eric A. Young, Tim J. Hudson
 
@@ -193,9 +194,9 @@ All rights reserved.
     <https://wiki.openssl.org>
     "OpenSSL Wiki"
 
-[OpenSSL 3.0 Wiki]:
-    <https://wiki.openssl.org/index.php/OpenSSL_3.0>
-    "OpenSSL 3.0 Wiki"
+[migration_guide(7ossl)]:
+    <https://www.openssl.org/docs/manmaster/man7/migration_guide.html>
+    "OpenSSL Migration Guide"
 
 [RFC 8446]:
      <https://tools.ietf.org/html/rfc8446>

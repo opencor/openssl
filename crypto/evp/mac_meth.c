@@ -1,3 +1,12 @@
+/*
+ * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ *
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://www.openssl.org/source/license.html
+ */
+
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/core.h>
@@ -57,7 +66,7 @@ static void *evp_mac_from_algorithm(int name_id,
     int fnmaccnt = 0, fnctxcnt = 0;
 
     if ((mac = evp_mac_new()) == NULL) {
-        ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_EVP, ERR_R_EVP_LIB);
         return NULL;
     }
     mac->name_id = name_id;

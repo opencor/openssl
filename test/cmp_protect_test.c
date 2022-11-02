@@ -95,7 +95,7 @@ static int execute_calc_protection_pbmac_test(CMP_PROTECT_TEST_FIXTURE *fixture)
 
 /*
  * This function works similarly to parts of CMP_verify_signature in cmp_vfy.c,
- * but without the need for a OSSL_CMP_CTX or a X509 certificate
+ * but without the need for an OSSL_CMP_CTX or a X509 certificate
  */
 static int verify_signature(OSSL_CMP_MSG *msg,
                             ASN1_BIT_STRING *protection,
@@ -340,7 +340,7 @@ static int execute_cmp_build_cert_chain_test(CMP_PROTECT_TEST_FIXTURE *fixture)
     if (TEST_ptr(chain)) {
         /* Check whether chain built is equal to the expected one */
         ret = TEST_int_eq(0, STACK_OF_X509_cmp(chain, fixture->chain));
-        sk_X509_pop_free(chain, X509_free);
+        OSSL_STACK_OF_X509_free(chain);
     }
     if (!ret)
         return 0;
@@ -355,7 +355,7 @@ static int execute_cmp_build_cert_chain_test(CMP_PROTECT_TEST_FIXTURE *fixture)
         if (ret && chain != NULL) {
             /* Check whether chain built is equal to the expected one */
             ret = TEST_int_eq(0, STACK_OF_X509_cmp(chain, fixture->chain));
-            sk_X509_pop_free(chain, X509_free);
+            OSSL_STACK_OF_X509_free(chain);
         }
     }
     X509_STORE_free(store);
@@ -475,7 +475,7 @@ static int execute_X509_STORE_test(CMP_PROTECT_TEST_FIXTURE *fixture)
     res = 1;
  err:
     X509_STORE_free(store);
-    sk_X509_pop_free(sk, X509_free);
+    OSSL_STACK_OF_X509_free(sk);
     return res;
 
 }

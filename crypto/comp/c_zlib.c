@@ -20,16 +20,7 @@
 
 COMP_METHOD *COMP_zlib(void);
 
-static COMP_METHOD zlib_method_nozlib = {
-    NID_undef,
-    "(undef)",
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-};
-
-#ifndef ZLIB
+#ifdef OPENSSL_NO_ZLIB
 # undef ZLIB_SHARED
 #else
 
@@ -37,12 +28,12 @@ static COMP_METHOD zlib_method_nozlib = {
 
 static int zlib_stateful_init(COMP_CTX *ctx);
 static void zlib_stateful_finish(COMP_CTX *ctx);
-static int zlib_stateful_compress_block(COMP_CTX *ctx, unsigned char *out,
-                                        unsigned int olen, unsigned char *in,
-                                        unsigned int ilen);
-static int zlib_stateful_expand_block(COMP_CTX *ctx, unsigned char *out,
-                                      unsigned int olen, unsigned char *in,
-                                      unsigned int ilen);
+static ossl_ssize_t zlib_stateful_compress_block(COMP_CTX *ctx, unsigned char *out,
+                                                 size_t olen, unsigned char *in,
+                                                 size_t ilen);
+static ossl_ssize_t zlib_stateful_expand_block(COMP_CTX *ctx, unsigned char *out,
+                                               size_t olen, unsigned char *in,
+                                               size_t ilen);
 
 /* memory allocations functions for zlib initialisation */
 static void *zlib_zalloc(void *opaque, unsigned int no, unsigned int size)
@@ -162,9 +153,9 @@ static void zlib_stateful_finish(COMP_CTX *ctx)
     OPENSSL_free(state);
 }
 
-static int zlib_stateful_compress_block(COMP_CTX *ctx, unsigned char *out,
-                                        unsigned int olen, unsigned char *in,
-                                        unsigned int ilen)
+static ossl_ssize_t zlib_stateful_compress_block(COMP_CTX *ctx, unsigned char *out,
+                                                 size_t olen, unsigned char *in,
+                                                 size_t ilen)
 {
     int err = Z_OK;
     struct zlib_state *state = ctx->data;
@@ -180,12 +171,14 @@ static int zlib_stateful_compress_block(COMP_CTX *ctx, unsigned char *out,
         err = deflate(&state->ostream, Z_SYNC_FLUSH);
     if (err != Z_OK)
         return -1;
-    return olen - state->ostream.avail_out;
+    if (state->ostream.avail_out > olen)
+        return -1;
+    return (ossl_ssize_t)(olen - state->ostream.avail_out);
 }
 
-static int zlib_stateful_expand_block(COMP_CTX *ctx, unsigned char *out,
-                                      unsigned int olen, unsigned char *in,
-                                      unsigned int ilen)
+static ossl_ssize_t zlib_stateful_expand_block(COMP_CTX *ctx, unsigned char *out,
+                                               size_t olen, unsigned char *in,
+                                               size_t ilen)
 {
     int err = Z_OK;
     struct zlib_state *state = ctx->data;
@@ -201,7 +194,9 @@ static int zlib_stateful_expand_block(COMP_CTX *ctx, unsigned char *out,
         err = inflate(&state->istream, Z_SYNC_FLUSH);
     if (err != Z_OK)
         return -1;
-    return olen - state->istream.avail_out;
+    if (state->istream.avail_out > olen)
+        return -1;
+    return (ossl_ssize_t)(olen - state->istream.avail_out);
 }
 
 static CRYPTO_ONCE zlib_once = CRYPTO_ONCE_STATIC_INIT;
@@ -245,9 +240,9 @@ DEFINE_RUN_ONCE_STATIC(ossl_comp_zlib_init)
 
 COMP_METHOD *COMP_zlib(void)
 {
-    COMP_METHOD *meth = &zlib_method_nozlib;
+    COMP_METHOD *meth = NULL;
 
-#ifdef ZLIB
+#ifndef OPENSSL_NO_ZLIB
     if (RUN_ONCE(&zlib_once, ossl_comp_zlib_init))
         meth = &zlib_stateful_method;
 #endif
@@ -264,7 +259,7 @@ void ossl_comp_zlib_cleanup(void)
 #endif
 }
 
-#ifdef ZLIB
+#ifndef OPENSSL_NO_ZLIB
 
 /* Zlib based compression/decompression filter BIO */
 
@@ -304,12 +299,18 @@ static const BIO_METHOD bio_meth_zlib = {
     bio_zlib_free,
     bio_zlib_callback_ctrl
 };
+#endif
 
 const BIO_METHOD *BIO_f_zlib(void)
 {
-    return &bio_meth_zlib;
+#ifndef OPENSSL_NO_ZLIB
+    if (RUN_ONCE(&zlib_once, ossl_comp_zlib_init))
+        return &bio_meth_zlib;
+#endif
+    return NULL;
 }
 
+#ifndef OPENSSL_NO_ZLIB
 static int bio_zlib_new(BIO *bi)
 {
     BIO_ZLIB_CTX *ctx;
@@ -321,10 +322,8 @@ static int bio_zlib_new(BIO *bi)
     }
 # endif
     ctx = OPENSSL_zalloc(sizeof(*ctx));
-    if (ctx == NULL) {
-        ERR_raise(ERR_LIB_COMP, ERR_R_MALLOC_FAILURE);
+    if (ctx == NULL)
         return 0;
-    }
     ctx->ibufsize = ZLIB_DEFAULT_BUFSIZE;
     ctx->obufsize = ZLIB_DEFAULT_BUFSIZE;
     ctx->zin.zalloc = Z_NULL;
@@ -376,11 +375,13 @@ static int bio_zlib_read(BIO *b, char *out, int outl)
     BIO_clear_retry_flags(b);
     if (!ctx->ibuf) {
         ctx->ibuf = OPENSSL_malloc(ctx->ibufsize);
-        if (ctx->ibuf == NULL) {
-            ERR_raise(ERR_LIB_COMP, ERR_R_MALLOC_FAILURE);
+        if (ctx->ibuf == NULL)
+            return 0;
+        if ((ret = inflateInit(zin)) != Z_OK) {
+            ERR_raise_data(ERR_LIB_COMP, COMP_R_ZLIB_INFLATE_ERROR,
+                           "zlib error: %s", zError(ret));
             return 0;
         }
-        inflateInit(zin);
         zin->next_in = ctx->ibuf;
         zin->avail_in = 0;
     }
@@ -437,13 +438,15 @@ static int bio_zlib_write(BIO *b, const char *in, int inl)
     if (!ctx->obuf) {
         ctx->obuf = OPENSSL_malloc(ctx->obufsize);
         /* Need error here */
-        if (ctx->obuf == NULL) {
-            ERR_raise(ERR_LIB_COMP, ERR_R_MALLOC_FAILURE);
+        if (ctx->obuf == NULL)
             return 0;
-        }
         ctx->optr = ctx->obuf;
         ctx->ocount = 0;
-        deflateInit(zout, ctx->comp_level);
+        if ((ret = deflateInit(zout, ctx->comp_level)) != Z_OK) {
+            ERR_raise_data(ERR_LIB_COMP, COMP_R_ZLIB_DEFLATE_ERROR,
+                           "zlib error: %s", zError(ret));
+            return 0;
+        }
         zout->next_out = ctx->obuf;
         zout->avail_out = ctx->obufsize;
     }

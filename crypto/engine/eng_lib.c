@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -7,7 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "e_os.h"
+#include "internal/e_os.h"
 #include "eng_local.h"
 #include <openssl/rand.h>
 #include "internal/refcount.h"
@@ -28,11 +28,13 @@ ENGINE *ENGINE_new(void)
 {
     ENGINE *ret;
 
-    if (!RUN_ONCE(&engine_lock_init, do_engine_lock_init)
-        || (ret = OPENSSL_zalloc(sizeof(*ret))) == NULL) {
-        ERR_raise(ERR_LIB_ENGINE, ERR_R_MALLOC_FAILURE);
-        return NULL;
+    if (!RUN_ONCE(&engine_lock_init, do_engine_lock_init)) {
+        /* Maybe this should be raised in do_engine_lock_init() */
+        ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
+        return 0;
     }
+    if ((ret = OPENSSL_zalloc(sizeof(*ret))) == NULL)
+        return NULL;
     ret->struct_ref = 1;
     ENGINE_REF_PRINT(ret, 0, 1);
     if (!CRYPTO_new_ex_data(CRYPTO_EX_INDEX_ENGINE, ret, &ret->ex_data)) {
@@ -65,6 +67,7 @@ void engine_set_all_null(ENGINE *e)
     e->load_pubkey = NULL;
     e->cmd_defns = NULL;
     e->flags = 0;
+    e->dynamic_id = NULL;
 }
 
 int engine_free_util(ENGINE *e, int not_locked)
@@ -90,6 +93,7 @@ int engine_free_util(ENGINE *e, int not_locked)
      */
     if (e->destroy)
         e->destroy(e);
+    engine_remove_dynamic_id(e, not_locked);
     CRYPTO_free_ex_data(CRYPTO_EX_INDEX_ENGINE, e, &e->ex_data);
     OPENSSL_free(e);
     return 1;
@@ -123,10 +127,8 @@ static ENGINE_CLEANUP_ITEM *int_cleanup_item(ENGINE_CLEANUP_CB *cb)
 {
     ENGINE_CLEANUP_ITEM *item;
 
-    if ((item = OPENSSL_malloc(sizeof(*item))) == NULL) {
-        ERR_raise(ERR_LIB_ENGINE, ERR_R_MALLOC_FAILURE);
+    if ((item = OPENSSL_malloc(sizeof(*item))) == NULL)
         return NULL;
-    }
     item->cb = cb;
     return item;
 }

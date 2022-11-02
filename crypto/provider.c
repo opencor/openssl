@@ -35,9 +35,15 @@ OSSL_PROVIDER *OSSL_PROVIDER_try_load(OSSL_LIB_CTX *libctx, const char *name,
 
     actual = prov;
     if (isnew && !ossl_provider_add_to_store(prov, &actual, retain_fallbacks)) {
-        ossl_provider_deactivate(prov);
+        ossl_provider_deactivate(prov, 1);
         ossl_provider_free(prov);
         return NULL;
+    }
+    if (actual != prov) {
+        if (!ossl_provider_activate(actual, 1, 0)) {
+            ossl_provider_free(actual);
+            return NULL;
+        }
     }
 
     return actual;
@@ -53,7 +59,7 @@ OSSL_PROVIDER *OSSL_PROVIDER_load(OSSL_LIB_CTX *libctx, const char *name)
 
 int OSSL_PROVIDER_unload(OSSL_PROVIDER *prov)
 {
-    if (!ossl_provider_deactivate(prov))
+    if (!ossl_provider_deactivate(prov, 1))
         return 0;
     ossl_provider_free(prov);
     return 1;
@@ -117,10 +123,8 @@ int OSSL_PROVIDER_add_builtin(OSSL_LIB_CTX *libctx, const char *name,
     }
     memset(&entry, 0, sizeof(entry));
     entry.name = OPENSSL_strdup(name);
-    if (entry.name == NULL) {
-        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
+    if (entry.name == NULL)
         return 0;
-    }
     entry.init = init_fn;
     if (!ossl_provider_info_add_to_store(libctx, &entry)) {
         ossl_provider_info_clear(&entry);

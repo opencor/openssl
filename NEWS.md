@@ -7,6 +7,7 @@ release. For more details please read the CHANGES file.
 OpenSSL Releases
 ----------------
 
+ - [OpenSSL 3.2](#openssl-32)
  - [OpenSSL 3.0](#openssl-30)
  - [OpenSSL 1.1.1](#openssl-111)
  - [OpenSSL 1.1.0](#openssl-110)
@@ -15,14 +16,69 @@ OpenSSL Releases
  - [OpenSSL 1.0.0](#openssl-100)
  - [OpenSSL 0.9.x](#openssl-09x)
 
+OpenSSL 3.2
+-----------
+
+### Major changes between OpenSSL 3.0 and OpenSSL 3.2 [under development]
+
+  * Added support for certificate compression (RFC8879), including
+    library support for Brotli and Zstandard compression.
+  * Subject or issuer names in X.509 objects are now displayed as UTF-8 strings
+    by default.
+  * TCP Fast Open (RFC7413) support is available on Linux, macOS, and FreeBSD
+    where enabled and supported.
+  * SSL 3, TLS 1.0, TLS 1.1, and DTLS 1.0 only work at security level 0.
+
 OpenSSL 3.0
 -----------
 
-### Major changes between OpenSSL 1.1.1 and OpenSSL 3.0 [under development]
+### Major changes between OpenSSL 3.0.5 and OpenSSL 3.0.6 [11 Oct 2022]
 
-  * Added migration guide to man7
-  * Implemented support for fully "pluggable" TLSv1.3 groups
-  * Added suport for Kernel TLS (KTLS)
+  * Fix for custom ciphers to prevent accidental use of NULL encryption
+    ([CVE-2022-3358])
+
+### Major changes between OpenSSL 3.0.4 and OpenSSL 3.0.5 [5 Jul 2022]
+
+  * Fixed heap memory corruption with RSA private key operation
+    ([CVE-2022-2274])
+  * Fixed AES OCB failure to encrypt some bytes on 32-bit x86 platforms
+    ([CVE-2022-2097])
+
+### Major changes between OpenSSL 3.0.3 and OpenSSL 3.0.4 [21 Jun 2022]
+
+  * Fixed additional bugs in the c_rehash script which was not properly
+    sanitising shell metacharacters to prevent command injection
+    ([CVE-2022-2068])
+
+### Major changes between OpenSSL 3.0.2 and OpenSSL 3.0.3 [3 May 2022]
+
+  * Fixed a bug in the c_rehash script which was not properly sanitising shell
+    metacharacters to prevent command injection ([CVE-2022-1292])
+  * Fixed a bug in the function `OCSP_basic_verify` that verifies the signer
+    certificate on an OCSP response ([CVE-2022-1343])
+  * Fixed a bug where the RC4-MD5 ciphersuite incorrectly used the
+    AAD data as the MAC key ([CVE-2022-1434])
+  * Fix a bug in the OPENSSL_LH_flush() function that breaks reuse of the memory
+    occuppied by the removed hash table entries ([CVE-2022-1473])
+
+### Major changes between OpenSSL 3.0.1 and OpenSSL 3.0.2
+
+  * Fixed a bug in the BN_mod_sqrt() function that can cause it to loop forever
+    for non-prime moduli ([CVE-2022-0778])
+
+### Major changes between OpenSSL 3.0.0 and OpenSSL 3.0.1
+
+  * Fixed invalid handling of X509_verify_cert() internal errors in libssl
+    ([CVE-2021-4044])
+  * Allow fetching an operation from the provider that owns an unexportable key
+    as a fallback if that is still allowed by the property query.
+
+### Major changes between OpenSSL 1.1.1 and OpenSSL 3.0.0
+
+  * Enhanced 'openssl list' with many new options.
+  * Added migration guide to man7.
+  * Implemented support for fully "pluggable" TLSv1.3 groups.
+  * Added support for Kernel TLS (KTLS).
   * Changed the license to the Apache License v2.0.
   * Moved all variations of the EVP ciphers CAST5, BF, IDEA, SEED, RC2,
     RC4, RC5, and DES to the legacy provider.
@@ -38,6 +94,8 @@ OpenSSL 3.0
   * Remove the `RAND_DRBG` API.
   * Deprecated the `ENGINE` API.
   * Added `OSSL_LIB_CTX`, a libcrypto library context.
+  * Added various `_ex` functions to the OpenSSL API that support using
+    a non-default `OSSL_LIB_CTX`.
   * Interactive mode is removed from the 'openssl' program.
   * The X25519, X448, Ed25519, Ed448, SHAKE128 and SHAKE256 algorithms are
     included in the FIPS provider.
@@ -57,12 +115,13 @@ OpenSSL 3.0
     BIOs (allowing implicit connections), and timeout checks.
   * Added util/check-format.pl for checking adherence to the coding guidelines.
   * Added OSSL_ENCODER, a generic encoder API.
+  * Added OSSL_DECODER, a generic decoder API.
   * Added OSSL_PARAM_BLD, an easier to use API to OSSL_PARAM.
   * Added error raising macros, ERR_raise() and ERR_raise_data().
   * Deprecated ERR_put_error(), ERR_get_error_line(), ERR_get_error_line_data(),
     ERR_peek_error_line_data(), ERR_peek_last_error_line_data() and
     ERR_func_error_string().
-  * Added OSSL_PROVIDER_available(), to check provider availibility.
+  * Added OSSL_PROVIDER_available(), to check provider availability.
   * Added 'openssl mac' that uses the EVP_MAC API.
   * Added 'openssl kdf' that uses the EVP_KDF API.
   * Add OPENSSL_info() and 'openssl info' to get built-in data.
@@ -84,7 +143,10 @@ OpenSSL 3.0
     RC4, RC5 and SEED cipher functions have been deprecated.
   * All of the low-level DH, DSA, ECDH, ECDSA and RSA public key functions
     have been deprecated.
-  * SSL 3, TLS 1.0, TLS 1.1, and DTLS 1.0 only work at security level 0.
+  * SSL 3, TLS 1.0, TLS 1.1, and DTLS 1.0 only work at security level 0,
+    except when RSA key exchange without SHA1 is used.
+  * Added providers, a new pluggability concept that will replace the
+    ENGINE API and ENGINE implementations.
 
 OpenSSL 1.1.1
 -------------

@@ -9,7 +9,7 @@
   (our $osslprefix_q = platform->osslprefix()) =~ s/\$/\\\$/;
 
   our $sover_dirname = platform->shlib_version_as_filename();
-  our $osslver = sprintf "%02d%02d", split(/\./, $config{version});
+  our $osslver = sprintf "%02d", split(/\./, $config{version});
 
   our $sourcedir = $config{sourcedir};
   our $builddir = $config{builddir};
@@ -110,9 +110,9 @@
                 @cnf_defines,
                 'OPENSSLDIR="""$(OPENSSLDIR_C)"""',
                 'ENGINESDIR="""$(ENGINESDIR_C)"""',
-                'MODULESDIR="""$(MODULESDIR_C)"""',
-                #'$(DEFINES)'
+                'MODULESDIR="""$(MODULESDIR_C)"""'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $lib_asflags =
       join(' ', $target{lib_asflags} || (), @{$config{lib_asflags}},
@@ -144,8 +144,8 @@
       join(',', @{$target{dso_defines}}, @{$target{module_defines}},
                 @{$config{dso_defines}}, @{$config{module_defines}},
                 @cnf_defines,
-                #'$(DEFINES)'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $dso_asflags =
       join(' ', $target{dso_asflags} || (), $target{module_asflags} || (),
@@ -180,8 +180,8 @@
       join(',', @{$target{bin_defines}},
                 @{$config{bin_defines}},
                 @cnf_defines,
-                #'$(DEFINES)'
                 )
+      . '$(DEFINES)'
       . "'extradefines'";
   our $bin_asflags =
       join(' ', $target{bin_asflags} || (),
@@ -227,6 +227,14 @@
       my $obj = platform->obj($_);
       push @{$unified_info{includes_extra}->{$obj}}, qw(../);
   }
+  foreach (grep /\[\.ssl\].*?\.o$/, keys %{$unified_info{sources}}) {
+      my $obj = platform->obj($_);
+      # Most of the files in [.ssl.record.methods] include "ssl_local.h"
+      # which includes things like "record/record.h".  Adding "./" as an
+      # inclusion directory helps making this sort of header from these
+      # directories.
+      push @{$unified_info{includes_extra}->{$obj}}, qw(./);
+  }
   foreach (grep /\[\.ssl\.(?:record|statem)\].*?\.o$/, keys %{$unified_info{sources}}) {
       my $obj = platform->obj($_);
       # Most of the files in [.ssl.record] and [.ssl.statem] include
@@ -235,6 +243,14 @@
       # from these directories.
       push @{$unified_info{includes_extra}->{$obj}}, qw(../);
 
+  }
+  foreach (grep /\[\.ssl\.record\.methods\].*?\.o$/, keys %{$unified_info{sources}}) {
+      my $obj = platform->obj($_);
+      # Most of the files in [.ssl.record.methods] include "../../ssl_local.h"
+      # which includes things like "record/record.h".  Adding "../../" as an
+      # inclusion directory helps making this sort of header from these
+      # directories.
+      push @{$unified_info{includes_extra}->{$obj}}, qw(../../);
   }
   foreach (grep /\[\.test\].*?\.o$/, keys %{$unified_info{sources}}) {
       my $obj = platform->obj($_);
@@ -267,6 +283,7 @@ VERBOSE=$(V)
 VERBOSE_FAILURE=$(VF)
 
 VERSION={- "$config{full_version}" -}
+VERSION_NUMBER={- "$config{version}" -}
 MAJOR={- $config{major} -}
 MINOR={- $config{minor} -}
 SHLIB_VERSION_NUMBER={- $config{shlib_version} -}
@@ -355,7 +372,7 @@ OPENSSLDIR_C={- platform->osslprefix() -}DATAROOT:[000000]
 # Where installed ENGINE modules reside, for C
 ENGINESDIR_C={- platform->osslprefix() -}ENGINES{- $sover_dirname.$target{pointer_size} -}:
 # Where modules reside, for C
-MODULESDIR_C={- platform->osslprefix() -}MODULES{- $sover_dirname.$target{pointer_size} -}:
+MODULESDIR_C={- platform->osslprefix() -}MODULES{- $target{pointer_size} -}:
 
 ##### User defined commands and flags ################################
 
@@ -391,6 +408,8 @@ CPPFLAGS_Q={- (my $c = $lib_cppflags.$cppflags) =~ s|"|""|g;
 # .FIRST and .LAST are special targets with MMS and MMK.
 NODEBUG=@
 .FIRST :
+        {- join( "\n        \$(NODEBUG) ", @{ $target{setup_commands} // [] },
+                                           '!' ) -}
         $(NODEBUG) sourcetop = F$PARSE("$(SRCDIR)","[]A.;",,,"SYNTAX_ONLY,NO_CONCEAL") - ".][000000" - "[000000." - "][" - "]A.;" + ".]"
         $(NODEBUG) DEFINE ossl_sourceroot 'sourcetop'
         $(NODEBUG) !
@@ -426,7 +445,9 @@ NODEBUG=@
         $(NODEBUG) ! them, so we create it instead.  This is an unfortunate
         $(NODEBUG) ! necessity.
         $(NODEBUG) !
-        $(NODEBUG) DEFINE openssl "{- sourcedir('include/openssl') -}
+        $(NODEBUG) openssl_inc1 = F$PARSE("[.include.openssl]","A.;",,,"syntax_only") - "A.;"
+        $(NODEBUG) openssl_inc2 = F$PARSE("sourcetop:[include.openssl]","A.;",,,"SYNTAX_ONLY") - "A.;"
+        $(NODEBUG) DEFINE openssl 'openssl_inc1','openssl_inc2'
         $(NODEBUG) !
         $(NODEBUG) ! Figure out the architecture
         $(NODEBUG) !
@@ -439,9 +460,10 @@ NODEBUG=@
 
 .LAST :
         $(NODEBUG) {- join("\n\t\$(NODEBUG) ", map { "DEASSIGN ".uc($_) } @shlibs) || "!" -}
+        $(NODEBUG) DEASSIGN openssl
         $(NODEBUG) DEASSIGN ossl_dataroot
         $(NODEBUG) DEASSIGN ossl_installroot
-        $(NODEBUG) DEASSIGN openssl
+        $(NODEBUG) DEASSIGN ossl_sourceroot
 .DEFAULT :
         @ ! MMS cannot handle no actions...
 
@@ -543,11 +565,11 @@ clean : libclean
         - DELETE []vmsconfig.pm;*
 
 distclean : clean
+        - DELETE [.include.openssl]configuration.h;*
         - DELETE configdata.pm;*
         - DELETE descrip.mms;*
 
 depend : descrip.mms
-descrip.mms : FORCE
 	@ ! {- output_off() if $disabled{makedepend}; "" -}
 	@ $(PERL) {- sourcefile("util", "add-depends.pl") -} "{- $config{makedep_scheme} -}"
 	@ ! {- output_on() if $disabled{makedepend}; "" -}
@@ -567,8 +589,10 @@ uninstall_docs : uninstall_html_docs
 {- output_off() if $disabled{fips}; "" -}
 install_fips : build_sw $(INSTALL_FIPSMODULECONF)
 	@ WRITE SYS$OUTPUT "*** Installing FIPS module"
+	- CREATE/DIR ossl_installroot:[MODULES{- $target{pointer_size} -}.'arch']
+	- CREATE/DIR/PROT=(S:RWED,O:RWE,G:RE,W:RE) OSSL_DATAROOT:[000000]
 	COPY/PROT=W:RE $(INSTALL_FIPSMODULES) -
-                ossl_installroot:[MODULES{- $sover_dirname.$target{pointer_size} -}.'arch']$(FIPSMODULENAME)
+                ossl_installroot:[MODULES{- $target{pointer_size} -}.'arch']$(FIPSMODULENAME)
 	@ WRITE SYS$OUTPUT "*** Installing FIPS module configuration"
 	COPY/PROT=W:RE $(INSTALL_FIPSMODULECONF) OSSL_DATAROOT:[000000]
 
@@ -576,7 +600,7 @@ uninstall_fips :
 	@ WRITE SYS$OUTPUT "*** Uninstalling FIPS module configuration"
 	DELETE OSSL_DATAROOT:[000000]fipsmodule.cnf;*
 	@ WRITE SYS$OUTPUT "*** Uninstalling FIPS module"
-	DELETE ossl_installroot:[MODULES{- $sover_dirname.$target{pointer_size} -}.'arch']$(FIPSMODULENAME);*
+	DELETE ossl_installroot:[MODULES{- $target{pointer_size} -}.'arch']$(FIPSMODULENAME);*
 {- output_on() if $disabled{fips}; "" -}
 
 install_ssldirs : check_INSTALLTOP
@@ -605,7 +629,9 @@ install_dev : check_INSTALLTOP install_runtime_libs
         @ WRITE SYS$OUTPUT "*** Installing development files"
         @ ! Install header files
         - CREATE/DIR ossl_installroot:[include.openssl]
-        COPY/PROT=W:R openssl:*.h ossl_installroot:[include.openssl]
+        COPY/PROT=W:R ossl_sourceroot:[include.openssl]*.h -
+                ossl_installroot:[include.openssl]
+        COPY/PROT=W:R [.include.openssl]*.h ossl_installroot:[include.openssl]
         @ ! Install static (development) libraries
         - CREATE/DIR ossl_installroot:[LIB.'arch']
         {- join("\n        ",
@@ -624,9 +650,9 @@ install_engines : check_INSTALLTOP install_runtime_libs build_modules
 install_modules : check_INSTALLTOP install_runtime_libs build_modules
         @ {- output_off() unless scalar @install_modules; "" -} !
         @ WRITE SYS$OUTPUT "*** Installing modules"
-        - CREATE/DIR ossl_installroot:[MODULES{- $sover_dirname.$target{pointer_size} -}.'arch']
+        - CREATE/DIR ossl_installroot:[MODULES{- $target{pointer_size} -}.'arch']
         {- join("\n        ",
-                map { "COPY/PROT=W:RE $_.EXE ossl_installroot:[MODULES$sover_dirname$target{pointer_size}.'arch']" }
+                map { "COPY/PROT=W:RE $_.EXE ossl_installroot:[MODULES$target{pointer_size}.'arch']" }
                 @install_modules) -}
         @ {- output_on() unless scalar @install_modules; "" -} !
 
@@ -745,7 +771,16 @@ debug_logicals :
 
 # Building targets ###################################################
 
-configdata.pm : $(SRCDIR)Configure $(SRCDIR)config.com {- join(" ", @{$config{build_file_templates}}, @{$config{build_infos}}, @{$config{conf_files}}) -}
+descrip.mms : configdata.pm {- join(" ", @{$config{build_file_templates}}) -}
+	perl configdata.pm
+        @ WRITE SYS$OUTPUT "*************************************************"
+        @ WRITE SYS$OUTPUT "***                                           ***"
+        @ WRITE SYS$OUTPUT "***   Please run the same mms command again   ***"
+        @ WRITE SYS$OUTPUT "***                                           ***"
+        @ WRITE SYS$OUTPUT "*************************************************"
+        @ PIPE ( EXIT %X10000000 )
+
+configdata.pm : $(SRCDIR)Configure $(SRCDIR)config.com {- join(" ", @{$config{build_infos}}, @{$config{conf_files}}) -}
         perl configdata.pm -r
         @ WRITE SYS$OUTPUT "*************************************************"
         @ WRITE SYS$OUTPUT "***                                           ***"
@@ -861,6 +896,59 @@ EOF
       return ($filename, $scripture);
   }
 
+  # On VMS, (some) header file directories include the files
+  # __DECC_INCLUDE_EPILOGUE.H and __DECC_INCLUDE_PROLOGUE.H.
+  # When header files are generated, and the build directory
+  # isn't the same as the source directory, these files must
+  # be copied alongside the generated header file, or their
+  # effect will be lost.
+  # We use the same include file cache as make_includefile
+  # to check if the scripture to copy these files has already
+  # been generated.
+  sub make_decc_include_files {
+      my $outd = shift;
+      my $ind = shift;
+
+      # If the build directory and the source directory are the
+      # same, there's no need to copy the prologue and epilogue
+      # files.
+      return ('') if $outd eq $ind;
+
+      my $outprologue = catfile($outd, '__DECC_INCLUDE_PROLOGUE.H');
+      my $outepilogue = catfile($outd, '__DECC_INCLUDE_EPILOGUE.H');
+      my $inprologue = catfile($ind, '__DECC_INCLUDE_PROLOGUE.H');
+      my $inepilogue = catfile($ind, '__DECC_INCLUDE_EPILOGUE.H');
+      my @filenames = ();
+      my $scripture = '';
+
+      if ($includefile_cache{$outprologue}) {
+          push @filenames, $outprologue;
+      } elsif (-f $inprologue) {
+          my $local_scripture .= <<"EOF";
+$outprologue : $inprologue
+	COPY $inprologue $outprologue
+EOF
+          $includefile_cache{$outprologue} = $local_scripture;
+
+          push @filenames, $outprologue;
+          $scripture .= $local_scripture;
+      }
+      if ($includefile_cache{$outepilogue}) {
+          push @filenames, $outepilogue;
+      } elsif (-f $inepilogue) {
+          my $local_scripture .= <<"EOF";
+$outepilogue : $inepilogue
+	COPY $inepilogue $outepilogue
+EOF
+          $includefile_cache{$outepilogue} = $local_scripture;
+
+          push @filenames, $outepilogue;
+          $scripture .= $local_scripture;
+      }
+
+      return (@filenames, $scripture);
+  }
+
   sub generatetarget {
       my %args = @_;
       my $deps = join(" ", compute_platform_depends(@{$args{deps}}));
@@ -902,7 +990,7 @@ EOF
           #
           my $target = platform->def($args{src});
           my $mkdef = sourcefile('util', 'mkdef.pl');
-          my $ord_ver = $args{intent} eq 'lib' ? ' --version $(VERSION)' : '';
+          my $ord_ver = $args{intent} eq 'lib' ? ' --version $(VERSION_NUMBER)' : '';
           my $ord_name =
               $args{generator}->[1] || basename($args{product}, '.EXE');
           my $case_insensitive =
@@ -910,7 +998,7 @@ EOF
               ? '' : ' --case-insensitive';
           return <<"EOF";
 $target : $gen0 $deps $mkdef
-	\$(PERL) $mkdef$ord_ver --ordinals $gen0 --name $ord_name "--OS" "VMS"$case_insensitive > $target
+	\$(PERL) $mkdef$ord_ver --type $args{intent} --ordinals $gen0 --name $ord_name "--OS" "VMS"$case_insensitive > $target
 EOF
       } elsif (platform->isasm($args{src})) {
           #
@@ -974,12 +1062,18 @@ EOF
           my @perlmodules = ( 'configdata.pm',
                               grep { $_ =~ m|\.pm$| } @{$args{deps}} );
           my %perlmoduleincs = map { '"-I'.dirname($_).'"' => 1 } @perlmodules;
-          $deps = join(' ', $deps, compute_platform_depends(@perlmodules));
+          my @decc_include_data
+              = make_decc_include_files(dirname($args{src}), dirname($gen0));
+          my $decc_include_scripture = pop @decc_include_data;
+          $deps = join(' ', $deps, @decc_include_data,
+                            compute_platform_depends(@perlmodules));
           @perlmodules = map { '"-M'.basename($_, '.pm').'"' } @perlmodules;
           my $perlmodules = join(' ', '', sort keys %perlmoduleincs, @perlmodules);
+
           return <<"EOF";
 $args{src} : $gen0 $deps
 	\$(PERL)$perlmodules $dofile "-o$target{build_file}" $gen0$gen_args > \$\@
+$decc_include_scripture
 EOF
       } elsif (grep { $_ eq $gen0 } @{$unified_info{programs}}) {
           #
@@ -1176,16 +1270,28 @@ EOF
       # previous line's file spec as default, so if no directory spec
       # is present in the current line and the previous line has one that
       # doesn't apply, you're in for a surprise.
+      # Furthermore, we collect all object files and static libraries in
+      # an explicit cluster, to make it clear to the linker that these files
+      # shall be processed before shareable images.
+      # The shareable images are used with /SELECTIVE, to avoid warnings of
+      # multiply defined symbols when the module object files override some
+      # symbols that are present in the shareable image.
       my $write_opt1 =
-          join(",-\"\n\t", map { my $x = $_ =~ /\[/ ? $_ : "[]".$_;
-                                 "WRITE OPT_FILE \"$x" } @objs).
-          "\"";
+          join(",-\"\n\t",
+               "\@ WRITE OPT_FILE \"CLUSTER=_,,",
+               (map { my $x = $_ =~ /\[/ ? $_ : "[]".$_;
+                      "\@ WRITE OPT_FILE \"$x" } @objs),
+               (map { my $x = ($_->{lib} =~ /\[/) ? $_->{lib} : "[]".$_->{lib};
+                      "\@ WRITE OPT_FILE \"$x/LIB" }
+                grep { $_->{lib} =~ m|\.OLB$| }
+                @deps))
+          ."\"";
       my $write_opt2 =
-          join("\n\t", map { my $x = $_->{lib} =~ /\[/
-                                 ? $_->{lib} : "[]".$_->{lib};
-                             $x =~ s|(\.EXE)|$1/SHARE|;
-                             $x =~ s|(\.OLB)|$1/LIB|;
-                             "WRITE OPT_FILE \"$x\"" } @deps)
+          join("\n\t",
+               (map { my $x = ($_->{lib} =~ /\[/) ? $_->{lib} : "[]".$_->{lib};
+                      "\@ WRITE OPT_FILE \"$x/SHARE/SELECTIVE\"" }
+                grep { $_->{lib} =~ m|\.EXE$| }
+                @deps))
           || "\@ !";
       return <<"EOF"
 $dso : $deps
@@ -1240,30 +1346,30 @@ EOF
       # is present in the current line and the previous line has one that
       # doesn't apply, you're in for a surprise.
       my $write_opt1 =
-          join(",-\"\n\t", map { my $x = $_ =~ /\[/ ? $_ : "[]".$_;
-                                 "\@ WRITE OPT_FILE \"$x" } @objs).
-          "\"";
+          "\@ WRITE OPT_FILE \"CASE_SENSITIVE=YES\"\n\t"
+          .join(",-\"\n\t",
+                "\@ WRITE OPT_FILE \"CLUSTER=_,,",
+                (map { my $x = $_ =~ /\[/ ? $_ : "[]".$_;
+                       "\@ WRITE OPT_FILE \"$x" } @objs),
+                (map { my $x = ($_->{lib} =~ /\[/) ? $_->{lib} : "[]".$_->{lib};
+                       # Special hack to include the MAIN object module
+                       # explicitly, if it's known that there is one.
+                       # |incmain| is defined in the rule generation further
+                       # down, with the necessary /INCLUDE=main option unless
+                       # the program has been determined to have a main function
+                       # already.
+                       $_->{attrs}->{has_main}
+                       ? "\@ WRITE OPT_FILE \"$x/LIB''incmain'"
+                       : "\@ WRITE OPT_FILE \"$x/LIB" }
+                 grep { $_->{lib} =~ m|\.OLB$| }
+                 @deps))
+          ."\"";
       my $write_opt2 =
-          join("\n\t", "WRITE OPT_FILE \"CASE_SENSITIVE=YES\"",
-                       map { my @lines = ();
-                             use Data::Dumper;
-                             my $x = $_->{lib} =~ /\[/
-                                 ? $_->{lib} : "[]".$_->{lib};
-                             if ($x =~ m|\.EXE$|) {
-                                 push @lines, "\@ WRITE OPT_FILE \"$x/SHARE\"";
-                             } elsif ($x =~ m|\.OLB$|) {
-                                 # Special hack to include the MAIN object
-                                 # module explicitly.  This will only be done
-                                 # if there isn't a 'main' in the program's
-                                 # object modules already.
-                                 my $main = $_->{attrs}->{has_main}
-                                     ? '/INCLUDE=main' : '';
-                                 push @lines,
-                                     "\@ IF nomain THEN WRITE OPT_FILE \"$x/LIB$main\"",
-                                     "\@ IF .NOT. nomain THEN WRITE OPT_FILE \"$x/LIB\""
-                             }
-                             @lines
-                           } @deps)
+          join("\n\t",
+               (map { my $x = $_->{lib} =~ /\[/ ? $_->{lib} : "[]".$_->{lib};
+                      "\@ WRITE OPT_FILE \"$x/SHARE/SELECTIVE\"" }
+                grep { $_->{lib} =~ m|\.EXE$| }
+                @deps))
           || "\@ !";
       # The linking commands looks a bit complex, but it's for good reason.
       # When you link, say, foo.obj, bar.obj and libsomething.exe/share, and
@@ -1286,6 +1392,8 @@ EOF
       return <<"EOF"
 $bin : $deps
         $analyse_objs
+        @ incmain = "/INCLUDE=main"
+        @ IF .NOT. nomain THEN incmain = ""
         @ OPEN/WRITE/SHARE=READ OPT_FILE $binname.OPT
         $write_opt1
         $write_opt2

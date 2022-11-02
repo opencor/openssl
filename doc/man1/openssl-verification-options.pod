@@ -21,7 +21,7 @@ It is a complicated process consisting of a number of steps
 and depending on numerous options.
 The most important of them are detailed in the following sections.
 
-In a nutshell, a valid chain of certifciates needs to be built up and verified
+In a nutshell, a valid chain of certificates needs to be built up and verified
 starting from the I<target certificate> that is to be verified
 and ending in a certificate that due to some policy is trusted.
 Verification is done relative to the given I<purpose>, which is the intended use
@@ -92,7 +92,7 @@ It does not have a negative trust attribute rejecting the given use.
 =item *
 
 It has a positive trust attribute accepting the given use
-or (by default) one of the following compatibilty conditions apply:
+or (by default) one of the following compatibility conditions apply:
 It is self-signed or the B<-partial_chain> option is given
 (which corresponds to the B<X509_V_FLAG_PARTIAL_CHAIN> flag being set).
 
@@ -458,7 +458,7 @@ Set policy variable inhibit-policy-mapping (see RFC5280).
 The intended use for the certificate.
 Currently defined purposes are C<sslclient>, C<sslserver>, C<nssslserver>,
 C<smimesign>, C<smimeencrypt>, C<crlsign>, C<ocsphelper>, C<timestampsign>,
-and C<any>.
+C<codesign> and C<any>.
 If peer certificate verification is enabled, by default the TLS implementation
 as well as the commands B<s_client> and B<s_server> check for consistency
 with TLS server or TLS client use, respectively.
@@ -686,7 +686,7 @@ The checks enabled by B<-x509_strict> have been extended in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2000-2021 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2000-2022 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

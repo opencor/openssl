@@ -41,10 +41,8 @@ static int bnrand(BNRAND_FLAG flag, BIGNUM *rnd, int bits, int top, int bottom,
     mask = 0xff << (bit + 1);
 
     buf = OPENSSL_malloc(bytes);
-    if (buf == NULL) {
-        ERR_raise(ERR_LIB_BN, ERR_R_MALLOC_FAILURE);
+    if (buf == NULL)
         goto err;
-    }
 
     /* make a random number and set the top and bottom bits */
     b = flag == NORMAL ? RAND_bytes_ex(libctx, buf, bytes, strength)
@@ -135,6 +133,11 @@ static int bnrand_range(BNRAND_FLAG flag, BIGNUM *r, const BIGNUM *range,
 {
     int n;
     int count = 100;
+
+    if (r == NULL) {
+        ERR_raise(ERR_LIB_BN, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
 
     if (range->neg || BN_is_zero(range)) {
         ERR_raise(ERR_LIB_BN, BN_R_INVALID_RANGE);
@@ -287,7 +290,7 @@ int BN_generate_dsa_nonce(BIGNUM *out, const BIGNUM *range,
         goto err;
     }
     for (done = 0; done < num_k_bytes;) {
-        if (!RAND_priv_bytes_ex(libctx, random_bytes, sizeof(random_bytes), 0))
+        if (RAND_priv_bytes_ex(libctx, random_bytes, sizeof(random_bytes), 0) <= 0)
             goto err;
 
         if (!EVP_DigestInit_ex(mdctx, md, NULL)

@@ -16,6 +16,11 @@
 #include "internal/quic_types.h"
 #include "internal/quic_wire.h"
 #include "internal/quic_record_tx.h"
+#include "internal/quic_record_rx.h"
+#include "internal/quic_fc.h"
+#include "internal/quic_statm.h"
+
+# ifndef OPENSSL_NO_QUIC
 
 /*
  * QUIC Send Stream
@@ -127,6 +132,18 @@ int ossl_quic_sstream_get_stream_frame(QUIC_SSTREAM *qss,
                                        size_t *num_iov);
 
 /*
+ * Returns 1 if there is data pending transmission. Equivalent to calling
+ * ossl_quic_sstream_get_stream_frame and seeing if it succeeds.
+ */
+int ossl_quic_sstream_has_pending(QUIC_SSTREAM *qss);
+
+/*
+ * Returns the current size of the stream; i.e., the number of bytes which have
+ * been appended to the stream so far.
+ */
+uint64_t ossl_quic_sstream_get_cur_size(QUIC_SSTREAM *qss);
+
+/*
  * (For TX packetizer use.) Marks a logical range of the send stream as having
  * been transmitted.
  *
@@ -231,6 +248,18 @@ int ossl_quic_sstream_append(QUIC_SSTREAM *qss,
 void ossl_quic_sstream_fin(QUIC_SSTREAM *qss);
 
 /*
+ * If the stream has had ossl_quic_sstream_fin() called, returns 1 and writes
+ * the final size to *final_size. Otherwise, returns 0.
+ */
+int ossl_quic_sstream_get_final_size(QUIC_SSTREAM *qss, uint64_t *final_size);
+
+/*
+ * Returns 1 iff all bytes (and any FIN, if any) which have been appended to the
+ * QUIC_SSTREAM so far, and any FIN (if any), have been both sent and acked.
+ */
+int ossl_quic_sstream_is_totally_acked(QUIC_SSTREAM *qss);
+
+/*
  * Resizes the internal ring buffer. All stream data is preserved safely.
  *
  * This can be used to expand or contract the ring buffer, but not to contract
@@ -266,5 +295,130 @@ void ossl_quic_sstream_adjust_iov(size_t len,
                                   OSSL_QTX_IOVEC *iov,
                                   size_t num_iov);
 
+/*
+ * QUIC Receive Stream Manager
+ * ===========================
+ *
+ * The QUIC Receive Stream Manager (QUIC_RSTREAM) is responsible for
+ * storing the received stream data frames until the application
+ * is able to read the data.
+ *
+ * The QUIC_RSTREAM is instantiated once for every stream that can receive data.
+ * (i.e., for a unidirectional receiving stream or for the receiving component
+ * of a bidirectional stream).
+ */
+typedef struct quic_rstream_st QUIC_RSTREAM;
+
+/*
+ * Create a new instance of QUIC_RSTREAM with pointers to the flow
+ * controller and statistics module. They can be NULL for unit testing.
+ * If they are non-NULL, the `rxfc` is called when receive stream data
+ * is read by application. `statm` is queried for current rtt.
+ * `rbuf_size` is the initial size of the ring buffer to be used
+ * when ossl_quic_rstream_move_to_rbuf() is called.
+ */
+QUIC_RSTREAM *ossl_quic_rstream_new(QUIC_RXFC *rxfc,
+                                    OSSL_STATM *statm, size_t rbuf_size);
+
+/*
+ * Frees a QUIC_RSTREAM and any associated storage.
+ */
+void ossl_quic_rstream_free(QUIC_RSTREAM *qrs);
+
+/*
+ * Adds received stream frame data to `qrs`. The `pkt_wrap` refcount is
+ * incremented if the `data` is queued directly without copying.
+ * It can be NULL for unit-testing purposes, i.e. if `data` is static or
+ * never released before calling ossl_quic_rstream_free().
+ * The `offset` is the absolute offset of the data in the stream.
+ * `data_len` can be 0 - can be useful for indicating `fin` for empty stream.
+ * Or to indicate `fin` without any further data added to the stream.
+ */
+
+int ossl_quic_rstream_queue_data(QUIC_RSTREAM *qrs, OSSL_QRX_PKT *pkt,
+                                 uint64_t offset,
+                                 const unsigned char *data, uint64_t data_len,
+                                 int fin);
+
+/*
+ * Copies the data from the stream storage to buffer `buf` of size `size`.
+ * `readbytes` is set to the number of bytes actually copied.
+ * `fin` is set to 1 if all the data from the stream were read so the
+ * stream is finished. It is set to 0 otherwise.
+ */
+int ossl_quic_rstream_read(QUIC_RSTREAM *qrs, unsigned char *buf, size_t size,
+                           size_t *readbytes, int *fin);
+
+/*
+ * Peeks at the data in the stream storage. It copies them to buffer `buf`
+ * of size `size` and sets `readbytes` to the number of bytes actually copied.
+ * `fin` is set to 1 if the copied data reach end of the stream.
+ * It is set to 0 otherwise.
+ */
+int ossl_quic_rstream_peek(QUIC_RSTREAM *qrs, unsigned char *buf, size_t size,
+                           size_t *readbytes, int *fin);
+
+/*
+ * Returns the size of the data available for reading. `fin` is set to 1 if
+ * after reading all the available data the stream will be finished,
+ * set to 0 otherwise.
+ */
+int ossl_quic_rstream_available(QUIC_RSTREAM *qrs, size_t *avail, int *fin);
+
+/*
+ * Sets *record to the beginning of the first readable stream data chunk and
+ * *reclen to the size of the chunk. *fin is set to 1 if the end of the
+ * chunk is the last of the stream data chunks.
+ * If there is no record available *record is set to NULL and *rec_len to 0;
+ * ossl_quic_rstream_release_record() should not be called in that case.
+ * Returns 1 on success (including calls if no record is available, or
+ * after end of the stream - in that case *fin will be set to 1 and
+ * *rec_len to 0), 0 on error.
+ * It is an error to call ossl_quic_rstream_get_record() multiple times
+ * without calling ossl_quic_rstream_release_record() in between.
+ */
+int ossl_quic_rstream_get_record(QUIC_RSTREAM *qrs,
+                                 const unsigned char **record, size_t *rec_len,
+                                 int *fin);
+
+/*
+ * Releases (possibly partially) the record returned by
+ * previous ossl_quic_rstream_get_record() call.
+ * read_len between previously returned *rec_len and SIZE_MAX indicates
+ * release of the whole record. Otherwise only part of the record is
+ * released. The remaining part of the record is unlocked, another
+ * call to ossl_quic_rstream_get_record() is needed to obtain further
+ * stream data.
+ * Returns 1 on success, 0 on error.
+ * It is an error to call ossl_quic_rstream_release_record() multiple
+ * times without calling ossl_quic_rstream_get_record() in between.
+ */
+int ossl_quic_rstream_release_record(QUIC_RSTREAM *qrs, size_t read_len);
+
+/*
+ * Moves received frame data from decrypted packets to ring buffer.
+ * This should be called when there are too many decrypted packets allocated.
+ * Returns 1 on success, 0 when it was not possible to release all
+ * referenced packets due to an insufficient size of the ring buffer.
+ * Exception is the packet from the record returned previously by
+ * ossl_quic_rstream_get_record() - that one will be always skipped.
+ */
+int ossl_quic_rstream_move_to_rbuf(QUIC_RSTREAM *qrs);
+
+/*
+ * Resizes the internal ring buffer to a new `rbuf_size` size.
+ * Returns 1 on success, 0 on error.
+ * Possible error conditions are an allocation failure, trying to resize
+ * the ring buffer when ossl_quic_rstream_get_record() was called and
+ * not yet released, or trying to resize the ring buffer to a smaller size
+ * than currently occupied.
+ */
+int ossl_quic_rstream_resize_rbuf(QUIC_RSTREAM *qrs, size_t rbuf_size);
+
+/*
+ * Sets flag to cleanse the buffered data when user reads it.
+ */
+void ossl_quic_rstream_set_cleanse(QUIC_RSTREAM *qrs, int cleanse);
+# endif
 
 #endif

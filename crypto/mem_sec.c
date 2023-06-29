@@ -24,8 +24,8 @@
 #ifndef OPENSSL_NO_SECURE_MEMORY
 # if defined(_WIN32)
 #  include <windows.h>
-#  if defined(WINAPI_FAMILY_PARTITION) \
-     && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
+#  if defined(WINAPI_FAMILY_PARTITION)
+#   if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
 /*
  * While VirtualLock is available under the app partition (e.g. UWP),
  * the headers do not define the API. Define it ourselves instead.
@@ -37,6 +37,7 @@ VirtualLock(
     _In_ LPVOID lpAddress,
     _In_ SIZE_T dwSize
     );
+#   endif
 #  endif
 # endif
 # include <stdlib.h>
@@ -64,6 +65,18 @@ VirtualLock(
 # endif
 # include <sys/stat.h>
 # include <fcntl.h>
+#endif
+#ifndef HAVE_MADVISE
+# if defined(MADV_DONTDUMP)
+#  define HAVE_MADVISE 1
+# else
+#  define HAVE_MADVISE 0
+# endif
+#endif
+#if HAVE_MADVISE
+# undef NO_MADVISE
+#else
+# define NO_MADVISE
 #endif
 
 #define CLEAR(p, s) OPENSSL_cleanse(p, s)
@@ -566,7 +579,7 @@ static int sh_init(size_t size, size_t minsize)
     if (mlock(sh.arena, sh.arena_size) < 0)
         ret = 2;
 #endif
-#ifdef MADV_DONTDUMP
+#ifndef NO_MADVISE
     if (madvise(sh.arena, sh.arena_size, MADV_DONTDUMP) < 0)
         ret = 2;
 #endif

@@ -15,7 +15,7 @@
 
 # include <openssl/opensslconf.h>
 
-# ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_ECX
 
 #  include <openssl/core.h>
 #  include <openssl/e_os2.h>
@@ -97,27 +97,33 @@ ossl_ed25519_public_from_private(OSSL_LIB_CTX *ctx, uint8_t out_public_key[32],
                                  const uint8_t private_key[32],
                                  const char *propq);
 int
-ossl_ed25519_sign(uint8_t *out_sig, const uint8_t *message, size_t message_len,
+ossl_ed25519_sign(uint8_t *out_sig, const uint8_t *tbs, size_t tbs_len,
                   const uint8_t public_key[32], const uint8_t private_key[32],
+                  const uint8_t dom2flag, const uint8_t phflag, const uint8_t csflag,
+                  const uint8_t *context, size_t context_len,
                   OSSL_LIB_CTX *libctx, const char *propq);
 int
-ossl_ed25519_verify(const uint8_t *message, size_t message_len,
+ossl_ed25519_verify(const uint8_t *tbs, size_t tbs_len,
                     const uint8_t signature[64], const uint8_t public_key[32],
+                    const uint8_t dom2flag, const uint8_t phflag, const uint8_t csflag,
+                    const uint8_t *context, size_t context_len,
                     OSSL_LIB_CTX *libctx, const char *propq);
-
 int
 ossl_ed448_public_from_private(OSSL_LIB_CTX *ctx, uint8_t out_public_key[57],
                                const uint8_t private_key[57], const char *propq);
 int
-ossl_ed448_sign(OSSL_LIB_CTX *ctx, uint8_t *out_sig, const uint8_t *message,
-                size_t message_len, const uint8_t public_key[57],
-                const uint8_t private_key[57], const uint8_t *context,
-                size_t context_len, const char *propq);
+ossl_ed448_sign(OSSL_LIB_CTX *ctx, uint8_t *out_sig,
+                const uint8_t *message, size_t message_len,
+                const uint8_t public_key[57], const uint8_t private_key[57],
+                const uint8_t *context, size_t context_len,
+                const uint8_t phflag, const char *propq);
 
 int
-ossl_ed448_verify(OSSL_LIB_CTX *ctx, const uint8_t *message, size_t message_len,
+ossl_ed448_verify(OSSL_LIB_CTX *ctx,
+                  const uint8_t *message, size_t message_len,
                   const uint8_t signature[114], const uint8_t public_key[57],
-                  const uint8_t *context, size_t context_len, const char *propq);
+                  const uint8_t *context, size_t context_len,
+                  const uint8_t phflag, const char *propq);
 
 int
 ossl_x448(uint8_t out_shared_key[56], const uint8_t private_key[56],
@@ -149,5 +155,5 @@ ECX_KEY *ossl_evp_pkey_get1_X25519(EVP_PKEY *pkey);
 ECX_KEY *ossl_evp_pkey_get1_X448(EVP_PKEY *pkey);
 ECX_KEY *ossl_evp_pkey_get1_ED25519(EVP_PKEY *pkey);
 ECX_KEY *ossl_evp_pkey_get1_ED448(EVP_PKEY *pkey);
-# endif /* OPENSSL_NO_EC */
+# endif /* OPENSSL_NO_ECX */
 #endif

@@ -85,8 +85,8 @@ typedef enum OPTION_choice {
     OPT_KEYOUT, OPT_PASSIN, OPT_PASSOUT, OPT_NEWKEY,
     OPT_PKEYOPT, OPT_SIGOPT, OPT_VFYOPT, OPT_BATCH, OPT_NEWHDR, OPT_MODULUS,
     OPT_VERIFY, OPT_NOENC, OPT_NODES, OPT_NOOUT, OPT_VERBOSE, OPT_UTF8,
-    OPT_NAMEOPT, OPT_REQOPT, OPT_SUBJ, OPT_SUBJECT, OPT_TEXT, OPT_X509,
-    OPT_CA, OPT_CAKEY,
+    OPT_NAMEOPT, OPT_REQOPT, OPT_SUBJ, OPT_SUBJECT, OPT_TEXT,
+    OPT_X509, OPT_X509V1, OPT_CA, OPT_CAKEY,
     OPT_MULTIVALUE_RDN, OPT_DAYS, OPT_SET_SERIAL,
     OPT_COPY_EXTENSIONS, OPT_EXTENSIONS, OPT_REQEXTS, OPT_ADDEXT,
     OPT_PRECERT, OPT_MD,
@@ -117,6 +117,7 @@ const OPTIONS req_options[] = {
     {"text", OPT_TEXT, '-', "Text form of request"},
     {"x509", OPT_X509, '-',
      "Output an X.509 certificate structure instead of a cert request"},
+    {"x509v1", OPT_X509V1, '-', "Request cert generation with X.509 version 1"},
     {"CA", OPT_CA, '<', "Issuer cert to use for signing a cert, implies -x509"},
     {"CAkey", OPT_CAKEY, 's',
      "Issuer private key to use with -CA; default is -CA arg"},
@@ -187,8 +188,8 @@ static void exts_cleanup(OPENSSL_STRING *x)
 }
 
 /*
- * Is the |kv| key already duplicated? This is remarkably tricky to get right.
- * Return 0 if unique, -1 on runtime error; 1 if found or a syntax error.
+ * Is the |kv| key already duplicated?
+ * Return 0 if unique, -1 on runtime error, -2 on syntax error; 1 if found.
  */
 static int duplicated(LHASH_OF(OPENSSL_STRING) *addexts, char *kv)
 {
@@ -197,28 +198,31 @@ static int duplicated(LHASH_OF(OPENSSL_STRING) *addexts, char *kv)
 
     /* Check syntax. */
     /* Skip leading whitespace, make a copy. */
-    while (*kv && isspace(*kv))
-        if (*++kv == '\0')
-            return 1;
-    if ((p = strchr(kv, '=')) == NULL)
-        return 1;
+    while (isspace(_UC(*kv)))
+        kv++;
+    if ((p = strchr(kv, '=')) == NULL) {
+        BIO_printf(bio_err, "Parse error on -addext: missing '='\n");
+        return -2;
+    }
     off = p - kv;
     if ((kv = OPENSSL_strdup(kv)) == NULL)
         return -1;
 
     /* Skip trailing space before the equal sign. */
     for (p = kv + off; p > kv; --p)
-        if (!isspace(p[-1]))
+        if (!isspace(_UC(p[-1])))
             break;
     if (p == kv) {
+        BIO_printf(bio_err, "Parse error on -addext: missing key\n");
         OPENSSL_free(kv);
-        return 1;
+        return -2;
     }
     *p = '\0';
 
     /* Finally have a clean "key"; see if it's there [by attempt to add it]. */
     p = (char *)lh_OPENSSL_STRING_insert(addexts, (OPENSSL_STRING *)kv);
     if (p != NULL) {
+        BIO_printf(bio_err, "Duplicate extension name: %s\n", kv);
         OPENSSL_free(p);
         return 1;
     } else if (lh_OPENSSL_STRING_error(addexts)) {
@@ -258,7 +262,7 @@ int req_main(int argc, char **argv)
     int ret = 1, gen_x509 = 0, i = 0, newreq = 0, verbose = 0;
     int informat = FORMAT_UNDEF, outformat = FORMAT_PEM, keyform = FORMAT_UNDEF;
     int modulus = 0, multirdn = 1, verify = 0, noout = 0, text = 0;
-    int noenc = 0, newhdr = 0, subject = 0, pubkey = 0, precert = 0;
+    int noenc = 0, newhdr = 0, subject = 0, pubkey = 0, precert = 0, x509v1 = 0;
     long newkey_len = -1;
     unsigned long chtype = MBSTRING_ASC, reqflag = 0;
 
@@ -400,6 +404,9 @@ int req_main(int argc, char **argv)
         case OPT_TEXT:
             text = 1;
             break;
+        case OPT_X509V1:
+            x509v1 = 1;
+            /* fall thru */
         case OPT_X509:
             gen_x509 = 1;
             break;
@@ -456,10 +463,10 @@ int req_main(int argc, char **argv)
                     goto end;
             }
             i = duplicated(addexts, p);
-            if (i == 1) {
-                BIO_printf(bio_err, "Duplicate extension name: %s\n", p);
+            if (i == 1)
                 goto opthelp;
-            }
+            if (i == -1)
+                BIO_printf(bio_err, "Internal error handling -addext %s\n", p);
             if (i < 0 || BIO_printf(addext_bio, "%s\n", p) < 0)
                 goto end;
             break;
@@ -511,9 +518,7 @@ int req_main(int argc, char **argv)
         goto end;
 
     if (req_conf != NULL) {
-        p = NCONF_get_string(req_conf, NULL, "oid_file");
-        if (p == NULL)
-            ERR_clear_error();
+        p = app_conf_try_string(req_conf, NULL, "oid_file");
         if (p != NULL) {
             BIO *oid_bio = BIO_new_file(p, "r");
 
@@ -536,19 +541,14 @@ int req_main(int argc, char **argv)
             goto opthelp;
     } else {
         /* No digest specified, default to configuration */
-        p = NCONF_get_string(req_conf, section, "default_md");
-        if (p == NULL)
-            ERR_clear_error();
-        else
+        p = app_conf_try_string(req_conf, section, "default_md");
+        if (p != NULL)
             digest = p;
     }
 
-    if (extsect == NULL) {
-        extsect = NCONF_get_string(req_conf, section,
+    if (extsect == NULL)
+        extsect = app_conf_try_string(req_conf, section,
                                    gen_x509 ? V3_EXTENSIONS : REQ_EXTENSIONS);
-        if (extsect == NULL)
-            ERR_clear_error();
-    }
     if (extsect != NULL) {
         /* Check syntax of extension section in config file */
         X509V3_CTX ctx;
@@ -574,34 +574,23 @@ int req_main(int argc, char **argv)
         }
     }
 
-    if (passin == NULL) {
+    if (passin == NULL)
         passin = nofree_passin =
-            NCONF_get_string(req_conf, section, "input_password");
-        if (passin == NULL)
-            ERR_clear_error();
-    }
+            app_conf_try_string(req_conf, section, "input_password");
 
-    if (passout == NULL) {
+    if (passout == NULL)
         passout = nofree_passout =
-            NCONF_get_string(req_conf, section, "output_password");
-        if (passout == NULL)
-            ERR_clear_error();
-    }
+            app_conf_try_string(req_conf, section, "output_password");
 
-    p = NCONF_get_string(req_conf, section, STRING_MASK);
-    if (p == NULL)
-        ERR_clear_error();
-
+    p = app_conf_try_string(req_conf, section, STRING_MASK);
     if (p != NULL && !ASN1_STRING_set_default_mask_asc(p)) {
         BIO_printf(bio_err, "Invalid global string mask setting %s\n", p);
         goto end;
     }
 
     if (chtype != MBSTRING_UTF8) {
-        p = NCONF_get_string(req_conf, section, UTF8_IN);
-        if (p == NULL)
-            ERR_clear_error();
-        else if (strcmp(p, "yes") == 0)
+        p = app_conf_try_string(req_conf, section, UTF8_IN);
+        if (p != NULL && strcmp(p, "yes") == 0)
             chtype = MBSTRING_UTF8;
     }
 
@@ -619,7 +608,7 @@ int req_main(int argc, char **argv)
     if (newreq && pkey == NULL) {
         app_RAND_load_conf(req_conf, section);
 
-        if (!NCONF_get_number(req_conf, section, BITS, &newkey_len))
+        if (!app_conf_try_number(req_conf, section, BITS, &newkey_len))
             newkey_len = DEFAULT_KEY_LENGTH;
 
         genctx = set_keygen_ctx(keyalg, &keyalgstr, &newkey_len, gen_eng);
@@ -671,11 +660,8 @@ int req_main(int argc, char **argv)
         EVP_PKEY_CTX_free(genctx);
         genctx = NULL;
     }
-    if (keyout == NULL && keyfile == NULL) {
-        keyout = NCONF_get_string(req_conf, section, KEYFILE);
-        if (keyout == NULL)
-            ERR_clear_error();
-    }
+    if (keyout == NULL && keyfile == NULL)
+        keyout = app_conf_try_string(req_conf, section, KEYFILE);
 
     if (pkey != NULL && (keyfile == NULL || keyout != NULL)) {
         if (verbose) {
@@ -689,14 +675,10 @@ int req_main(int argc, char **argv)
         if (out == NULL)
             goto end;
 
-        p = NCONF_get_string(req_conf, section, "encrypt_rsa_key");
-        if (p == NULL) {
-            ERR_clear_error();
-            p = NCONF_get_string(req_conf, section, "encrypt_key");
-            if (p == NULL)
-                ERR_clear_error();
-        }
-        if ((p != NULL) && (strcmp(p, "no") == 0))
+        p = app_conf_try_string(req_conf, section, "encrypt_rsa_key");
+        if (p == NULL)
+            p = app_conf_try_string(req_conf, section, "encrypt_key");
+        if (p != NULL && strcmp(p, "no") == 0)
             cipher = NULL;
         if (noenc)
             cipher = NULL;
@@ -731,7 +713,7 @@ int req_main(int argc, char **argv)
             BIO_printf(bio_err,
                        "Warning: Not placing -key in cert or request since request is used\n");
         req = load_csr_autofmt(infile /* if NULL, reads from stdin */,
-                               informat, "X509 request");
+                               informat, vfyopts, "X509 request");
         if (req == NULL)
             goto end;
     } else if (infile != NULL) {
@@ -864,7 +846,8 @@ int req_main(int argc, char **argv)
                 }
             }
 
-            i = do_X509_sign(new_x509, issuer_key, digest, sigopts, &ext_ctx);
+            i = do_X509_sign(new_x509, x509v1, issuer_key, digest, sigopts,
+                             &ext_ctx);
             if (!i)
                 goto end;
         } else {
@@ -929,7 +912,7 @@ int req_main(int argc, char **argv)
         if (i == 0)
             BIO_printf(bio_err, "Certificate request self-signature verify failure\n");
         else /* i > 0 */
-            BIO_printf(bio_err, "Certificate request self-signature verify OK\n");
+            BIO_printf(bio_out, "Certificate request self-signature verify OK\n");
     }
 
     if (noout && !text && !modulus && !subject && !pubkey) {
@@ -1064,16 +1047,12 @@ static int make_REQ(X509_REQ *req, EVP_PKEY *pkey, X509_NAME *fsubj,
     STACK_OF(CONF_VALUE) *dn_sk = NULL, *attr_sk = NULL;
     char *tmp, *dn_sect, *attr_sect;
 
-    tmp = NCONF_get_string(req_conf, section, PROMPT);
-    if (tmp == NULL)
-        ERR_clear_error();
-    if ((tmp != NULL) && strcmp(tmp, "no") == 0)
+    tmp = app_conf_try_string(req_conf, section, PROMPT);
+    if (tmp != NULL && strcmp(tmp, "no") == 0)
         no_prompt = 1;
 
-    dn_sect = NCONF_get_string(req_conf, section, DISTINGUISHED_NAME);
-    if (dn_sect == NULL) {
-        ERR_clear_error();
-    } else {
+    dn_sect = app_conf_try_string(req_conf, section, DISTINGUISHED_NAME);
+    if (dn_sect != NULL) {
         dn_sk = NCONF_get_section(req_conf, dn_sect);
         if (dn_sk == NULL) {
             BIO_printf(bio_err, "Unable to get '%s' section\n", dn_sect);
@@ -1081,10 +1060,8 @@ static int make_REQ(X509_REQ *req, EVP_PKEY *pkey, X509_NAME *fsubj,
         }
     }
 
-    attr_sect = NCONF_get_string(req_conf, section, ATTRIBUTES);
-    if (attr_sect == NULL) {
-        ERR_clear_error();
-    } else {
+    attr_sect = app_conf_try_string(req_conf, section, ATTRIBUTES);
+    if (attr_sect != NULL) {
         attr_sk = NCONF_get_section(req_conf, attr_sect);
         if (attr_sk == NULL) {
             BIO_printf(bio_err, "Unable to get '%s' section\n", attr_sect);
@@ -1180,31 +1157,23 @@ static int prompt_info(X509_REQ *req,
                 goto start;
             if (!join(buf, sizeof(buf), v->name, "_default", "Name"))
                 return 0;
-            if ((def = NCONF_get_string(req_conf, dn_sect, buf)) == NULL) {
-                ERR_clear_error();
+            if ((def = app_conf_try_string(req_conf, dn_sect, buf)) == NULL)
                 def = "";
-            }
 
             if (!join(buf, sizeof(buf), v->name, "_value", "Name"))
                 return 0;
-            if ((value = NCONF_get_string(req_conf, dn_sect, buf)) == NULL) {
-                ERR_clear_error();
+            if ((value = app_conf_try_string(req_conf, dn_sect, buf)) == NULL)
                 value = NULL;
-            }
 
             if (!join(buf, sizeof(buf), v->name, "_min", "Name"))
                 return 0;
-            if (!NCONF_get_number(req_conf, dn_sect, buf, &n_min)) {
-                ERR_clear_error();
+            if (!app_conf_try_number(req_conf, dn_sect, buf, &n_min))
                 n_min = -1;
-            }
 
             if (!join(buf, sizeof(buf), v->name, "_max", "Name"))
                 return 0;
-            if (!NCONF_get_number(req_conf, dn_sect, buf, &n_max)) {
-                ERR_clear_error();
+            if (!app_conf_try_number(req_conf, dn_sect, buf, &n_max))
                 n_max = -1;
-            }
 
             if (!add_DN_object(subj, v->value, def, value, nid,
                                n_min, n_max, chtype, mval))
@@ -1238,33 +1207,23 @@ static int prompt_info(X509_REQ *req,
 
                 if (!join(buf, sizeof(buf), type, "_default", "Name"))
                     return 0;
-                if ((def = NCONF_get_string(req_conf, attr_sect, buf))
-                    == NULL) {
-                    ERR_clear_error();
+                def = app_conf_try_string(req_conf, attr_sect, buf);
+                if (def == NULL)
                     def = "";
-                }
 
                 if (!join(buf, sizeof(buf), type, "_value", "Name"))
                     return 0;
-                if ((value = NCONF_get_string(req_conf, attr_sect, buf))
-                    == NULL) {
-                    ERR_clear_error();
-                    value = NULL;
-                }
+                value = app_conf_try_string(req_conf, attr_sect, buf);
 
                 if (!join(buf, sizeof(buf), type, "_min", "Name"))
                     return 0;
-                if (!NCONF_get_number(req_conf, attr_sect, buf, &n_min)) {
-                    ERR_clear_error();
+                if (!app_conf_try_number(req_conf, attr_sect, buf, &n_min))
                     n_min = -1;
-                }
 
                 if (!join(buf, sizeof(buf), type, "_max", "Name"))
                     return 0;
-                if (!NCONF_get_number(req_conf, attr_sect, buf, &n_max)) {
-                    ERR_clear_error();
+                if (!app_conf_try_number(req_conf, attr_sect, buf, &n_max))
                     n_max = -1;
-                }
 
                 if (!add_attribute_object(req,
                                           v->value, def, value, nid, n_min,

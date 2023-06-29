@@ -748,6 +748,30 @@ DSA *d2i_DSA_PUBKEY(DSA **a, const unsigned char **pp, long length)
     return key;
 }
 
+/* Called from decoders; disallows provided DSA keys without parameters. */
+DSA *ossl_d2i_DSA_PUBKEY(DSA **a, const unsigned char **pp, long length)
+{
+    DSA *key = NULL;
+    const unsigned char *data;
+    const BIGNUM *p, *q, *g;
+
+    data = *pp;
+    key = d2i_DSA_PUBKEY(NULL, &data, length);
+    if (key == NULL)
+        return NULL;
+    DSA_get0_pqg(key, &p, &q, &g);
+    if (p == NULL || q == NULL || g == NULL) {
+        DSA_free(key);
+        return NULL;
+    }
+    *pp = data;
+    if (a != NULL) {
+        DSA_free(*a);
+        *a = key;
+    }
+    return key;
+}
+
 int i2d_DSA_PUBKEY(const DSA *a, unsigned char **pp)
 {
     EVP_PKEY *pktmp;
@@ -811,6 +835,7 @@ int i2d_EC_PUBKEY(const EC_KEY *a, unsigned char **pp)
     return ret;
 }
 
+# ifndef OPENSSL_NO_ECX
 ECX_KEY *ossl_d2i_ED25519_PUBKEY(ECX_KEY **a,
                                  const unsigned char **pp, long length)
 {
@@ -978,6 +1003,7 @@ int ossl_i2d_X448_PUBKEY(const ECX_KEY *a, unsigned char **pp)
     return ret;
 }
 
+# endif /* OPENSSL_NO_ECX */ 
 #endif
 
 void X509_PUBKEY_set0_public_key(X509_PUBKEY *pub,

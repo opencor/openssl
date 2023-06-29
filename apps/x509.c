@@ -87,7 +87,8 @@ const OPTIONS x509_options[] = {
 
     OPT_SECTION("Certificate printing"),
     {"text", OPT_TEXT, '-', "Print the certificate in text form"},
-    {"dateopt", OPT_DATEOPT, 's', "Datetime format used for printing. (rfc_822/iso_8601). Default is rfc_822."},
+    {"dateopt", OPT_DATEOPT, 's',
+     "Datetime format used for printing. (rfc_822/iso_8601). Default is rfc_822."},
     {"certopt", OPT_CERTOPT, 's', "Various certificate text printing options"},
     {"fingerprint", OPT_FINGERPRINT, '-', "Print the certificate fingerprint"},
     {"alias", OPT_ALIAS, '-', "Print certificate alias"},
@@ -139,7 +140,7 @@ const OPTIONS x509_options[] = {
      "Preserve existing validity dates"},
     {"subj", OPT_SUBJ, 's', "Set or override certificate subject (and issuer)"},
     {"force_pubkey", OPT_FORCE_PUBKEY, '<',
-     "Place the given key in new certificate"},
+     "Key to be placed in new certificate or certificate request"},
     {"clrext", OPT_CLREXT, '-',
      "Do not take over any extensions from the source certificate or request"},
     {"extfile", OPT_EXTFILE, '<', "Config file with X509V3 extensions to add"},
@@ -624,8 +625,7 @@ int x509_main(int argc, char **argv)
         goto err;
     }
     if (newcert && reqfile) {
-        BIO_printf(bio_err,
-                   "The -req option cannot be used with -new\n");
+        BIO_printf(bio_err, "The -req option cannot be used with -new\n");
         goto err;
     }
     if (privkeyfile != NULL) {
@@ -687,11 +687,9 @@ int x509_main(int argc, char **argv)
         if ((extconf = app_load_config(extfile)) == NULL)
             goto end;
         if (extsect == NULL) {
-            extsect = NCONF_get_string(extconf, "default", "extensions");
-            if (extsect == NULL) {
-                ERR_clear_error();
+            extsect = app_conf_try_string(extconf, "default", "extensions");
+            if (extsect == NULL)
                 extsect = "default";
-            }
         }
         X509V3_set_ctx_test(&ctx2);
         X509V3_set_nconf(&ctx2, extconf);
@@ -706,7 +704,8 @@ int x509_main(int argc, char **argv)
         if (infile == NULL)
             BIO_printf(bio_err,
                        "Warning: Reading cert request from stdin since no -in option is given\n");
-        req = load_csr_autofmt(infile, informat, "certificate request input");
+        req = load_csr_autofmt(infile, informat, vfyopts,
+                               "certificate request input");
         if (req == NULL)
             goto end;
 
@@ -757,7 +756,7 @@ int x509_main(int argc, char **argv)
     } else {
         if (infile == NULL)
             BIO_printf(bio_err,
-                       "Warning: Reading certificate from stdin since no -in option is given\n");
+                       "Warning: Reading certificate from stdin since no -in or -new option is given\n");
         x = load_cert_pass(infile, informat, 1, passin, "certificate");
         if (x == NULL)
             goto end;
@@ -893,9 +892,6 @@ int x509_main(int argc, char **argv)
             }
         }
         noout = 1;
-    } else if (privkey != NULL) {
-        if (!do_X509_sign(x, privkey, digest, sigopts, &ext_ctx))
-            goto end;
     } else if (CAfile != NULL) {
         if ((CAkey = load_key(CAkeyfile, CAkeyformat,
                               0, passin, e, "CA private key")) == NULL)
@@ -906,7 +902,10 @@ int x509_main(int argc, char **argv)
             goto err;
         }
 
-        if (!do_X509_sign(x, CAkey, digest, sigopts, &ext_ctx))
+        if (!do_X509_sign(x, 0, CAkey, digest, sigopts, &ext_ctx))
+            goto end;
+    } else if (privkey != NULL) {
+        if (!do_X509_sign(x, 0, privkey, digest, sigopts, &ext_ctx))
             goto end;
     }
     if (badsig) {
@@ -1150,16 +1149,7 @@ static int callb(int ok, X509_STORE_CTX *ctx)
     if (err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT)
         return 1;
 
-    /*
-     * BAD we should have gotten an error.  Normally if everything worked
-     * X509_STORE_CTX_get_error(ctx) will still be set to
-     * DEPTH_ZERO_SELF_....
-     */
-    if (ok) {
-        BIO_printf(bio_err,
-                   "Error with certificate to be certified - should be self-signed\n");
-        return 0;
-    } else {
+    if (!ok) {
         err_cert = X509_STORE_CTX_get_current_cert(ctx);
         print_name(bio_err, "subject=", X509_get_subject_name(err_cert));
         BIO_printf(bio_err,
@@ -1168,6 +1158,8 @@ static int callb(int ok, X509_STORE_CTX *ctx)
                    X509_verify_cert_error_string(err));
         return 1;
     }
+
+    return 1;
 }
 
 static int purpose_print(BIO *bio, X509 *cert, X509_PURPOSE *pt)

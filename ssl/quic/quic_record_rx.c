@@ -7,9 +7,11 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <openssl/ssl.h>
 #include "internal/quic_record_rx.h"
 #include "quic_record_shared.h"
 #include "internal/common.h"
+#include "internal/list.h"
 #include "../ssl_local.h"
 
 /*
@@ -40,8 +42,9 @@ static ossl_inline int pkt_is_marked(const uint64_t *bitf, size_t pkt_idx)
 typedef struct rxe_st RXE;
 
 struct rxe_st {
-    RXE                *prev, *next;
-    size_t              data_len, alloc_len;
+    OSSL_QRX_PKT        pkt;
+    OSSL_LIST_MEMBER(rxe, RXE);
+    size_t              data_len, alloc_len, refcount;
 
     /* Extra fields for per-packet information. */
     QUIC_PKT_HDR        hdr; /* data/len are decrypted payload */
@@ -59,47 +62,23 @@ struct rxe_st {
     size_t              datagram_len;
 
     /*
+     * The key epoch the packet was received with. Always 0 for non-1-RTT
+     * packets.
+     */
+    uint64_t            key_epoch;
+
+    /*
      * alloc_len allocated bytes (of which data_len bytes are valid) follow this
      * structure.
      */
 };
 
-typedef struct ossl_qrx_rxe_list_st {
-    RXE *head, *tail;
-} RXE_LIST;
+DEFINE_LIST_OF(rxe, RXE);
+typedef OSSL_LIST(rxe) RXE_LIST;
 
 static ossl_inline unsigned char *rxe_data(const RXE *e)
 {
     return (unsigned char *)(e + 1);
-}
-
-static void rxe_remove(RXE_LIST *l, RXE *e)
-{
-    if (e->prev != NULL)
-        e->prev->next = e->next;
-    if (e->next != NULL)
-        e->next->prev = e->prev;
-
-    if (e == l->head)
-        l->head = e->next;
-    if (e == l->tail)
-        l->tail = e->prev;
-
-    e->next = e->prev = NULL;
-}
-
-static void rxe_insert_tail(RXE_LIST *l, RXE *e)
-{
-    if (l->tail == NULL) {
-        l->head = l->tail = e;
-        e->next = e->prev = NULL;
-        return;
-    }
-
-    l->tail->next = e;
-    e->prev = l->tail;
-    e->next = NULL;
-    l->tail = e;
 }
 
 /*
@@ -173,6 +152,11 @@ struct ossl_qrx_st {
 
     /* Initial key phase. For debugging use only; always 0 in real use. */
     unsigned char                   init_key_phase_bit;
+
+    /* Message callback related arguments */
+    ossl_msg_cb msg_callback;
+    void *msg_callback_arg;
+    SSL *msg_callback_ssl;
 };
 
 static void qrx_on_rx(QUIC_URXE *urxe, void *arg);
@@ -205,29 +189,30 @@ static void qrx_cleanup_rxl(RXE_LIST *l)
 {
     RXE *e, *enext;
 
-    for (e = l->head; e != NULL; e = enext) {
-        enext = e->next;
+    for (e = ossl_list_rxe_head(l); e != NULL; e = enext) {
+        enext = ossl_list_rxe_next(e);
+        ossl_list_rxe_remove(l, e);
         OPENSSL_free(e);
     }
-
-    l->head = l->tail = NULL;
 }
 
 static void qrx_cleanup_urxl(OSSL_QRX *qrx, QUIC_URXE_LIST *l)
 {
     QUIC_URXE *e, *enext;
 
-    for (e = l->head; e != NULL; e = enext) {
-        enext = e->next;
+    for (e = ossl_list_urxe_head(l); e != NULL; e = enext) {
+        enext = ossl_list_urxe_next(e);
+        ossl_list_urxe_remove(l, e);
         ossl_quic_demux_release_urxe(qrx->demux, e);
     }
-
-    l->head = l->tail = NULL;
 }
 
 void ossl_qrx_free(OSSL_QRX *qrx)
 {
     uint32_t i;
+
+    if (qrx == NULL)
+        return;
 
     /* Unregister from the RX DEMUX. */
     ossl_quic_demux_unregister_by_cb(qrx->demux, qrx_on_rx, qrx);
@@ -245,15 +230,24 @@ void ossl_qrx_free(OSSL_QRX *qrx)
     OPENSSL_free(qrx);
 }
 
-static void qrx_on_rx(QUIC_URXE *urxe, void *arg)
+void ossl_qrx_inject_urxe(OSSL_QRX *qrx, QUIC_URXE *urxe)
 {
-    OSSL_QRX *qrx = arg;
-
     /* Initialize our own fields inside the URXE and add to the pending list. */
     urxe->processed     = 0;
     urxe->hpr_removed   = 0;
     urxe->deferred      = 0;
-    ossl_quic_urxe_insert_tail(&qrx->urx_pending, urxe);
+    ossl_list_urxe_insert_tail(&qrx->urx_pending, urxe);
+
+    if (qrx->msg_callback != NULL)
+        qrx->msg_callback(0, OSSL_QUIC1_VERSION, SSL3_RT_QUIC_DATAGRAM, urxe + 1,
+                          urxe->data_len, qrx->msg_callback_ssl,
+                          qrx->msg_callback_arg);
+}
+
+static void qrx_on_rx(QUIC_URXE *urxe, void *arg)
+{
+    OSSL_QRX *qrx = arg;
+    ossl_qrx_inject_urxe(qrx, urxe);
 }
 
 int ossl_qrx_add_dst_conn_id(OSSL_QRX *qrx,
@@ -275,9 +269,9 @@ static void qrx_requeue_deferred(OSSL_QRX *qrx)
 {
     QUIC_URXE *e;
 
-    while ((e = qrx->urx_deferred.head) != NULL) {
-        ossl_quic_urxe_remove(&qrx->urx_deferred, e);
-        ossl_quic_urxe_insert_head(&qrx->urx_pending, e);
+    while ((e = ossl_list_urxe_head(&qrx->urx_deferred)) != NULL) {
+        ossl_list_urxe_remove(&qrx->urx_deferred, e);
+        ossl_list_urxe_insert_head(&qrx->urx_pending, e);
     }
 }
 
@@ -321,24 +315,25 @@ int ossl_qrx_discard_enc_level(OSSL_QRX *qrx, uint32_t enc_level)
 /* Returns 1 if there are one or more pending RXEs. */
 int ossl_qrx_processed_read_pending(OSSL_QRX *qrx)
 {
-    return qrx->rx_pending.head != NULL;
+    return !ossl_list_rxe_is_empty(&qrx->rx_pending);
 }
 
 /* Returns 1 if there are yet-unprocessed packets. */
 int ossl_qrx_unprocessed_read_pending(OSSL_QRX *qrx)
 {
-    return qrx->urx_pending.head != NULL || qrx->urx_deferred.head != NULL;
+    return !ossl_list_urxe_is_empty(&qrx->urx_pending)
+           || !ossl_list_urxe_is_empty(&qrx->urx_deferred);
 }
 
 /* Pop the next pending RXE. Returns NULL if no RXE is pending. */
 static RXE *qrx_pop_pending_rxe(OSSL_QRX *qrx)
 {
-    RXE *rxe = qrx->rx_pending.head;
+    RXE *rxe = ossl_list_rxe_head(&qrx->rx_pending);
 
     if (rxe == NULL)
         return NULL;
 
-    rxe_remove(&qrx->rx_pending, rxe);
+    ossl_list_rxe_remove(&qrx->rx_pending, rxe);
     return rxe;
 }
 
@@ -354,9 +349,10 @@ static RXE *qrx_alloc_rxe(size_t alloc_len)
     if (rxe == NULL)
         return NULL;
 
-    rxe->prev = rxe->next = NULL;
+    ossl_list_rxe_init_elem(rxe);
     rxe->alloc_len = alloc_len;
     rxe->data_len  = 0;
+    rxe->refcount  = 0;
     return rxe;
 }
 
@@ -371,14 +367,14 @@ static RXE *qrx_ensure_free_rxe(OSSL_QRX *qrx, size_t alloc_len)
 {
     RXE *rxe;
 
-    if (qrx->rx_free.head != NULL)
-        return qrx->rx_free.head;
+    if (ossl_list_rxe_head(&qrx->rx_free) != NULL)
+        return ossl_list_rxe_head(&qrx->rx_free);
 
     rxe = qrx_alloc_rxe(alloc_len);
     if (rxe == NULL)
         return NULL;
 
-    rxe_insert_tail(&qrx->rx_free, rxe);
+    ossl_list_rxe_insert_tail(&qrx->rx_free, rxe);
     return rxe;
 }
 
@@ -389,7 +385,7 @@ static RXE *qrx_ensure_free_rxe(OSSL_QRX *qrx, size_t alloc_len)
  */
 static RXE *qrx_resize_rxe(RXE_LIST *rxl, RXE *rxe, size_t n)
 {
-    RXE *rxe2;
+    RXE *rxe2, *p;
 
     /* Should never happen. */
     if (rxe == NULL)
@@ -398,25 +394,32 @@ static RXE *qrx_resize_rxe(RXE_LIST *rxl, RXE *rxe, size_t n)
     if (n >= SIZE_MAX - sizeof(RXE))
         return NULL;
 
+    /* Remove the item from the list to avoid accessing freed memory */
+    p = ossl_list_rxe_prev(rxe);
+    ossl_list_rxe_remove(rxl, rxe);
+
+    /* Should never resize an RXE which has been handed out. */
+    if (!ossl_assert(rxe->refcount == 0))
+        return NULL;
+
     /*
      * NOTE: We do not clear old memory, although it does contain decrypted
      * data.
      */
     rxe2 = OPENSSL_realloc(rxe, sizeof(RXE) + n);
-    if (rxe2 == NULL)
-        /* original RXE is still intact unchanged */
+    if (rxe2 == NULL) {
+        /* Resize failed, restore old allocation. */
+        if (p == NULL)
+            ossl_list_rxe_insert_head(rxl, rxe);
+        else
+            ossl_list_rxe_insert_after(rxl, p, rxe);
         return NULL;
-
-    if (rxe != rxe2) {
-        if (rxl->head == rxe)
-            rxl->head = rxe2;
-        if (rxl->tail == rxe)
-            rxl->tail = rxe2;
-        if (rxe->prev != NULL)
-            rxe->prev->next = rxe2;
-        if (rxe->next != NULL)
-            rxe->next->prev = rxe2;
     }
+
+    if (p == NULL)
+        ossl_list_rxe_insert_head(rxl, rxe2);
+    else
+        ossl_list_rxe_insert_after(rxl, p, rxe2);
 
     rxe2->alloc_len = n;
     return rxe2;
@@ -439,8 +442,11 @@ static RXE *qrx_reserve_rxe(RXE_LIST *rxl,
 static void qrx_recycle_rxe(OSSL_QRX *qrx, RXE *rxe)
 {
     /* RXE should not be in any list */
-    assert(rxe->prev == NULL && rxe->next == NULL);
-    rxe_insert_tail(&qrx->rx_free, rxe);
+    assert(ossl_list_rxe_prev(rxe) == NULL && ossl_list_rxe_next(rxe) == NULL);
+    rxe->pkt.hdr    = NULL;
+    rxe->pkt.peer   = NULL;
+    rxe->pkt.local  = NULL;
+    ossl_list_rxe_insert_tail(&qrx->rx_free, rxe);
 }
 
 /*
@@ -500,7 +506,7 @@ static uint32_t rxe_determine_pn_space(RXE *rxe)
 }
 
 static int qrx_validate_hdr_early(OSSL_QRX *qrx, RXE *rxe,
-                                  RXE *first_rxe)
+                                  const QUIC_CONN_ID *first_dcid)
 {
     /* Ensure version is what we want. */
     if (rxe->hdr.version != QUIC_VERSION_1
@@ -512,17 +518,19 @@ static int qrx_validate_hdr_early(OSSL_QRX *qrx, RXE *rxe,
         return 0;
 
     /* Version negotiation and retry packets must be the first packet. */
-    if (first_rxe != NULL && !ossl_quic_pkt_type_can_share_dgram(rxe->hdr.type))
+    if (first_dcid != NULL && !ossl_quic_pkt_type_can_share_dgram(rxe->hdr.type))
         return 0;
 
     /*
      * If this is not the first packet in a datagram, the destination connection
      * ID must match the one in that packet.
      */
-    if (first_rxe != NULL &&
-        !ossl_quic_conn_id_eq(&first_rxe->hdr.dst_conn_id,
-                              &rxe->hdr.dst_conn_id))
+    if (first_dcid != NULL) {
+        if (!ossl_assert(first_dcid->id_len < QUIC_MAX_CONN_ID_LEN)
+            || !ossl_quic_conn_id_eq(first_dcid,
+                                     &rxe->hdr.dst_conn_id))
         return 0;
+    }
 
     return 1;
 }
@@ -548,13 +556,21 @@ static int qrx_validate_hdr(OSSL_QRX *qrx, RXE *rxe)
     return 1;
 }
 
-/* Retrieves the correct cipher context for an EL and key phase. */
+/*
+ * Retrieves the correct cipher context for an EL and key phase. Writes the key
+ * epoch number actually used for packet decryption to *rx_key_epoch.
+ */
 static size_t qrx_get_cipher_ctx_idx(OSSL_QRX *qrx, OSSL_QRL_ENC_LEVEL *el,
                                      uint32_t enc_level,
-                                     unsigned char key_phase_bit)
+                                     unsigned char key_phase_bit,
+                                     uint64_t *rx_key_epoch)
 {
-    if (enc_level != QUIC_ENC_LEVEL_1RTT)
+    size_t idx;
+
+    if (enc_level != QUIC_ENC_LEVEL_1RTT) {
+        *rx_key_epoch = 0;
         return 0;
+    }
 
     if (!ossl_assert(key_phase_bit <= 1))
         return SIZE_MAX;
@@ -582,8 +598,54 @@ static size_t qrx_get_cipher_ctx_idx(OSSL_QRX *qrx, OSSL_QRL_ENC_LEVEL *el,
      * the best we can reasonably do and appears to be directly suggested by the
      * RFC.
      */
-    return el->state == QRL_EL_STATE_PROV_COOLDOWN ? el->key_epoch & 1
-                                                   : key_phase_bit;
+    idx = (el->state == QRL_EL_STATE_PROV_COOLDOWN ? el->key_epoch & 1
+                                                   : key_phase_bit);
+
+    /*
+     * We also need to determine the key epoch number which this index
+     * corresponds to. This is so we can report the key epoch number in the
+     * OSSL_QRX_PKT structure, which callers need to validate whether it was OK
+     * for a packet to be sent using a given key epoch's keys.
+     */
+    switch (el->state) {
+    case QRL_EL_STATE_PROV_NORMAL:
+        /*
+         * If we are in the NORMAL state, usually the KP bit will match the LSB
+         * of our key epoch, meaning no new key update is being signalled. If it
+         * does not match, this means the packet (purports to) belong to
+         * the next key epoch.
+         *
+         * IMPORTANT: The AEAD tag has not been verified yet when this function
+         * is called, so this code must be timing-channel safe, hence use of
+         * XOR. Moreover, the value output below is not yet authenticated.
+         */
+        *rx_key_epoch
+            = el->key_epoch + ((el->key_epoch & 1) ^ (uint64_t)key_phase_bit);
+        break;
+
+    case QRL_EL_STATE_PROV_UPDATING:
+        /*
+         * If we are in the UPDATING state, usually the KP bit will match the
+         * LSB of our key epoch. If it does not match, this means that the
+         * packet (purports to) belong to the previous key epoch.
+         *
+         * As above, must be timing-channel safe.
+         */
+        *rx_key_epoch
+            = el->key_epoch - ((el->key_epoch & 1) ^ (uint64_t)key_phase_bit);
+        break;
+
+    case QRL_EL_STATE_PROV_COOLDOWN:
+        /*
+         * If we are in COOLDOWN, there is only one key epoch we can possibly
+         * decrypt with, so just try that. If AEAD decryption fails, the
+         * value we output here isn't used anyway.
+         */
+        *rx_key_epoch = el->key_epoch;
+        break;
+    }
+
+    return idx;
 }
 
 /*
@@ -600,7 +662,8 @@ static int qrx_decrypt_pkt_body(OSSL_QRX *qrx, unsigned char *dst,
                                 size_t src_len, size_t *dec_len,
                                 const unsigned char *aad, size_t aad_len,
                                 QUIC_PN pn, uint32_t enc_level,
-                                unsigned char key_phase_bit)
+                                unsigned char key_phase_bit,
+                                uint64_t *rx_key_epoch)
 {
     int l = 0, l2 = 0;
     unsigned char nonce[EVP_MAX_IV_LENGTH];
@@ -626,7 +689,8 @@ static int qrx_decrypt_pkt_body(OSSL_QRX *qrx, unsigned char *dst,
     if (qrx->forged_pkt_count >= ossl_qrl_get_suite_max_forged_pkt(el->suite_id))
         return 0;
 
-    cctx_idx = qrx_get_cipher_ctx_idx(qrx, el, enc_level, key_phase_bit);
+    cctx_idx = qrx_get_cipher_ctx_idx(qrx, el, enc_level, key_phase_bit,
+                                      rx_key_epoch);
     if (!ossl_assert(cctx_idx < OSSL_NELEM(el->cctx)))
         return 0;
 
@@ -676,19 +740,20 @@ static ossl_inline void ignore_res(int x)
     /* No-op. */
 }
 
-static void qrx_key_update_initiated(OSSL_QRX *qrx)
+static void qrx_key_update_initiated(OSSL_QRX *qrx, QUIC_PN pn)
 {
     if (!ossl_qrl_enc_level_set_key_update(&qrx->el_set, QUIC_ENC_LEVEL_1RTT))
+        /* We are already in RXKU, so we don't call the callback again. */
         return;
 
     if (qrx->key_update_cb != NULL)
-        qrx->key_update_cb(qrx->key_update_cb_arg);
+        qrx->key_update_cb(pn, qrx->key_update_cb_arg);
 }
 
 /* Process a single packet in a datagram. */
 static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
                            PACKET *pkt, size_t pkt_idx,
-                           RXE **first_rxe,
+                           QUIC_CONN_ID *first_dcid,
                            size_t datagram_len)
 {
     RXE *rxe;
@@ -701,6 +766,7 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     QUIC_PKT_HDR_PTRS ptrs;
     uint32_t pn_space, enc_level;
     OSSL_QRL_ENC_LEVEL *el = NULL;
+    uint64_t rx_key_epoch = UINT64_MAX;
 
     /*
      * Get a free RXE. If we need to allocate a new one, use the packet length
@@ -722,7 +788,7 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     need_second_decode = !pkt_is_marked(&urxe->hpr_removed, pkt_idx);
     if (!ossl_quic_wire_decode_pkt_hdr(pkt,
                                        qrx->short_conn_id_len,
-                                       need_second_decode, &rxe->hdr, &ptrs))
+                                       need_second_decode, 0, &rxe->hdr, &ptrs))
         goto malformed;
 
     /*
@@ -732,18 +798,18 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     eop = PACKET_data(pkt);
 
     /*
-     * Make a note of the first RXE so we can later ensure the destination
-     * connection IDs of all packets in a datagram match.
+     * Make a note of the first packet's DCID so we can later ensure the
+     * destination connection IDs of all packets in a datagram match.
      */
     if (pkt_idx == 0)
-        *first_rxe = rxe;
+        *first_dcid = rxe->hdr.dst_conn_id;
 
     /*
      * Early header validation. Since we now know the packet length, we can also
      * now skip over it if we already processed it.
      */
     if (already_processed
-        || !qrx_validate_hdr_early(qrx, rxe, pkt_idx == 0 ? NULL : *first_rxe))
+        || !qrx_validate_hdr_early(qrx, rxe, pkt_idx == 0 ? NULL : first_dcid))
         /*
          * Already processed packets are handled identically to malformed
          * packets; i.e., they are ignored.
@@ -773,8 +839,8 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
         rxe->pn         = QUIC_PN_INVALID;
 
         /* Move RXE to pending. */
-        rxe_remove(&qrx->rx_free, rxe);
-        rxe_insert_tail(&qrx->rx_pending, rxe);
+        ossl_list_rxe_remove(&qrx->rx_free, rxe);
+        ossl_list_rxe_insert_tail(&qrx->rx_pending, rxe);
         return 0; /* success, did not defer */
     }
 
@@ -834,13 +900,18 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
 
         /* Decode the now unprotected header. */
         if (ossl_quic_wire_decode_pkt_hdr(pkt, qrx->short_conn_id_len,
-                                          0, &rxe->hdr, NULL) != 1)
+                                          0, 0, &rxe->hdr, NULL) != 1)
             goto malformed;
     }
 
     /* Validate header and decode PN. */
     if (!qrx_validate_hdr(qrx, rxe))
         goto malformed;
+
+    if (qrx->msg_callback != NULL)
+        qrx->msg_callback(0, OSSL_QUIC1_VERSION, SSL3_RT_QUIC_PACKET, sop,
+                          eop - sop - rxe->hdr.len, qrx->msg_callback_ssl,
+                          qrx->msg_callback_arg);
 
     /*
      * The AAD data is the entire (unprotected) packet header including the PN.
@@ -876,24 +947,22 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     dst = (unsigned char *)rxe_data(rxe) + i;
     if (!qrx_decrypt_pkt_body(qrx, dst, rxe->hdr.data, rxe->hdr.len,
                               &dec_len, sop, aad_len, rxe->pn, enc_level,
-                              rxe->hdr.key_phase))
+                              rxe->hdr.key_phase, &rx_key_epoch))
         goto malformed;
 
     /*
-     * We automatically discard INITIAL keys when successfully decrypting a
-     * HANDSHAKE packet.
-     */
-    if (enc_level == QUIC_ENC_LEVEL_HANDSHAKE)
-        ossl_qrl_enc_level_set_discard(&qrx->el_set, QUIC_ENC_LEVEL_INITIAL);
-
-    /*
+     * -----------------------------------------------------
+     *   IMPORTANT: ANYTHING ABOVE THIS LINE IS UNVERIFIED
+     *              AND MUST BE TIMING-CHANNEL SAFE.
+     * -----------------------------------------------------
+     *
      * At this point, we have successfully authenticated the AEAD tag and no
      * longer need to worry about exposing the Key Phase bit in timing channels.
      * Check for a Key Phase bit differing from our expectation.
      */
     if (rxe->hdr.type == QUIC_PKT_TYPE_1RTT
         && rxe->hdr.key_phase != (el->key_epoch & 1))
-        qrx_key_update_initiated(qrx);
+        qrx_key_update_initiated(qrx, rxe->pn);
 
     /*
      * We have now successfully decrypted the packet payload. If there are
@@ -920,6 +989,7 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     rxe->hdr.len        = dec_len;
     rxe->data_len       = dec_len;
     rxe->datagram_len   = datagram_len;
+    rxe->key_epoch      = rx_key_epoch;
 
     /* We processed the PN successfully, so update largest processed PN. */
     pn_space = rxe_determine_pn_space(rxe);
@@ -932,8 +1002,8 @@ static int qrx_process_pkt(OSSL_QRX *qrx, QUIC_URXE *urxe,
     rxe->time   = urxe->time;
 
     /* Move RXE to pending. */
-    rxe_remove(&qrx->rx_free, rxe);
-    rxe_insert_tail(&qrx->rx_pending, rxe);
+    ossl_list_rxe_remove(&qrx->rx_free, rxe);
+    ossl_list_rxe_insert_tail(&qrx->rx_pending, rxe);
     return 0; /* success, did not defer; not distinguished from failure */
 
 cannot_decrypt:
@@ -989,7 +1059,7 @@ static int qrx_process_datagram(OSSL_QRX *qrx, QUIC_URXE *e,
     int have_deferred = 0;
     PACKET pkt;
     size_t pkt_idx = 0;
-    RXE *first_rxe = NULL;
+    QUIC_CONN_ID first_dcid = { 255 };
 
     qrx->bytes_received += data_len;
 
@@ -998,7 +1068,7 @@ static int qrx_process_datagram(OSSL_QRX *qrx, QUIC_URXE *e,
 
     for (; PACKET_remaining(&pkt) > 0; ++pkt_idx) {
         /*
-         * A packet smallest than the minimum possible QUIC packet size is not
+         * A packet smaller than the minimum possible QUIC packet size is not
          * considered valid. We also ignore more than a certain number of
          * packets within the same datagram.
          */
@@ -1019,7 +1089,7 @@ static int qrx_process_datagram(OSSL_QRX *qrx, QUIC_URXE *e,
          * length, qrx_process_pkt will take care of advancing to the end of
          * the packet, so we will exit the loop automatically in this case.
          */
-        if (qrx_process_pkt(qrx, e, &pkt, pkt_idx, &first_rxe, data_len))
+        if (qrx_process_pkt(qrx, e, &pkt, pkt_idx, &first_dcid, data_len))
             have_deferred = 1;
     }
 
@@ -1033,7 +1103,7 @@ static int qrx_process_one_urxe(OSSL_QRX *qrx, QUIC_URXE *e)
     int was_deferred;
 
     /* The next URXE we process should be at the head of the pending list. */
-    if (!ossl_assert(e == qrx->urx_pending.head))
+    if (!ossl_assert(e == ossl_list_urxe_head(&qrx->urx_pending)))
         return 0;
 
     /*
@@ -1049,10 +1119,10 @@ static int qrx_process_one_urxe(OSSL_QRX *qrx, QUIC_URXE *e)
      * Remove the URXE from the pending list and return it to
      * either the free or deferred list.
      */
-    ossl_quic_urxe_remove(&qrx->urx_pending, e);
+    ossl_list_urxe_remove(&qrx->urx_pending, e);
     if (was_deferred > 0 &&
             (e->deferred || qrx->num_deferred < qrx->max_deferred)) {
-        ossl_quic_urxe_insert_tail(&qrx->urx_deferred, e);
+        ossl_list_urxe_insert_tail(&qrx->urx_deferred, e);
         if (!e->deferred) {
             e->deferred = 1;
             ++qrx->num_deferred;
@@ -1073,14 +1143,14 @@ static int qrx_process_pending_urxl(OSSL_QRX *qrx)
 {
     QUIC_URXE *e;
 
-    while ((e = qrx->urx_pending.head) != NULL)
+    while ((e = ossl_list_urxe_head(&qrx->urx_pending)) != NULL)
         if (!qrx_process_one_urxe(qrx, e))
             return 0;
 
     return 1;
 }
 
-int ossl_qrx_read_pkt(OSSL_QRX *qrx, OSSL_QRX_PKT *pkt)
+int ossl_qrx_read_pkt(OSSL_QRX *qrx, OSSL_QRX_PKT **ppkt)
 {
     RXE *rxe;
 
@@ -1096,22 +1166,43 @@ int ossl_qrx_read_pkt(OSSL_QRX *qrx, OSSL_QRX_PKT *pkt)
     if (!ossl_assert(rxe != NULL))
         return 0;
 
-    pkt->handle     = rxe;
-    pkt->hdr        = &rxe->hdr;
-    pkt->pn         = rxe->pn;
-    pkt->time       = rxe->time;
-    pkt->peer
+    assert(rxe->refcount == 0);
+    rxe->refcount = 1;
+
+    rxe->pkt.hdr            = &rxe->hdr;
+    rxe->pkt.pn             = rxe->pn;
+    rxe->pkt.time           = rxe->time;
+    rxe->pkt.datagram_len   = rxe->datagram_len;
+    rxe->pkt.peer
         = BIO_ADDR_family(&rxe->peer) != AF_UNSPEC ? &rxe->peer : NULL;
-    pkt->local
+    rxe->pkt.local
         = BIO_ADDR_family(&rxe->local) != AF_UNSPEC ? &rxe->local : NULL;
+    rxe->pkt.key_epoch      = rxe->key_epoch;
+    rxe->pkt.qrx            = qrx;
+    *ppkt = &rxe->pkt;
+
     return 1;
 }
 
-void ossl_qrx_release_pkt(OSSL_QRX *qrx, void *handle)
+void ossl_qrx_pkt_release(OSSL_QRX_PKT *pkt)
 {
-    RXE *rxe = handle;
+    RXE *rxe;
 
-    qrx_recycle_rxe(qrx, rxe);
+    if (pkt == NULL)
+        return;
+
+    rxe = (RXE *)pkt;
+    assert(rxe->refcount > 0);
+    if (--rxe->refcount == 0)
+        qrx_recycle_rxe(pkt->qrx, rxe);
+}
+
+void ossl_qrx_pkt_up_ref(OSSL_QRX_PKT *pkt)
+{
+    RXE *rxe = (RXE *)pkt;
+
+    assert(rxe->refcount > 0);
+    ++rxe->refcount;
 }
 
 uint64_t ossl_qrx_get_bytes_received(OSSL_QRX *qrx, int clear)
@@ -1184,4 +1275,16 @@ uint64_t ossl_qrx_get_max_forged_pkt_count(OSSL_QRX *qrx,
 
     return el == NULL ? UINT64_MAX
         : ossl_qrl_get_suite_max_forged_pkt(el->suite_id);
+}
+
+void ossl_qrx_set_msg_callback(OSSL_QRX *qrx, ossl_msg_cb msg_callback,
+                               SSL *msg_callback_ssl)
+{
+    qrx->msg_callback = msg_callback;
+    qrx->msg_callback_ssl = msg_callback_ssl;
+}
+
+void ossl_qrx_set_msg_callback_arg(OSSL_QRX *qrx, void *msg_callback_arg)
+{
+    qrx->msg_callback_arg = msg_callback_arg;
 }

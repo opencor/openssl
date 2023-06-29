@@ -174,7 +174,7 @@ static int context_init(OSSL_LIB_CTX *ctx)
         goto err;
 #endif
 
-#if defined(OPENSSL_THREADS)
+#ifndef OPENSSL_NO_THREAD_POOL
     ctx->threads = ossl_threads_ctx_new(ctx);
     if (ctx->threads == NULL)
         goto err;
@@ -308,7 +308,7 @@ static void context_deinit_objs(OSSL_LIB_CTX *ctx)
     }
 #endif
 
-#if defined(OPENSSL_THREADS)
+#ifndef OPENSSL_NO_THREAD_POOL
     if (ctx->threads != NULL) {
         ossl_threads_ctx_free(ctx->threads);
         ctx->threads = NULL;
@@ -348,17 +348,32 @@ static OSSL_LIB_CTX default_context_int;
 
 static CRYPTO_ONCE default_context_init = CRYPTO_ONCE_STATIC_INIT;
 static CRYPTO_THREAD_LOCAL default_context_thread_local;
+static int default_context_inited = 0;
 
 DEFINE_RUN_ONCE_STATIC(default_context_do_init)
 {
-    return CRYPTO_THREAD_init_local(&default_context_thread_local, NULL)
-        && context_init(&default_context_int);
+    if (!CRYPTO_THREAD_init_local(&default_context_thread_local, NULL))
+        goto err;
+
+    if (!context_init(&default_context_int))
+        goto deinit_thread;
+
+    default_context_inited = 1;
+    return 1;
+
+deinit_thread:
+    CRYPTO_THREAD_cleanup_local(&default_context_thread_local);
+err:
+    return 0;
 }
 
 void ossl_lib_ctx_default_deinit(void)
 {
+    if (!default_context_inited)
+        return;
     context_deinit(&default_context_int);
     CRYPTO_THREAD_cleanup_local(&default_context_thread_local);
+    default_context_inited = 0;
 }
 
 static OSSL_LIB_CTX *get_thread_default_context(void)
@@ -472,6 +487,15 @@ OSSL_LIB_CTX *OSSL_LIB_CTX_set0_default(OSSL_LIB_CTX *libctx)
 
     return NULL;
 }
+
+void ossl_release_default_drbg_ctx(void)
+{
+    /* early release of the DRBG in global default libctx */
+    if (default_context_int.drbg != NULL) {
+        ossl_rand_ctx_free(default_context_int.drbg);
+        default_context_int.drbg = NULL;
+    }
+}
 #endif
 
 OSSL_LIB_CTX *ossl_lib_ctx_get_concrete(OSSL_LIB_CTX *ctx)
@@ -542,7 +566,7 @@ void *ossl_lib_ctx_get_data(OSSL_LIB_CTX *ctx, int index)
     case OSSL_LIB_CTX_SELF_TEST_CB_INDEX:
         return ctx->self_test_cb;
 #endif
-#if defined(OPENSSL_THREADS)
+#ifndef OPENSSL_NO_THREAD_POOL
     case OSSL_LIB_CTX_THREAD_INDEX:
         return ctx->threads;
 #endif

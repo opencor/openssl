@@ -12,6 +12,7 @@
 
 /* system-specific variants defining OSSL_sleep() */
 #if defined(OPENSSL_SYS_UNIX) || defined(__DJGPP__)
+#include <unistd.h>
 
 void OSSL_sleep(uint64_t millis)
 {
@@ -36,37 +37,29 @@ void OSSL_sleep(uint64_t millis)
     usleep(millis * 1000);
 #  endif
 # else
-    usleep(millis * 1000);
+    unsigned int s = (unsigned int)(millis / 1000);
+    unsigned int us = (unsigned int)((millis % 1000) * 1000);
+
+    sleep(s);
+    usleep(us);
 # endif
 }
-#elif defined(_WIN32)
+#elif defined(_WIN32) && !defined(OPENSSL_SYS_UEFI)
 # include <windows.h>
 
 void OSSL_sleep(uint64_t millis)
 {
     /*
      * Windows' Sleep() takes a DWORD argument, which is smaller than
-     * a uint64_t, so we need to split the two to shut the compiler up.
+     * a uint64_t, so we need to limit it to 49 days, which should be enough.
      */
-    DWORD dword_times;
-    DWORD i;
+    DWORD limited_millis = (DWORD)-1;
 
-    dword_times = (DWORD)(millis >> (8 * sizeof(DWORD)));
-    millis &= (DWORD)-1;
-    if (dword_times > 0) {
-        for (i = dword_times; i-- > 0;)
-            Sleep((DWORD)-1);
-        /*
-         * The loop above slept 1 millisec less on each iteration than it
-         * should, this compensates by sleeping as many milliseconds as there
-         * were iterations.  Yes, this is nit picky!
-         */
-        Sleep(dword_times);
-    }
-
-    /* Now, sleep the remaining milliseconds */
-    Sleep((DWORD)(millis));
+    if (millis < limited_millis)
+        limited_millis = (DWORD)millis;
+    Sleep(limited_millis);
 }
+
 #else
 /* Fallback to a busy wait */
 # include "internal/time.h"
@@ -75,22 +68,14 @@ static void ossl_sleep_secs(uint64_t secs)
 {
     /*
      * sleep() takes an unsigned int argument, which is smaller than
-     * a uint64_t, so it needs to be called in smaller increments.
+     * a uint64_t, so it needs to be limited to 136 years which
+     * should be enough even for Sleeping Beauty.
      */
-    unsigned int uint_times;
-    unsigned int i;
+    unsigned int limited_secs = UINT_MAX;
 
-    uint_times = (unsigned int)(secs >> (8 * sizeof(unsigned int)));
-    if (uint_times > 0) {
-        for (i = uint_times; i-- > 0;)
-            sleep((unsigned int)-1);
-        /*
-         * The loop above slept 1 second less on each iteration than it
-         * should, this compensates by sleeping as many seconds as there were
-         * iterations.  Yes, this is nit picky!
-         */
-        sleep(uint_times);
-    }
+    if (secs < limited_secs)
+        limited_secs = (unsigned int)secs;
+    sleep(limited_secs);
 }
 
 static void ossl_sleep_millis(uint64_t millis)

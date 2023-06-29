@@ -11,6 +11,7 @@
 #include <openssl/core_names.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
+#include "internal/ssl3_cbc.h"
 #include "../../ssl_local.h"
 #include "../record_local.h"
 #include "recmethod_local.h"
@@ -120,7 +121,7 @@ static int tls1_set_crypto_state(OSSL_RECORD_LAYER *rl, int level,
             && !ossl_set_tls_provider_parameters(rl, ciph_ctx, ciph, md))
         return OSSL_RECORD_RETURN_FATAL;
 
-    /* Calculate the explict IV length */
+    /* Calculate the explicit IV length */
     if (RLAYER_USE_EXPLICIT_IV(rl)) {
         int mode = EVP_CIPHER_CTX_get_mode(ciph_ctx);
         int eivlen = 0;
@@ -156,12 +157,14 @@ static int tls1_set_crypto_state(OSSL_RECORD_LAYER *rl, int level,
  *       decryption failed, or Encrypt-then-mac decryption failed.
  *    1: Success or Mac-then-encrypt decryption failed (MAC will be randomised)
  */
-static int tls1_cipher(OSSL_RECORD_LAYER *rl, SSL3_RECORD *recs, size_t n_recs,
-                       int sending, SSL_MAC_BUF *macs, size_t macsize)
+static int tls1_cipher(OSSL_RECORD_LAYER *rl, TLS_RL_RECORD *recs,
+                       size_t n_recs, int sending, SSL_MAC_BUF *macs,
+                       size_t macsize)
 {
     EVP_CIPHER_CTX *ds;
     size_t reclen[SSL_MAX_PIPELINES];
     unsigned char buf[SSL_MAX_PIPELINES][EVP_AEAD_TLS1_AAD_LEN];
+    unsigned char *data[SSL_MAX_PIPELINES];
     int pad = 0, tmpr, provided;
     size_t bs, ctr, padnum, loop;
     unsigned char padval;
@@ -298,8 +301,6 @@ static int tls1_cipher(OSSL_RECORD_LAYER *rl, SSL3_RECORD *recs, size_t n_recs,
         }
     }
     if (n_recs > 1) {
-        unsigned char *data[SSL_MAX_PIPELINES];
-
         /* Set the output buffers */
         for (ctr = 0; ctr < n_recs; ctr++)
             data[ctr] = recs[ctr].data;
@@ -448,7 +449,7 @@ static int tls1_cipher(OSSL_RECORD_LAYER *rl, SSL3_RECORD *recs, size_t n_recs,
     return 1;
 }
 
-static int tls1_mac(OSSL_RECORD_LAYER *rl, SSL3_RECORD *rec, unsigned char *md,
+static int tls1_mac(OSSL_RECORD_LAYER *rl, TLS_RL_RECORD *rec, unsigned char *md,
                     int sending)
 {
     unsigned char *seq = rl->sequence;
@@ -589,11 +590,11 @@ int tls1_initialise_write_packets(OSSL_RECORD_LAYER *rl,
                                   size_t numtempl,
                                   OSSL_RECORD_TEMPLATE *prefixtempl,
                                   WPACKET *pkt,
-                                  SSL3_BUFFER *bufs,
+                                  TLS_BUFFER *bufs,
                                   size_t *wpinited)
 {
     size_t align = 0;
-    SSL3_BUFFER *wb;
+    TLS_BUFFER *wb;
     size_t prefix;
 
     /* Do we need to add an empty record prefix? */
@@ -613,14 +614,14 @@ int tls1_initialise_write_packets(OSSL_RECORD_LAYER *rl,
         wb = &bufs[0];
 
 #if defined(SSL3_ALIGN_PAYLOAD) && SSL3_ALIGN_PAYLOAD != 0
-        align = (size_t)SSL3_BUFFER_get_buf(wb) + SSL3_RT_HEADER_LENGTH;
+        align = (size_t)TLS_BUFFER_get_buf(wb) + SSL3_RT_HEADER_LENGTH;
         align = SSL3_ALIGN_PAYLOAD - 1
                 - ((align - 1) % SSL3_ALIGN_PAYLOAD);
 #endif
-        SSL3_BUFFER_set_offset(wb, align);
+        TLS_BUFFER_set_offset(wb, align);
 
-        if (!WPACKET_init_static_len(&pkt[0], SSL3_BUFFER_get_buf(wb),
-                                     SSL3_BUFFER_get_len(wb), 0)) {
+        if (!WPACKET_init_static_len(&pkt[0], TLS_BUFFER_get_buf(wb),
+                                     TLS_BUFFER_get_len(wb), 0)) {
             RLAYERfatal(rl, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             return 0;
         }

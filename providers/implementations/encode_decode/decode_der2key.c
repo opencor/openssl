@@ -35,6 +35,7 @@
 #include "prov/bio.h"
 #include "prov/implementations.h"
 #include "endecoder_local.h"
+#include "internal/nelem.h"
 
 struct der2key_ctx_st;           /* Forward declaration */
 typedef int check_key_fn(void *, struct der2key_ctx_st *ctx);
@@ -374,7 +375,7 @@ static void *dsa_d2i_PKCS8(void **key, const unsigned char **der, long der_len,
                              (key_from_pkcs8_t *)ossl_dsa_key_from_pkcs8);
 }
 
-# define dsa_d2i_PUBKEY                 (d2i_of_void *)d2i_DSA_PUBKEY
+# define dsa_d2i_PUBKEY                 (d2i_of_void *)ossl_d2i_DSA_PUBKEY
 # define dsa_free                       (free_key_fn *)DSA_free
 # define dsa_check                      NULL
 
@@ -416,6 +417,7 @@ static void ec_adjust(void *key, struct der2key_ctx_st *ctx)
     ossl_ec_key_set0_libctx(key, PROV_LIBCTX_OF(ctx->provctx));
 }
 
+# ifndef OPENSSL_NO_ECX
 /*
  * ED25519, ED448, X25519, X448 only implement PKCS#8 and SubjectPublicKeyInfo,
  * so no d2i functions to be had.
@@ -433,45 +435,46 @@ static void ecx_key_adjust(void *key, struct der2key_ctx_st *ctx)
     ossl_ecx_key_set0_libctx(key, PROV_LIBCTX_OF(ctx->provctx));
 }
 
-# define ed25519_evp_type               EVP_PKEY_ED25519
-# define ed25519_d2i_private_key        NULL
-# define ed25519_d2i_public_key         NULL
-# define ed25519_d2i_key_params         NULL
-# define ed25519_d2i_PKCS8              ecx_d2i_PKCS8
-# define ed25519_d2i_PUBKEY             (d2i_of_void *)ossl_d2i_ED25519_PUBKEY
-# define ed25519_free                   (free_key_fn *)ossl_ecx_key_free
-# define ed25519_check                  NULL
-# define ed25519_adjust                 ecx_key_adjust
+#  define ed25519_evp_type               EVP_PKEY_ED25519
+#  define ed25519_d2i_private_key        NULL
+#  define ed25519_d2i_public_key         NULL
+#  define ed25519_d2i_key_params         NULL
+#  define ed25519_d2i_PKCS8              ecx_d2i_PKCS8
+#  define ed25519_d2i_PUBKEY             (d2i_of_void *)ossl_d2i_ED25519_PUBKEY
+#  define ed25519_free                   (free_key_fn *)ossl_ecx_key_free
+#  define ed25519_check                  NULL
+#  define ed25519_adjust                 ecx_key_adjust
 
-# define ed448_evp_type                 EVP_PKEY_ED448
-# define ed448_d2i_private_key          NULL
-# define ed448_d2i_public_key           NULL
-# define ed448_d2i_key_params           NULL
-# define ed448_d2i_PKCS8                ecx_d2i_PKCS8
-# define ed448_d2i_PUBKEY               (d2i_of_void *)ossl_d2i_ED448_PUBKEY
-# define ed448_free                     (free_key_fn *)ossl_ecx_key_free
-# define ed448_check                    NULL
-# define ed448_adjust                   ecx_key_adjust
+#  define ed448_evp_type                 EVP_PKEY_ED448
+#  define ed448_d2i_private_key          NULL
+#  define ed448_d2i_public_key           NULL
+#  define ed448_d2i_key_params           NULL
+#  define ed448_d2i_PKCS8                ecx_d2i_PKCS8
+#  define ed448_d2i_PUBKEY               (d2i_of_void *)ossl_d2i_ED448_PUBKEY
+#  define ed448_free                     (free_key_fn *)ossl_ecx_key_free
+#  define ed448_check                    NULL
+#  define ed448_adjust                   ecx_key_adjust
 
-# define x25519_evp_type                EVP_PKEY_X25519
-# define x25519_d2i_private_key         NULL
-# define x25519_d2i_public_key          NULL
-# define x25519_d2i_key_params          NULL
-# define x25519_d2i_PKCS8               ecx_d2i_PKCS8
-# define x25519_d2i_PUBKEY              (d2i_of_void *)ossl_d2i_X25519_PUBKEY
-# define x25519_free                    (free_key_fn *)ossl_ecx_key_free
-# define x25519_check                   NULL
-# define x25519_adjust                  ecx_key_adjust
+#  define x25519_evp_type                EVP_PKEY_X25519
+#  define x25519_d2i_private_key         NULL
+#  define x25519_d2i_public_key          NULL
+#  define x25519_d2i_key_params          NULL
+#  define x25519_d2i_PKCS8               ecx_d2i_PKCS8
+#  define x25519_d2i_PUBKEY              (d2i_of_void *)ossl_d2i_X25519_PUBKEY
+#  define x25519_free                    (free_key_fn *)ossl_ecx_key_free
+#  define x25519_check                   NULL
+#  define x25519_adjust                  ecx_key_adjust
 
-# define x448_evp_type                  EVP_PKEY_X448
-# define x448_d2i_private_key           NULL
-# define x448_d2i_public_key            NULL
-# define x448_d2i_key_params            NULL
-# define x448_d2i_PKCS8                 ecx_d2i_PKCS8
-# define x448_d2i_PUBKEY                (d2i_of_void *)ossl_d2i_X448_PUBKEY
-# define x448_free                      (free_key_fn *)ossl_ecx_key_free
-# define x448_check                     NULL
-# define x448_adjust                    ecx_key_adjust
+#  define x448_evp_type                  EVP_PKEY_X448
+#  define x448_d2i_private_key           NULL
+#  define x448_d2i_public_key            NULL
+#  define x448_d2i_key_params            NULL
+#  define x448_d2i_PKCS8                 ecx_d2i_PKCS8
+#  define x448_d2i_PUBKEY                (d2i_of_void *)ossl_d2i_X448_PUBKEY
+#  define x448_free                      (free_key_fn *)ossl_ecx_key_free
+#  define x448_check                     NULL
+#  define x448_adjust                    ecx_key_adjust
+# endif /* OPENSSL_NO_ECX */
 
 # ifndef OPENSSL_NO_SM2
 #  define sm2_evp_type                  EVP_PKEY_SM2
@@ -748,7 +751,7 @@ static void rsa_adjust(void *key, struct der2key_ctx_st *ctx)
           (void (*)(void))der2key_decode },                             \
         { OSSL_FUNC_DECODER_EXPORT_OBJECT,                              \
           (void (*)(void))der2key_export_object },                      \
-        { 0, NULL }                                                     \
+        OSSL_DISPATCH_END                                               \
     }
 
 #ifndef OPENSSL_NO_DH
@@ -772,6 +775,7 @@ MAKE_DECODER("EC", ec, ec, PrivateKeyInfo);
 MAKE_DECODER("EC", ec, ec, SubjectPublicKeyInfo);
 MAKE_DECODER("EC", ec, ec, type_specific_no_pub);
 MAKE_DECODER("EC", ec, ec, EC);
+# ifndef OPENSSL_NO_ECX
 MAKE_DECODER("X25519", x25519, ecx, PrivateKeyInfo);
 MAKE_DECODER("X25519", x25519, ecx, SubjectPublicKeyInfo);
 MAKE_DECODER("X448", x448, ecx, PrivateKeyInfo);
@@ -780,6 +784,7 @@ MAKE_DECODER("ED25519", ed25519, ecx, PrivateKeyInfo);
 MAKE_DECODER("ED25519", ed25519, ecx, SubjectPublicKeyInfo);
 MAKE_DECODER("ED448", ed448, ecx, PrivateKeyInfo);
 MAKE_DECODER("ED448", ed448, ecx, SubjectPublicKeyInfo);
+# endif
 # ifndef OPENSSL_NO_SM2
 MAKE_DECODER("SM2", sm2, ec, PrivateKeyInfo);
 MAKE_DECODER("SM2", sm2, ec, SubjectPublicKeyInfo);

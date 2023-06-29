@@ -3366,6 +3366,7 @@ void ssl3_free(SSL *s)
     OPENSSL_clear_free(sc->s3.tmp.pms, sc->s3.tmp.pmslen);
     OPENSSL_free(sc->s3.tmp.peer_sigalgs);
     OPENSSL_free(sc->s3.tmp.peer_cert_sigalgs);
+    OPENSSL_free(sc->s3.tmp.valid_flags);
     ssl3_free_digest_list(sc);
     OPENSSL_free(sc->s3.alpn_selected);
     OPENSSL_free(sc->s3.alpn_proposed);
@@ -3390,6 +3391,7 @@ int ssl3_clear(SSL *s)
     OPENSSL_clear_free(sc->s3.tmp.pms, sc->s3.tmp.pmslen);
     OPENSSL_free(sc->s3.tmp.peer_sigalgs);
     OPENSSL_free(sc->s3.tmp.peer_cert_sigalgs);
+    OPENSSL_free(sc->s3.tmp.valid_flags);
 
     EVP_PKEY_free(sc->s3.tmp.pkey);
     EVP_PKEY_free(sc->s3.peer_tmp);
@@ -3759,6 +3761,10 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
             return (int)sc->ext.peer_supportedgroups_len;
         }
 
+    case SSL_CTRL_SET_MSG_CALLBACK_ARG:
+        sc->msg_callback_arg = parg;
+        return 1;
+
     default:
         break;
     }
@@ -3790,6 +3796,10 @@ long ssl3_callback_ctrl(SSL *s, int cmd, void (*fp) (void))
         sc->not_resumable_session_cb = (int (*)(SSL *, int))fp;
         ret = 1;
         break;
+
+    case SSL_CTRL_SET_MSG_CALLBACK:
+        sc->msg_callback = (ossl_msg_cb)fp;
+        return 1;
     default:
         break;
     }
@@ -4244,7 +4254,7 @@ const SSL_CIPHER *ssl3_choose_cipher(SSL_CONNECTION *s, STACK_OF(SSL_CIPHER) *cl
 
     if (SSL_CONNECTION_IS_TLS13(s)) {
 #ifndef OPENSSL_NO_PSK
-        int j;
+        size_t j;
 
         /*
          * If we allow "old" style PSK callbacks, and we have no certificate (so
@@ -4254,8 +4264,8 @@ const SSL_CIPHER *ssl3_choose_cipher(SSL_CONNECTION *s, STACK_OF(SSL_CIPHER) *cl
          * that.
          */
         if (s->psk_server_callback != NULL) {
-            for (j = 0; j < SSL_PKEY_NUM && !ssl_has_cert(s, j); j++);
-            if (j == SSL_PKEY_NUM) {
+            for (j = 0; j < s->ssl_pkey_num && !ssl_has_cert(s, j); j++);
+            if (j == s->ssl_pkey_num) {
                 /* There are no certificates */
                 prefer_sha256 = 1;
             }
@@ -4443,11 +4453,11 @@ int ssl3_shutdown(SSL *s)
         ssl3_send_alert(sc, SSL3_AL_WARNING, SSL_AD_CLOSE_NOTIFY);
         /*
          * our shutdown alert has been sent now, and if it still needs to be
-         * written, s->s3.alert_dispatch will be true
+         * written, s->s3.alert_dispatch will be > 0
          */
-        if (sc->s3.alert_dispatch)
+        if (sc->s3.alert_dispatch > 0)
             return -1;        /* return WANT_WRITE */
-    } else if (sc->s3.alert_dispatch) {
+    } else if (sc->s3.alert_dispatch > 0) {
         /* resend it if not sent */
         ret = s->method->ssl_dispatch_alert(s);
         if (ret == -1) {
@@ -4469,8 +4479,8 @@ int ssl3_shutdown(SSL *s)
         }
     }
 
-    if ((sc->shutdown == (SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN)) &&
-        !sc->s3.alert_dispatch)
+    if ((sc->shutdown == (SSL_SENT_SHUTDOWN | SSL_RECEIVED_SHUTDOWN))
+            && sc->s3.alert_dispatch == SSL_ALERT_DISPATCH_NONE)
         return 1;
     else
         return 0;
@@ -5010,6 +5020,22 @@ int ssl_encapsulate(SSL_CONNECTION *s, EVP_PKEY *pubkey,
     OPENSSL_free(ct);
     EVP_PKEY_CTX_free(pctx);
     return rv;
+}
+
+const char *SSL_get0_group_name(SSL *s)
+{
+    SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    unsigned int id;
+
+    if (sc == NULL)
+        return NULL;
+
+    if (SSL_CONNECTION_IS_TLS13(sc) && sc->s3.did_kex)
+        id = sc->s3.group_id;
+    else
+        id = sc->session->kex_group;
+
+    return tls1_group_id2name(s->ctx, id);
 }
 
 const char *SSL_group_to_name(SSL *s, int nid) {

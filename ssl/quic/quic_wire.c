@@ -15,6 +15,18 @@
 
 OSSL_SAFE_MATH_UNSIGNED(uint64_t, uint64_t)
 
+int ossl_quic_frame_ack_contains_pn(const OSSL_QUIC_FRAME_ACK *ack, QUIC_PN pn)
+{
+    size_t i;
+
+    for (i = 0; i < ack->num_ack_ranges; ++i)
+        if (pn >= ack->ack_ranges[i].start
+            && pn <= ack->ack_ranges[i].end)
+            return 1;
+
+    return 0;
+}
+
 /*
  * QUIC Wire Format Encoding
  * =========================
@@ -121,6 +133,19 @@ int ossl_quic_wire_encode_frame_crypto_hdr(WPACKET *pkt,
     return 1;
 }
 
+size_t ossl_quic_wire_get_encoded_frame_len_crypto_hdr(const OSSL_QUIC_FRAME_CRYPTO *f)
+{
+    size_t a, b, c;
+
+    a = ossl_quic_vlint_encode_len(OSSL_QUIC_FRAME_TYPE_CRYPTO);
+    b = ossl_quic_vlint_encode_len(f->offset);
+    c = ossl_quic_vlint_encode_len(f->len);
+    if (a == 0 || b == 0 || c == 0)
+        return 0;
+
+    return a + b + c;
+}
+
 void *ossl_quic_wire_encode_frame_crypto(WPACKET *pkt,
                                          const OSSL_QUIC_FRAME_CRYPTO *f)
 {
@@ -172,6 +197,34 @@ int ossl_quic_wire_encode_frame_stream_hdr(WPACKET *pkt,
         return 0;
 
     return 1;
+}
+
+size_t ossl_quic_wire_get_encoded_frame_len_stream_hdr(const OSSL_QUIC_FRAME_STREAM *f)
+{
+    size_t a, b, c, d;
+
+    a = ossl_quic_vlint_encode_len(OSSL_QUIC_FRAME_TYPE_STREAM);
+    b = ossl_quic_vlint_encode_len(f->stream_id);
+    if (a == 0 || b == 0)
+        return 0;
+
+    if (f->offset > 0) {
+        c = ossl_quic_vlint_encode_len(f->offset);
+        if (c == 0)
+            return 0;
+    } else {
+        c = 0;
+    }
+
+    if (f->has_explicit_len) {
+        d = ossl_quic_vlint_encode_len(f->len);
+        if (d == 0)
+            return 0;
+    } else {
+        d = 0;
+    }
+
+    return a + b + c + d;
 }
 
 void *ossl_quic_wire_encode_frame_stream(WPACKET *pkt,
@@ -341,8 +394,12 @@ unsigned char *ossl_quic_wire_encode_transport_param_bytes(WPACKET *pkt,
     unsigned char *b = NULL;
 
     if (!WPACKET_quic_write_vlint(pkt, id)
-            || !WPACKET_quic_write_vlint(pkt, value_len)
-            || !WPACKET_allocate_bytes(pkt, value_len, (unsigned char **)&b))
+        || !WPACKET_quic_write_vlint(pkt, value_len))
+        return NULL;
+
+    if (value_len == 0)
+        b = WPACKET_get_curr(pkt);
+    else if (!WPACKET_allocate_bytes(pkt, value_len, (unsigned char **)&b))
         return NULL;
 
     if (value != NULL)
@@ -358,6 +415,21 @@ int ossl_quic_wire_encode_transport_param_int(WPACKET *pkt,
     if (!WPACKET_quic_write_vlint(pkt, id)
             || !WPACKET_quic_write_vlint(pkt, ossl_quic_vlint_encode_len(value))
             || !WPACKET_quic_write_vlint(pkt, value))
+        return 0;
+
+    return 1;
+}
+
+int ossl_quic_wire_encode_transport_param_cid(WPACKET *wpkt,
+                                              uint64_t id,
+                                              const QUIC_CONN_ID *cid)
+{
+    if (cid->id_len > QUIC_MAX_CONN_ID_LEN)
+        return 0;
+
+    if (ossl_quic_wire_encode_transport_param_bytes(wpkt, id,
+                                                    cid->id,
+                                                    cid->id_len) == NULL)
         return 0;
 
     return 1;
@@ -531,6 +603,7 @@ int ossl_quic_wire_decode_frame_stop_sending(PACKET *pkt,
 }
 
 int ossl_quic_wire_decode_frame_crypto(PACKET *pkt,
+                                       int nodata,
                                        OSSL_QUIC_FRAME_CRYPTO *f)
 {
     if (!expect_frame_header(pkt, OSSL_QUIC_FRAME_TYPE_CRYPTO)
@@ -539,13 +612,17 @@ int ossl_quic_wire_decode_frame_crypto(PACKET *pkt,
             || f->len > SIZE_MAX /* sizeof(uint64_t) > sizeof(size_t)? */)
         return 0;
 
-    if (PACKET_remaining(pkt) < f->len)
-        return 0;
+    if (nodata) {
+        f->data = NULL;
+    } else {
+        if (PACKET_remaining(pkt) < f->len)
+            return 0;
 
-    f->data = PACKET_data(pkt);
+        f->data = PACKET_data(pkt);
 
-    if (!PACKET_forward(pkt, (size_t)f->len))
-        return 0;
+        if (!PACKET_forward(pkt, (size_t)f->len))
+            return 0;
+    }
 
     return 1;
 }
@@ -573,6 +650,7 @@ int ossl_quic_wire_decode_frame_new_token(PACKET               *pkt,
 }
 
 int ossl_quic_wire_decode_frame_stream(PACKET *pkt,
+                                       int nodata,
                                        OSSL_QUIC_FRAME_STREAM *f)
 {
     uint64_t frame_type;
@@ -598,14 +676,21 @@ int ossl_quic_wire_decode_frame_stream(PACKET *pkt,
         if (!PACKET_get_quic_vlint(pkt, &f->len))
             return 0;
     } else {
-        f->len = PACKET_remaining(pkt);
+        if (nodata)
+            f->len = 0;
+        else
+            f->len = PACKET_remaining(pkt);
     }
 
-    f->data = PACKET_data(pkt);
+    if (nodata) {
+        f->data = NULL;
+    } else {
+        f->data = PACKET_data(pkt);
 
-    if (f->len > SIZE_MAX /* sizeof(uint64_t) > sizeof(size_t)? */
-        || !PACKET_forward(pkt, (size_t)f->len))
-        return 0;
+        if (f->len > SIZE_MAX /* sizeof(uint64_t) > sizeof(size_t)? */
+            || !PACKET_forward(pkt, (size_t)f->len))
+            return 0;
+    }
 
     return 1;
 }
@@ -686,6 +771,7 @@ int ossl_quic_wire_decode_frame_new_conn_id(PACKET *pkt,
     if (!expect_frame_header(pkt, OSSL_QUIC_FRAME_TYPE_NEW_CONN_ID)
             || !PACKET_get_quic_vlint(pkt, &f->seq_num)
             || !PACKET_get_quic_vlint(pkt, &f->retire_prior_to)
+            || f->seq_num < f->retire_prior_to
             || !PACKET_get_1(pkt, &len)
             || len > QUIC_MAX_CONN_ID_LEN)
         return 0;
@@ -802,8 +888,9 @@ const unsigned char *ossl_quic_wire_decode_transport_param_bytes(PACKET *pkt,
 {
     uint64_t len_;
     const unsigned char *b = NULL;
+    uint64_t id_;
 
-    if (!PACKET_get_quic_vlint(pkt, id)
+    if (!PACKET_get_quic_vlint(pkt, &id_)
             || !PACKET_get_quic_vlint(pkt, &len_))
         return NULL;
 
@@ -812,6 +899,8 @@ const unsigned char *ossl_quic_wire_decode_transport_param_bytes(PACKET *pkt,
         return NULL;
 
     *len = (size_t)len_;
+    if (id != NULL)
+        *id = id_;
     return b;
 }
 
@@ -830,4 +919,20 @@ int ossl_quic_wire_decode_transport_param_int(PACKET *pkt,
         return 0;
 
    return 1;
+}
+
+int ossl_quic_wire_decode_transport_param_cid(PACKET *pkt,
+                                              uint64_t *id,
+                                              QUIC_CONN_ID *cid)
+{
+    const unsigned char *body;
+    size_t len = 0;
+
+    body = ossl_quic_wire_decode_transport_param_bytes(pkt, id, &len);
+    if (body == NULL || len > QUIC_MAX_CONN_ID_LEN)
+        return 0;
+
+    cid->id_len = (unsigned char)len;
+    memcpy(cid->id, body, cid->id_len);
+    return 1;
 }

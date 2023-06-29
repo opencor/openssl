@@ -461,6 +461,22 @@ EC_GROUP *EC_GROUP_new_from_params(const OSSL_PARAM params[],
                                    OSSL_LIB_CTX *libctx, const char *propq);
 
 /**
+ * Creates an OSSL_PARAM array with the parameters describing the given
+ * EC_GROUP.
+ * The resulting parameters may contain an explicit or a named curve depending
+ * on the EC_GROUP.
+ *  \param  group  pointer to the EC_GROUP object
+ *  \param  libctx The associated library context or NULL for the default
+ *                 context
+ *  \param  propq  A property query string
+ *  \param  bnctx  BN_CTX object (optional)
+ *  \return newly created OSSL_PARAM array with the parameters
+ *          describing the given EC_GROUP or NULL if an error occurred
+ */
+OSSL_PARAM *EC_GROUP_to_params(const EC_GROUP *group, OSSL_LIB_CTX *libctx,
+                               const char *propq, BN_CTX *bnctx);
+
+/**
  * Creates a EC_GROUP object with a curve specified by a NID
  *  \param  libctx The associated library context or NULL for the default
  *                 context
@@ -1287,7 +1303,7 @@ OSSL_DEPRECATEDIN_3_0 int EC_KEY_set_method(EC_KEY *key, const EC_KEY_METHOD *me
 OSSL_DEPRECATEDIN_3_0 EC_KEY *EC_KEY_new_method(ENGINE *engine);
 
 /** The old name for ecdh_KDF_X9_63
- *  The ECDH KDF specification has been mistakingly attributed to ANSI X9.62,
+ *  The ECDH KDF specification has been mistakenly attributed to ANSI X9.62,
  *  it is actually specified in ANSI X9.63.
  *  This identifier is retained for backwards compatibility
  */

@@ -22,7 +22,7 @@
  * only VC++ 2008 or earlier x86 compilers.
  */
 
-#if (defined(_MSC_VER) && defined(_M_IX86) && _MSC_VER <= 1500)
+#if (defined(_MSC_VER) && defined(_M_IX86) && _MSC_VER <= 1600)
 # define NO_INTERLOCKEDOR64
 #endif
 
@@ -247,6 +247,23 @@ int CRYPTO_atomic_load(uint64_t *val, uint64_t *ret, CRYPTO_RWLOCK *lock)
     return 1;
 #else
     *ret = (uint64_t)InterlockedOr64((LONG64 volatile *)val, 0);
+    return 1;
+#endif
+}
+
+int CRYPTO_atomic_load_int(int *val, int *ret, CRYPTO_RWLOCK *lock)
+{
+#if (defined(NO_INTERLOCKEDOR64))
+    if (lock == NULL || !CRYPTO_THREAD_read_lock(lock))
+        return 0;
+    *ret = *val;
+    if (!CRYPTO_THREAD_unlock(lock))
+        return 0;
+
+    return 1;
+#else
+    /* On Windows, LONG is always the same size as int. */
+    *ret = (int)InterlockedOr((LONG volatile *)val, 0);
     return 1;
 #endif
 }

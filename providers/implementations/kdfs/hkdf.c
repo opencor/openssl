@@ -30,8 +30,10 @@
 #include "prov/implementations.h"
 #include "prov/provider_util.h"
 #include "internal/e_os.h"
+#include "internal/params.h"
 
 #define HKDF_MAXBUF 2048
+#define HKDF_MAXINFO (32*1024)
 
 static OSSL_FUNC_kdf_newctx_fn kdf_hkdf_new;
 static OSSL_FUNC_kdf_dupctx_fn kdf_hkdf_dup;
@@ -83,7 +85,7 @@ typedef struct {
     size_t label_len;
     unsigned char *data;
     size_t data_len;
-    unsigned char info[HKDF_MAXBUF];
+    unsigned char *info;
     size_t info_len;
 } KDF_HKDF;
 
@@ -120,7 +122,7 @@ static void kdf_hkdf_reset(void *vctx)
     OPENSSL_free(ctx->label);
     OPENSSL_clear_free(ctx->data, ctx->data_len);
     OPENSSL_clear_free(ctx->key, ctx->key_len);
-    OPENSSL_cleanse(ctx->info, ctx->info_len);
+    OPENSSL_clear_free(ctx->info, ctx->info_len);
     memset(ctx, 0, sizeof(*ctx));
     ctx->provctx = provctx;
 }
@@ -142,10 +144,10 @@ static void *kdf_hkdf_dup(void *vctx)
                                      &dest->label, &dest->label_len)
                 || !ossl_prov_memdup(src->data, src->data_len,
                                      &dest->data, &dest->data_len)
+                || !ossl_prov_memdup(src->info, src->info_len,
+                                     &dest->info, &dest->info_len)
                 || !ossl_prov_digest_copy(&dest->digest, &src->digest))
             goto err;
-        memcpy(dest->info, src->info, sizeof(dest->info));
-        dest->info_len = src->info_len;
         dest->mode = src->mode;
     }
     return dest;
@@ -275,7 +277,6 @@ static int hkdf_common_set_ctx_params(KDF_HKDF *ctx, const OSSL_PARAM params[])
 
 static int kdf_hkdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
-    const OSSL_PARAM *p;
     KDF_HKDF *ctx = vctx;
 
     if (params == NULL)
@@ -284,23 +285,11 @@ static int kdf_hkdf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     if (!hkdf_common_set_ctx_params(ctx, params))
         return 0;
 
-    /* The info fields concatenate, so process them all */
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_INFO)) != NULL) {
-        ctx->info_len = 0;
-        for (; p != NULL; p = OSSL_PARAM_locate_const(p + 1,
-                                                      OSSL_KDF_PARAM_INFO)) {
-            const void *q = ctx->info + ctx->info_len;
-            size_t sz = 0;
+    if (ossl_param_get1_concat_octet_string(params, OSSL_KDF_PARAM_INFO,
+                                            &ctx->info, &ctx->info_len,
+                                            HKDF_MAXINFO) == 0)
+        return 0;
 
-            if (p->data_size != 0
-                && p->data != NULL
-                && !OSSL_PARAM_get_octet_string(p, (void **)&q,
-                                                HKDF_MAXBUF - ctx->info_len,
-                                                &sz))
-                return 0;
-            ctx->info_len += sz;
-        }
-    }
     return 1;
 }
 
@@ -352,7 +341,7 @@ const OSSL_DISPATCH ossl_kdf_hkdf_functions[] = {
     { OSSL_FUNC_KDF_GETTABLE_CTX_PARAMS,
       (void(*)(void))kdf_hkdf_gettable_ctx_params },
     { OSSL_FUNC_KDF_GET_CTX_PARAMS, (void(*)(void))kdf_hkdf_get_ctx_params },
-    { 0, NULL }
+    OSSL_DISPATCH_END
 };
 
 /*
@@ -542,7 +531,7 @@ static int HKDF_Expand(const EVP_MD *evp_md,
         if (!HMAC_Final(hmac, prev, NULL))
             goto err;
 
-        copy_len = (done_len + dig_len > okm_len) ?
+        copy_len = (dig_len > okm_len - done_len) ?
                        okm_len - done_len :
                        dig_len;
 
@@ -768,5 +757,5 @@ const OSSL_DISPATCH ossl_kdf_tls1_3_kdf_functions[] = {
     { OSSL_FUNC_KDF_GETTABLE_CTX_PARAMS,
       (void(*)(void))kdf_hkdf_gettable_ctx_params },
     { OSSL_FUNC_KDF_GET_CTX_PARAMS, (void(*)(void))kdf_hkdf_get_ctx_params },
-    { 0, NULL }
+    OSSL_DISPATCH_END
 };

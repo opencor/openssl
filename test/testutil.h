@@ -257,7 +257,9 @@ void cleanup_tests(void);
 int fips_provider_version_eq(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
 int fips_provider_version_ne(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
 int fips_provider_version_le(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
+int fips_provider_version_lt(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
 int fips_provider_version_gt(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
+int fips_provider_version_ge(OSSL_LIB_CTX *libctx, int major, int minor, int patch);
 
 /*
  * This function matches fips provider version with (potentially multiple)
@@ -468,6 +470,13 @@ void test_perror(const char *s);
 # define TEST_ulong_le(a, b)  test_ulong_le(__FILE__, __LINE__, #a, #b, a, b)
 # define TEST_ulong_gt(a, b)  test_ulong_gt(__FILE__, __LINE__, #a, #b, a, b)
 # define TEST_ulong_ge(a, b)  test_ulong_ge(__FILE__, __LINE__, #a, #b, a, b)
+
+# define TEST_int64_t_eq(a, b)  test_int64_t_eq(__FILE__, __LINE__, #a, #b, a, b)
+# define TEST_int64_t_ne(a, b)  test_int64_t_ne(__FILE__, __LINE__, #a, #b, a, b)
+# define TEST_int64_t_lt(a, b)  test_int64_t_lt(__FILE__, __LINE__, #a, #b, a, b)
+# define TEST_int64_t_le(a, b)  test_int64_t_le(__FILE__, __LINE__, #a, #b, a, b)
+# define TEST_int64_t_gt(a, b)  test_int64_t_gt(__FILE__, __LINE__, #a, #b, a, b)
+# define TEST_int64_t_ge(a, b)  test_int64_t_ge(__FILE__, __LINE__, #a, #b, a, b)
 
 # define TEST_uint64_t_eq(a, b)  test_uint64_t_eq(__FILE__, __LINE__, #a, #b, a, b)
 # define TEST_uint64_t_ne(a, b)  test_uint64_t_ne(__FILE__, __LINE__, #a, #b, a, b)

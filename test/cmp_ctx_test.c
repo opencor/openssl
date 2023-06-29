@@ -108,6 +108,21 @@ static int execute_CTX_reinit_test(OSSL_CMP_CTX_TEST_FIXTURE *fixture)
     return res;
 }
 
+static int test_CTX_libctx_propq(void)
+{
+    OSSL_LIB_CTX *libctx = OSSL_LIB_CTX_new();
+    const char *propq = "?provider=legacy";
+    OSSL_CMP_CTX *cmpctx = OSSL_CMP_CTX_new(libctx, propq);
+    int res = TEST_ptr(libctx)
+        && TEST_ptr(cmpctx)
+        && TEST_ptr_eq(libctx, OSSL_CMP_CTX_get0_libctx(cmpctx))
+        && TEST_str_eq(propq, OSSL_CMP_CTX_get0_propq(cmpctx));
+
+    OSSL_CMP_CTX_free(cmpctx);
+    OSSL_LIB_CTX_free(libctx);
+    return res;
+}
+
 static int test_CTX_reinit(void)
 {
     SETUP_TEST_FIXTURE(OSSL_CMP_CTX_TEST_FIXTURE, set_up);
@@ -303,10 +318,12 @@ static int test_cmp_ctx_log_cb(void)
     return result;
 }
 
+#ifndef OPENSSL_NO_HTTP
 static BIO *test_http_cb(BIO *bio, void *arg, int use_ssl, int detail)
 {
     return NULL;
 }
+#endif
 
 static OSSL_CMP_MSG *test_transfer_cb(OSSL_CMP_CTX *ctx,
                                       const OSSL_CMP_MSG *req)
@@ -545,7 +562,9 @@ static X509_STORE *X509_STORE_new_1(void)
                              STACK_OF(TYPE)*, NULL, IS_0, \
                              sk_##TYPE##_new_null(), sk_##TYPE##_free)
 
+#ifndef OPENSSL_NO_HTTP
 typedef OSSL_HTTP_bio_cb_t OSSL_CMP_http_cb_t;
+#endif
 #define DEFINE_SET_CB_TEST(FIELD) \
     static OSSL_CMP_##FIELD##_t OSSL_CMP_CTX_get_##FIELD(const CMP_CTX *ctx) \
     { \
@@ -731,8 +750,10 @@ DEFINE_SET_TEST(OSSL_CMP, CTX, 1, 1, server, char)
 DEFINE_SET_INT_TEST(serverPort)
 DEFINE_SET_TEST(OSSL_CMP, CTX, 1, 1, proxy, char)
 DEFINE_SET_TEST(OSSL_CMP, CTX, 1, 1, no_proxy, char)
+#ifndef OPENSSL_NO_HTTP
 DEFINE_SET_CB_TEST(http_cb)
 DEFINE_SET_GET_P_VOID_TEST(http_cb_arg)
+#endif
 DEFINE_SET_CB_TEST(transfer_cb)
 DEFINE_SET_GET_P_VOID_TEST(transfer_cb_arg)
 
@@ -794,8 +815,8 @@ int setup_tests(void)
         return 0;
     }
 
-    /* OSSL_CMP_CTX_new() is tested by set_up() */
-    /* OSSL_CMP_CTX_free() is tested by tear_down() */
+    /* also tests OSSL_CMP_CTX_new() and OSSL_CMP_CTX_free(): */
+    ADD_TEST(test_CTX_libctx_propq);
     ADD_TEST(test_CTX_reinit);
 
     /* various CMP options: */
@@ -822,8 +843,10 @@ int setup_tests(void)
     ADD_TEST(test_CTX_set_get_serverPort);
     ADD_TEST(test_CTX_set1_get0_proxy);
     ADD_TEST(test_CTX_set1_get0_no_proxy);
+#ifndef OPENSSL_NO_HTTP
     ADD_TEST(test_CTX_set_get_http_cb);
     ADD_TEST(test_CTX_set_get_http_cb_arg);
+#endif
     ADD_TEST(test_CTX_set_get_transfer_cb);
     ADD_TEST(test_CTX_set_get_transfer_cb_arg);
     /* server authentication: */

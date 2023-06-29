@@ -22,6 +22,7 @@ jobs:
         opt: [
           386,
           no-afalgeng,
+          no-apps,
           no-aria,
           no-asan,
           no-asm,
@@ -48,6 +49,7 @@ jobs:
           no-des,
           no-devcryptoeng,
           no-dh,
+          no-docs,
           no-dsa,
           no-dtls1,
           no-dtls1_2,
@@ -98,7 +100,6 @@ jobs:
           no-ripemd,
           no-rmd160,
           no-scrypt,
-          enable-sctp,
           no-secure-memory,
           no-seed,
           no-shared,
@@ -136,13 +137,9 @@ jobs:
         ]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Install Dependencies for sctp option
-      run:  |
-        sudo apt-get update
-        sudo apt-get -yq install lksctp-tools libsctp-dev
-        sudo sysctl -w net.sctp.auth_enable=1
-      if: matrix.opt == 'enable-sctp'
+    - uses: actions/checkout@v3
+    - name: checkout fuzz/corpora submodule
+      run: git submodule update --init --depth 1 fuzz/corpora
     - name: config
       run: CC=clang ./config --banner=Configured --strict-warnings ${{ matrix.opt }}
     - name: config dump

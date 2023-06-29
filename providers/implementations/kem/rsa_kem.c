@@ -23,6 +23,7 @@
 #include <openssl/err.h>
 #include "crypto/rsa.h"
 #include <openssl/proverr.h>
+#include "internal/nelem.h"
 #include "prov/provider_ctx.h"
 #include "prov/implementations.h"
 #include "prov/securitycheck.h"
@@ -360,5 +361,5 @@ const OSSL_DISPATCH ossl_rsa_asym_kem_functions[] = {
       (void (*)(void))rsakem_set_ctx_params },
     { OSSL_FUNC_KEM_SETTABLE_CTX_PARAMS,
       (void (*)(void))rsakem_settable_ctx_params },
-    { 0, NULL }
+    OSSL_DISPATCH_END
 };

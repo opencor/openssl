@@ -7,6 +7,7 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <assert.h>
 #include <limits.h>
 #include <string.h>
 #include <stdio.h>
@@ -254,6 +255,16 @@ int dtls1_do_write(SSL_CONNECTION *s, int type)
              */
             if (!ossl_assert(len == written))
                 return -1;
+
+            /*
+             * We should not exceed the MTU size. If compression is in use
+             * then the max record overhead calculation is unreliable so we do
+             * not check in that case. We use assert rather than ossl_assert
+             * because in a production build, if this assert were ever to fail,
+             * then the best thing to do is probably carry on regardless.
+             */
+            assert(s->s3.tmp.new_compression != NULL
+                   || BIO_wpending(s->wbio) <= (int)s->d1->mtu);
 
             if (type == SSL3_RT_HANDSHAKE && !s->d1->retransmitting) {
                 /*
@@ -979,8 +990,6 @@ static int dtls_get_reassembled_message(SSL_CONNECTION *s, int *errtype,
 
 /*-
  * for these 2 messages, we need to
- * ssl->enc_read_ctx                    re-init
- * ssl->s3.read_mac_secret             re-init
  * ssl->session->read_sym_enc           assign
  * ssl->session->read_compression       assign
  * ssl->session->read_hash              assign
@@ -1292,7 +1301,8 @@ static unsigned char *dtls1_write_message_header(SSL_CONNECTION *s,
     return p;
 }
 
-void dtls1_get_message_header(unsigned char *data, struct hm_header_st *msg_hdr)
+void dtls1_get_message_header(const unsigned char *data, struct
+                              hm_header_st *msg_hdr)
 {
     memset(msg_hdr, 0, sizeof(*msg_hdr));
     msg_hdr->type = *(data++);

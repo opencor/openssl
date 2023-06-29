@@ -14,6 +14,7 @@
 extern const OSSL_DISPATCH ossl_sha1_functions[];
 extern const OSSL_DISPATCH ossl_sha224_functions[];
 extern const OSSL_DISPATCH ossl_sha256_functions[];
+extern const OSSL_DISPATCH ossl_sha256_192_functions[];
 extern const OSSL_DISPATCH ossl_sha384_functions[];
 extern const OSSL_DISPATCH ossl_sha512_functions[];
 extern const OSSL_DISPATCH ossl_sha512_224_functions[];
@@ -185,6 +186,7 @@ extern const OSSL_DISPATCH ossl_sm4128cbc_functions[];
 extern const OSSL_DISPATCH ossl_sm4128ctr_functions[];
 extern const OSSL_DISPATCH ossl_sm4128ofb128_functions[];
 extern const OSSL_DISPATCH ossl_sm4128cfb128_functions[];
+extern const OSSL_DISPATCH ossl_sm4128xts_functions[];
 #endif /* OPENSSL_NO_SM4 */
 #ifndef OPENSSL_NO_RC5
 extern const OSSL_DISPATCH ossl_rc5128ecb_functions[];
@@ -278,6 +280,12 @@ extern const OSSL_DISPATCH ossl_kdf_x963_kdf_functions[];
 extern const OSSL_DISPATCH ossl_kdf_kbkdf_functions[];
 extern const OSSL_DISPATCH ossl_kdf_x942_kdf_functions[];
 extern const OSSL_DISPATCH ossl_kdf_krb5kdf_functions[];
+extern const OSSL_DISPATCH ossl_kdf_hmac_drbg_functions[];
+#ifndef OPENSSL_NO_ARGON2
+extern const OSSL_DISPATCH ossl_kdf_argon2i_functions[];
+extern const OSSL_DISPATCH ossl_kdf_argon2d_functions[];
+extern const OSSL_DISPATCH ossl_kdf_argon2id_functions[];
+#endif
 
 /* RNGs */
 extern const OSSL_DISPATCH ossl_test_rng_functions[];
@@ -293,10 +301,12 @@ extern const OSSL_DISPATCH ossl_dhx_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_dsa_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_rsa_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_rsapss_keymgmt_functions[];
+#ifndef OPENSSL_NO_ECX
 extern const OSSL_DISPATCH ossl_x25519_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_x448_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_ed25519_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_ed448_keymgmt_functions[];
+#endif
 extern const OSSL_DISPATCH ossl_ec_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_kdf_keymgmt_functions[];
 extern const OSSL_DISPATCH ossl_mac_legacy_keymgmt_functions[];

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -34,6 +34,8 @@ static int init_alpn(SSL_CONNECTION *s, unsigned int context);
 static int final_alpn(SSL_CONNECTION *s, unsigned int context, int sent);
 static int init_sig_algs_cert(SSL_CONNECTION *s, unsigned int context);
 static int init_sig_algs(SSL_CONNECTION *s, unsigned int context);
+static int init_server_cert_type(SSL_CONNECTION *sc, unsigned int context);
+static int init_client_cert_type(SSL_CONNECTION *sc, unsigned int context);
 static int init_certificate_authorities(SSL_CONNECTION *s,
                                         unsigned int context);
 static EXT_RETURN tls_construct_certificate_authorities(SSL_CONNECTION *s,
@@ -308,6 +310,24 @@ static const EXTENSION_DEFINITION ext_defs[] = {
         tls_parse_ctos_post_handshake_auth, NULL,
         NULL, tls_construct_ctos_post_handshake_auth,
         NULL,
+    },
+    {
+        TLSEXT_TYPE_client_cert_type,
+        SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS
+        | SSL_EXT_TLS1_2_SERVER_HELLO,
+        init_client_cert_type,
+        tls_parse_ctos_client_cert_type, tls_parse_stoc_client_cert_type,
+        tls_construct_stoc_client_cert_type, tls_construct_ctos_client_cert_type,
+        NULL
+    },
+    {
+        TLSEXT_TYPE_server_cert_type,
+        SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS
+        | SSL_EXT_TLS1_2_SERVER_HELLO,
+        init_server_cert_type,
+        tls_parse_ctos_server_cert_type, tls_parse_stoc_server_cert_type,
+        tls_construct_stoc_server_cert_type, tls_construct_ctos_server_cert_type,
+        NULL
     },
     {
         TLSEXT_TYPE_signature_algorithms,
@@ -1429,7 +1449,11 @@ static int final_key_share(SSL_CONNECTION *s, unsigned int context, int sent)
                     group_id = pgroups[i];
 
                     if (check_in_list(s, group_id, clntgroups, clnt_num_groups,
-                                      1))
+                                      1)
+                            && tls_group_allowed(s, group_id,
+                                                 SSL_SECOP_CURVE_SUPPORTED)
+                            && tls_valid_group(s, group_id, TLS1_3_VERSION,
+                                               TLS1_3_VERSION, 0, NULL))
                         break;
                 }
 
@@ -1779,6 +1803,18 @@ static EXT_RETURN tls_construct_compress_certificate(SSL_CONNECTION *sc, WPACKET
     if (!ossl_comp_has_alg(0))
         return EXT_RETURN_NOT_SENT;
 
+    /* Server: Don't attempt to compress a non-X509 (i.e. an RPK) */
+    if (sc->server && sc->ext.server_cert_type != TLSEXT_cert_type_x509) {
+        sc->cert_comp_prefs[0] = TLSEXT_comp_cert_none;
+        return EXT_RETURN_NOT_SENT;
+    }
+
+    /* Client: If we sent a client cert-type extension, don't indicate compression */
+    if (!sc->server && sc->ext.client_cert_type_ctos) {
+        sc->cert_comp_prefs[0] = TLSEXT_comp_cert_none;
+        return EXT_RETURN_NOT_SENT;
+    }
+
     /* Do not indicate we support receiving compressed certificates */
     if ((sc->options & SSL_OP_NO_RX_CERTIFICATE_COMPRESSION) != 0)
         return EXT_RETURN_NOT_SENT;
@@ -1843,6 +1879,12 @@ int tls_parse_compress_certificate(SSL_CONNECTION *sc, PACKET *pkt, unsigned int
     if (!ossl_comp_has_alg(0))
         return 1;
 
+    /* Don't attempt to compress a non-X509 (i.e. an RPK) */
+    if (sc->server && sc->ext.server_cert_type != TLSEXT_cert_type_x509)
+        return 1;
+    if (!sc->server && sc->ext.client_cert_type != TLSEXT_cert_type_x509)
+        return 1;
+
     /* Ignore the extension and don't send compressed certificates */
     if ((sc->options & SSL_OP_NO_TX_CERTIFICATE_COMPRESSION) != 0)
         return 1;
@@ -1860,12 +1902,32 @@ int tls_parse_compress_certificate(SSL_CONNECTION *sc, PACKET *pkt, unsigned int
      * The array is 0 (i.e. "none") terminated
      * The preference list only contains supported algorithms
      */
-    while (PACKET_get_1(&supported_comp_algs, &comp)) {
+    while (PACKET_get_net_2(&supported_comp_algs, &comp)) {
         if (tls_comp_in_pref(sc, comp) && !already_set[comp]) {
             sc->ext.compress_certificate_from_peer[j++] = comp;
             already_set[comp] = 1;
         }
     }
 #endif
+    return 1;
+}
+
+static int init_server_cert_type(SSL_CONNECTION *sc, unsigned int context)
+{
+    /* Only reset when parsing client hello */
+    if (sc->server) {
+        sc->ext.server_cert_type_ctos = OSSL_CERT_TYPE_CTOS_NONE;
+        sc->ext.server_cert_type = TLSEXT_cert_type_x509;
+    }
+    return 1;
+}
+
+static int init_client_cert_type(SSL_CONNECTION *sc, unsigned int context)
+{
+    /* Only reset when parsing client hello */
+    if (sc->server) {
+        sc->ext.client_cert_type_ctos = OSSL_CERT_TYPE_CTOS_NONE;
+        sc->ext.client_cert_type = TLSEXT_cert_type_x509;
+    }
     return 1;
 }

@@ -11,7 +11,7 @@
 #include <openssl/evp.h>
 #include "../ssl/ssl_local.h"
 #include "../ssl/record/record_local.h"
-#include "../ssl/record/recordmethod.h"
+#include "internal/recordmethod.h"
 #include "../ssl/record/methods/recmethod_local.h"
 #include "internal/nelem.h"
 #include "testutil.h"
@@ -238,8 +238,9 @@ static unsigned char *multihexstr2buf(const char *str[3], size_t *len)
     return outbuf;
 }
 
-static int load_record(SSL3_RECORD *rec, RECORD_DATA *recd, unsigned char **key,
-                       unsigned char *iv, size_t ivlen, unsigned char *seq)
+static int load_record(TLS_RL_RECORD *rec, RECORD_DATA *recd,
+                       unsigned char **key, unsigned char *iv, size_t ivlen,
+                       unsigned char *seq)
 {
     unsigned char *pt = NULL, *sq = NULL, *ivtmp = NULL;
     size_t ptlen;
@@ -275,7 +276,7 @@ static int load_record(SSL3_RECORD *rec, RECORD_DATA *recd, unsigned char **key,
     return 0;
 }
 
-static int test_record(SSL3_RECORD *rec, RECORD_DATA *recd, int enc)
+static int test_record(TLS_RL_RECORD *rec, RECORD_DATA *recd, int enc)
 {
     int ret = 0;
     unsigned char *refd;
@@ -305,7 +306,7 @@ static int test_record(SSL3_RECORD *rec, RECORD_DATA *recd, int enc)
 
 static int test_tls13_encryption(void)
 {
-    SSL3_RECORD rec;
+    TLS_RL_RECORD rec;
     unsigned char *key = NULL;
     const EVP_CIPHER *ciph = EVP_aes_128_gcm();
     int ret = 0;
@@ -334,10 +335,11 @@ static int test_tls13_encryption(void)
         if (!TEST_true(ossl_tls_record_method.new_record_layer(
                           NULL, NULL, TLS1_3_VERSION, OSSL_RECORD_ROLE_SERVER,
                           OSSL_RECORD_DIRECTION_WRITE,
-                          OSSL_RECORD_PROTECTION_LEVEL_APPLICATION, 0, key, 16,
-                          iv, ivlen, NULL, 0, EVP_aes_128_gcm(),
+                          OSSL_RECORD_PROTECTION_LEVEL_APPLICATION, 0, NULL, 0,
+                          key, 16, iv, ivlen, NULL, 0, EVP_aes_128_gcm(),
                           EVP_GCM_TLS_TAG_LEN, 0, NULL, NULL, NULL, NULL, NULL,
-                          NULL, NULL, NULL, NULL, NULL, NULL, &wrl)))
+                          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                          &wrl)))
             goto err;
         memcpy(wrl->sequence, seqbuf, sizeof(seqbuf));
 
@@ -356,10 +358,11 @@ static int test_tls13_encryption(void)
         if (!TEST_true(ossl_tls_record_method.new_record_layer(
                           NULL, NULL, TLS1_3_VERSION, OSSL_RECORD_ROLE_SERVER,
                           OSSL_RECORD_DIRECTION_READ,
-                          OSSL_RECORD_PROTECTION_LEVEL_APPLICATION, 0, key, 16,
-                          iv, ivlen, NULL, 0, EVP_aes_128_gcm(),
+                          OSSL_RECORD_PROTECTION_LEVEL_APPLICATION, 0, NULL, 0,
+                          key, 16, iv, ivlen, NULL, 0, EVP_aes_128_gcm(),
                           EVP_GCM_TLS_TAG_LEN, 0, NULL, NULL, NULL, NULL, NULL,
-                          NULL, NULL, NULL, NULL, NULL, NULL, &rrl)))
+                          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                          &rrl)))
             goto err;
         memcpy(rrl->sequence, seqbuf, sizeof(seqbuf));
 

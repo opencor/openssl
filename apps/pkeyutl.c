@@ -69,8 +69,8 @@ const OPTIONS pkeyutl_options[] = {
     OPT_SECTION("Input"),
     {"in", OPT_IN, '<', "Input file - default stdin"},
     {"rawin", OPT_RAWIN, '-', "Indicate the input data is in raw form"},
-    {"pubin", OPT_PUBIN, '-', "Input is a public key"},
-    {"inkey", OPT_INKEY, 's', "Input private key file"},
+    {"inkey", OPT_INKEY, 's', "Input key, by default private key"},
+    {"pubin", OPT_PUBIN, '-', "Input key is a public key"},
     {"passin", OPT_PASSIN, 's', "Input file pass phrase source"},
     {"peerkey", OPT_PEERKEY, 's', "Peer key file used in key derivation"},
     {"peerform", OPT_PEERFORM, 'E', "Peer key format (DER/PEM/P12/ENGINE)"},
@@ -420,7 +420,7 @@ int pkeyutl_main(int argc, char **argv)
     /* Raw input data is handled elsewhere */
     if (in != NULL && !rawin) {
         /* Read the input data */
-        buf_inlen = bio_to_mem(&buf_in, keysize * 10, in);
+        buf_inlen = bio_to_mem(&buf_in, -1, in);
         if (buf_inlen < 0) {
             BIO_printf(bio_err, "Error reading input Data\n");
             goto end;

@@ -12,6 +12,8 @@
 #include "internal/common.h"
 #include <assert.h>
 
+DEFINE_LIST_OF(tx_history, OSSL_ACKM_TX_PKT);
+
 /*
  * TX Packet History
  * *****************
@@ -28,10 +30,7 @@
  */
 struct tx_pkt_history_st {
     /* A linked list of all our packets. */
-    OSSL_ACKM_TX_PKT *head, *tail;
-
-    /* Number of packets in the list. */
-    size_t num_packets;
+    OSSL_LIST(tx_history) packets;
 
     /*
      * Mapping from packet numbers (uint64_t) to (OSSL_ACKM_TX_PKT *)
@@ -78,8 +77,7 @@ static int tx_pkt_info_compare(const OSSL_ACKM_TX_PKT *a,
 static int
 tx_pkt_history_init(struct tx_pkt_history_st *h)
 {
-    h->head = h->tail = NULL;
-    h->num_packets  = 0;
+    ossl_list_tx_history_init(&h->packets);
     h->watermark    = 0;
     h->highest_sent = 0;
 
@@ -95,7 +93,7 @@ tx_pkt_history_destroy(struct tx_pkt_history_st *h)
 {
     lh_OSSL_ACKM_TX_PKT_free(h->map);
     h->map = NULL;
-    h->head = h->tail = NULL;
+    ossl_list_tx_history_init(&h->packets);
 }
 
 static int
@@ -113,20 +111,13 @@ tx_pkt_history_add_actual(struct tx_pkt_history_st *h,
         return 0;
 
     /* Should not already be in a list. */
-    if (!ossl_assert(pkt->next == NULL && pkt->prev == NULL))
+    if (!ossl_assert(ossl_list_tx_history_next(pkt) == NULL
+            && ossl_list_tx_history_prev(pkt) == NULL))
         return 0;
 
     lh_OSSL_ACKM_TX_PKT_insert(h->map, pkt);
 
-    pkt->next = NULL;
-    pkt->prev = h->tail;
-    if (h->tail != NULL)
-        h->tail->next = pkt;
-    h->tail = pkt;
-    if (h->head == NULL)
-        h->head = h->tail;
-
-    ++h->num_packets;
+    ossl_list_tx_history_insert_tail(&h->packets, pkt);
     return 1;
 }
 
@@ -168,19 +159,8 @@ tx_pkt_history_remove(struct tx_pkt_history_st *h, uint64_t pkt_num)
     if (pkt == NULL)
         return 0;
 
-    if (pkt->prev != NULL)
-        pkt->prev->next = pkt->next;
-    if (pkt->next != NULL)
-        pkt->next->prev = pkt->prev;
-    if (h->head == pkt)
-        h->head = pkt->next;
-    if (h->tail == pkt)
-        h->tail = pkt->prev;
-
-    pkt->prev = pkt->next = NULL;
-
+    ossl_list_tx_history_remove(&h->packets, pkt);
     lh_OSSL_ACKM_TX_PKT_delete(h->map, &key);
-    --h->num_packets;
     return 1;
 }
 
@@ -337,7 +317,7 @@ tx_pkt_history_remove(struct tx_pkt_history_st *h, uint64_t pkt_num)
  * n) will no longer be processed. Although datagrams may be reordered in the
  * network, a PN we receive can only become provably ACKed after our own
  * subsequently generated ACK frame is sent in a future TX packet, and then we
- * receive another RX PN acknowleding that TX packet. This means that a given RX
+ * receive another RX PN acknowledging that TX packet. This means that a given RX
  * PN can only become provably ACKed at least 1 RTT after it is received; it is
  * unlikely that any reordered datagrams will still be "in the network" (and not
  * lost) by this time. If this does occur for whatever reason and a late PN is
@@ -354,7 +334,7 @@ tx_pkt_history_remove(struct tx_pkt_history_st *h, uint64_t pkt_num)
  * we use to keep track of which PNs we have received but which have not yet
  * been provably ACKed, and thus will later need to generate an ACK frame for.
  *
- * The correspondance with the logical states discussed above is as follows. A
+ * The correspondence with the logical states discussed above is as follows. A
  * PN is in state (C) if it is below the watermark; otherwise it is in state (B)
  * if it is in the logical set of PNs, and in state (A) otherwise.
  *
@@ -440,8 +420,8 @@ static void rx_pkt_history_trim_range_count(struct rx_pkt_history_st *h)
 {
     QUIC_PN highest = QUIC_PN_INVALID;
 
-    while (h->set.num_ranges > MAX_RX_ACK_RANGES) {
-        UINT_RANGE r = h->set.head->range;
+    while (ossl_list_uint_set_num(&h->set) > MAX_RX_ACK_RANGES) {
+        UINT_RANGE r = ossl_list_uint_set_head(&h->set)->range;
 
         highest = (highest == QUIC_PN_INVALID)
             ? r.end : ossl_quic_pn_max(highest, r.end);
@@ -450,7 +430,7 @@ static void rx_pkt_history_trim_range_count(struct rx_pkt_history_st *h)
     }
 
     /*
-     * Bump watermark to cover all PNs we removed to avoid accidential
+     * Bump watermark to cover all PNs we removed to avoid accidental
      * reprocessing of packets.
      */
     if (highest != QUIC_PN_INVALID)
@@ -695,14 +675,14 @@ static OSSL_ACKM_TX_PKT *ackm_detect_and_remove_newly_acked_pkts(OSSL_ACKM *ackm
 
     pkt = tx_pkt_history_by_pkt_num(h, ack->ack_ranges[0].end);
     if (pkt == NULL)
-        pkt = h->tail;
+        pkt = ossl_list_tx_history_tail(&h->packets);
 
     for (; pkt != NULL; pkt = pprev) {
         /*
          * Save prev value as it will be zeroed if we remove the packet from the
          * history list below.
          */
-        pprev = pkt->prev;
+        pprev = ossl_list_tx_history_prev(pkt);
 
         for (;; ++ridx) {
             if (ridx >= ack->num_ack_ranges) {
@@ -774,7 +754,7 @@ static OSSL_ACKM_TX_PKT *ackm_detect_and_remove_lost_pkts(OSSL_ACKM *ackm,
     lost_send_time = ossl_time_subtract(now, loss_delay);
 
     h   = get_tx_history(ackm, pkt_space);
-    pkt = h->head;
+    pkt = ossl_list_tx_history_head(&h->packets);
 
     for (; pkt != NULL; pkt = pnext) {
         assert(pkt_space == pkt->pkt_space);
@@ -783,7 +763,7 @@ static OSSL_ACKM_TX_PKT *ackm_detect_and_remove_lost_pkts(OSSL_ACKM *ackm,
          * Save prev value as it will be zeroed if we remove the packet from the
          * history list below.
          */
-        pnext = pkt->next;
+        pnext = ossl_list_tx_history_next(pkt);
 
         if (pkt->pkt_num > ackm->largest_acked_pkt[pkt_space])
             continue;
@@ -931,17 +911,18 @@ static int ackm_set_loss_detection_timer(OSSL_ACKM *ackm)
 static int ackm_in_persistent_congestion(OSSL_ACKM *ackm,
                                          const OSSL_ACKM_TX_PKT *lpkt)
 {
-    /* Persistent congestion not currently implemented. */
+    /* TODO(QUIC): Persistent congestion not currently implemented. */
     return 0;
 }
 
 static void ackm_on_pkts_lost(OSSL_ACKM *ackm, int pkt_space,
-                              const OSSL_ACKM_TX_PKT *lpkt)
+                              const OSSL_ACKM_TX_PKT *lpkt, int pseudo)
 {
     const OSSL_ACKM_TX_PKT *p, *pnext;
     OSSL_RTT_INFO rtt;
     QUIC_PN largest_pn_lost = 0;
-    uint64_t num_bytes = 0;
+    OSSL_CC_LOSS_INFO loss_info = {0};
+    uint32_t flags = 0;
 
     for (p = lpkt; p != NULL; p = pnext) {
         pnext = p->lnext;
@@ -954,37 +935,40 @@ static void ackm_on_pkts_lost(OSSL_ACKM *ackm, int pkt_space,
 
             if (p->pkt_num > largest_pn_lost)
                 largest_pn_lost = p->pkt_num;
+        }
 
-            num_bytes += p->num_bytes;
+        if (!pseudo) {
+            /*
+             * If this is pseudo-loss (e.g. during connection retry) we do not
+             * inform the CC as it is not a real loss and not reflective of
+             * network conditions.
+             */
+            loss_info.tx_time = p->time;
+            loss_info.tx_size = p->num_bytes;
+
+            ackm->cc_method->on_data_lost(ackm->cc_data, &loss_info);
         }
 
         p->on_lost(p->cb_arg);
     }
 
     /*
-     * Only consider lost packets with regards to congestion after getting an
-     * RTT sample.
+     * Persistent congestion can only be considered if we have gotten at least
+     * one RTT sample.
      */
     ossl_statm_get_rtt_info(ackm->statm, &rtt);
+    if (!ossl_time_is_zero(ackm->first_rtt_sample)
+        && ackm_in_persistent_congestion(ackm, lpkt))
+        flags |= OSSL_CC_LOST_FLAG_PERSISTENT_CONGESTION;
 
-    if (ossl_time_is_zero(ackm->first_rtt_sample))
-        return;
-
-    ackm->cc_method->on_data_lost(ackm->cc_data,
-        largest_pn_lost,
-        ackm->tx_history[pkt_space].highest_sent,
-        num_bytes,
-        ackm_in_persistent_congestion(ackm, lpkt));
+    ackm->cc_method->on_data_lost_finished(ackm->cc_data, flags);
 }
 
 static void ackm_on_pkts_acked(OSSL_ACKM *ackm, const OSSL_ACKM_TX_PKT *apkt)
 {
     const OSSL_ACKM_TX_PKT *anext;
-    OSSL_TIME now;
-    uint64_t num_retransmittable_bytes = 0;
     QUIC_PN last_pn_acked = 0;
-
-    now = ackm->now(ackm->now_arg);
+    OSSL_CC_ACK_INFO ainfo = {0};
 
     for (; apkt != NULL; apkt = anext) {
         if (apkt->is_inflight) {
@@ -993,7 +977,6 @@ static void ackm_on_pkts_acked(OSSL_ACKM *ackm, const OSSL_ACKM_TX_PKT *apkt)
                 ackm->ack_eliciting_bytes_in_flight[apkt->pkt_space]
                     -= apkt->num_bytes;
 
-            num_retransmittable_bytes += apkt->num_bytes;
             if (apkt->pkt_num > last_pn_acked)
                 last_pn_acked = apkt->pkt_num;
 
@@ -1007,12 +990,14 @@ static void ackm_on_pkts_acked(OSSL_ACKM *ackm, const OSSL_ACKM_TX_PKT *apkt)
                                               apkt->largest_acked + 1);
         }
 
+        ainfo.tx_time = apkt->time;
+        ainfo.tx_size = apkt->num_bytes;
+
         anext = apkt->anext;
         apkt->on_acked(apkt->cb_arg); /* may free apkt */
-    }
 
-    ackm->cc_method->on_data_acked(ackm->cc_data, now,
-        last_pn_acked, num_retransmittable_bytes);
+        ackm->cc_method->on_data_acked(ackm->cc_data, &ainfo);
+    }
 }
 
 OSSL_ACKM *ossl_ackm_new(OSSL_TIME (*now)(void *arg),
@@ -1108,16 +1093,12 @@ int ossl_ackm_on_rx_datagram(OSSL_ACKM *ackm, size_t num_bytes)
     return 1;
 }
 
-static void ackm_on_congestion(OSSL_ACKM *ackm, OSSL_TIME send_time)
-{
-    /* Not currently implemented. */
-}
-
 static void ackm_process_ecn(OSSL_ACKM *ackm, const OSSL_QUIC_FRAME_ACK *ack,
                              int pkt_space)
 {
     struct tx_pkt_history_st *h;
     OSSL_ACKM_TX_PKT *pkt;
+    OSSL_CC_ECN_INFO ecn_info = {0};
 
     /*
      * If the ECN-CE counter reported by the peer has increased, this could
@@ -1131,7 +1112,8 @@ static void ackm_process_ecn(OSSL_ACKM *ackm, const OSSL_QUIC_FRAME_ACK *ack,
         if (pkt == NULL)
             return;
 
-        ackm_on_congestion(ackm, pkt->time);
+        ecn_info.largest_acked_time = pkt->time;
+        ackm->cc_method->on_ecn(ackm->cc_data, &ecn_info);
     }
 }
 
@@ -1194,14 +1176,20 @@ int ossl_ackm_on_rx_ack_frame(OSSL_ACKM *ackm, const OSSL_QUIC_FRAME_ACK *ack,
                               ossl_time_subtract(now, na_pkts->time));
     }
 
-    /* Process ECN information if present. */
+    /*
+     * Process ECN information if present.
+     *
+     * We deliberately do most ECN processing in the ACKM rather than the
+     * congestion controller to avoid having to give the congestion controller
+     * access to ACKM internal state.
+     */
     if (ack->ecn_present)
         ackm_process_ecn(ackm, ack, pkt_space);
 
     /* Handle inferred loss. */
     lost_pkts = ackm_detect_and_remove_lost_pkts(ackm, pkt_space);
     if (lost_pkts != NULL)
-        ackm_on_pkts_lost(ackm, pkt_space, lost_pkts);
+        ackm_on_pkts_lost(ackm, pkt_space, lost_pkts, /*pseudo=*/0);
 
     ackm_on_pkts_acked(ackm, na_pkts);
 
@@ -1221,16 +1209,15 @@ int ossl_ackm_on_pkt_space_discarded(OSSL_ACKM *ackm, int pkt_space)
     OSSL_ACKM_TX_PKT *pkt, *pnext;
     uint64_t num_bytes_invalidated = 0;
 
-    assert(pkt_space < QUIC_PN_SPACE_APP);
-
     if (ackm->discarded[pkt_space])
         return 0;
 
     if (pkt_space == QUIC_PN_SPACE_HANDSHAKE)
         ackm->peer_completed_addr_validation = 1;
 
-    for (pkt = get_tx_history(ackm, pkt_space)->head; pkt != NULL; pkt = pnext) {
-        pnext = pkt->next;
+    for (pkt = ossl_list_tx_history_head(&get_tx_history(ackm, pkt_space)->packets);
+            pkt != NULL; pkt = pnext) {
+        pnext = ossl_list_tx_history_next(pkt);
         if (pkt->is_inflight) {
             ackm->bytes_in_flight -= pkt->num_bytes;
             num_bytes_invalidated += pkt->num_bytes;
@@ -1263,18 +1250,22 @@ int ossl_ackm_on_handshake_confirmed(OSSL_ACKM *ackm)
     return 1;
 }
 
-static void ackm_queue_probe_handshake(OSSL_ACKM *ackm)
+static void ackm_queue_probe_anti_deadlock_handshake(OSSL_ACKM *ackm)
 {
-    ++ackm->pending_probe.handshake;
+    ++ackm->pending_probe.anti_deadlock_handshake;
 }
 
-static void ackm_queue_probe_padded_initial(OSSL_ACKM *ackm)
+static void ackm_queue_probe_anti_deadlock_initial(OSSL_ACKM *ackm)
 {
-    ++ackm->pending_probe.padded_initial;
+    ++ackm->pending_probe.anti_deadlock_initial;
 }
 
 static void ackm_queue_probe(OSSL_ACKM *ackm, int pkt_space)
 {
+    /*
+     * TODO(QUIC): We are allowed to send either one or two probe packets here.
+     * Determine a strategy for when we should send two probe packets.
+     */
     ++ackm->pending_probe.pto[pkt_space];
 }
 
@@ -1289,7 +1280,7 @@ int ossl_ackm_on_timeout(OSSL_ACKM *ackm)
         /* Time threshold loss detection. */
         lost_pkts = ackm_detect_and_remove_lost_pkts(ackm, pkt_space);
         assert(lost_pkts != NULL);
-        ackm_on_pkts_lost(ackm, pkt_space, lost_pkts);
+        ackm_on_pkts_lost(ackm, pkt_space, lost_pkts, /*pseudo=*/0);
         ackm_set_loss_detection_timer(ackm);
         return 1;
     }
@@ -1302,9 +1293,9 @@ int ossl_ackm_on_timeout(OSSL_ACKM *ackm)
          * ownership.
          */
         if (ackm->discarded[QUIC_PN_SPACE_INITIAL])
-            ackm_queue_probe_handshake(ackm);
+            ackm_queue_probe_anti_deadlock_handshake(ackm);
         else
-            ackm_queue_probe_padded_initial(ackm);
+            ackm_queue_probe_anti_deadlock_initial(ackm);
     } else {
         /*
          * PTO. The user of the ACKM should send new data if available, else
@@ -1325,24 +1316,20 @@ OSSL_TIME ossl_ackm_get_loss_detection_deadline(OSSL_ACKM *ackm)
     return ackm->loss_detection_deadline;
 }
 
-int ossl_ackm_get_probe_request(OSSL_ACKM *ackm, int clear,
-                                OSSL_ACKM_PROBE_INFO *info)
+OSSL_ACKM_PROBE_INFO *ossl_ackm_get0_probe_request(OSSL_ACKM *ackm)
 {
-    *info = ackm->pending_probe;
-
-    if (clear != 0)
-        memset(&ackm->pending_probe, 0, sizeof(ackm->pending_probe));
-
-    return 1;
+    return &ackm->pending_probe;
 }
 
 int ossl_ackm_get_largest_unacked(OSSL_ACKM *ackm, int pkt_space, QUIC_PN *pn)
 {
     struct tx_pkt_history_st *h;
+    OSSL_ACKM_TX_PKT *p;
 
     h = get_tx_history(ackm, pkt_space);
-    if (h->tail != NULL) {
-        *pn = h->tail->pkt_num;
+    p = ossl_list_tx_history_tail(&h->packets);
+    if (p != NULL) {
+        *pn = p->pkt_num;
         return 1;
     }
 
@@ -1416,7 +1403,7 @@ static int ackm_has_newly_missing(OSSL_ACKM *ackm, int pkt_space)
 
     h = get_rx_history(ackm, pkt_space);
 
-    if (h->set.tail == NULL)
+    if (ossl_list_uint_set_is_empty(&h->set))
         return 0;
 
     /*
@@ -1432,8 +1419,9 @@ static int ackm_has_newly_missing(OSSL_ACKM *ackm, int pkt_space)
      * the PNs we have ACK'd previously and the PN we have just received.
      */
     return ackm->ack[pkt_space].num_ack_ranges > 0
-        && h->set.tail->range.start == h->set.tail->range.end
-        && h->set.tail->range.start
+        && ossl_list_uint_set_tail(&h->set)->range.start
+           == ossl_list_uint_set_tail(&h->set)->range.end
+        && ossl_list_uint_set_tail(&h->set)->range.start
             > ackm->ack[pkt_space].ack_ranges[0].end + 1;
 }
 
@@ -1582,9 +1570,9 @@ static void ackm_fill_rx_ack_ranges(OSSL_ACKM *ackm, int pkt_space,
      * Copy out ranges from the PN set, starting at the end, until we reach our
      * maximum number of ranges.
      */
-    for (x = h->set.tail;
+    for (x = ossl_list_uint_set_tail(&h->set);
          x != NULL && i < OSSL_NELEM(ackm->ack_ranges);
-         x = x->prev, ++i) {
+         x = ossl_list_uint_set_prev(x), ++i) {
         ackm->ack_ranges[pkt_space][i].start = x->range.start;
         ackm->ack_ranges[pkt_space][i].end   = x->range.end;
     }
@@ -1656,4 +1644,41 @@ void ossl_ackm_set_ack_deadline_callback(OSSL_ACKM *ackm,
 {
     ackm->ack_deadline_cb     = fn;
     ackm->ack_deadline_cb_arg = arg;
+}
+
+int ossl_ackm_mark_packet_pseudo_lost(OSSL_ACKM *ackm,
+                                      int pkt_space, QUIC_PN pn)
+{
+    struct tx_pkt_history_st *h = get_tx_history(ackm, pkt_space);
+    OSSL_ACKM_TX_PKT *pkt;
+
+    pkt = tx_pkt_history_by_pkt_num(h, pn);
+    if (pkt == NULL)
+        return 0;
+
+    tx_pkt_history_remove(h, pkt->pkt_num);
+    pkt->lnext = NULL;
+    ackm_on_pkts_lost(ackm, pkt_space, pkt, /*pseudo=*/1);
+    return 1;
+}
+
+OSSL_TIME ossl_ackm_get_pto_duration(OSSL_ACKM *ackm)
+{
+    OSSL_TIME duration;
+    OSSL_RTT_INFO rtt;
+
+    ossl_statm_get_rtt_info(ackm->statm, &rtt);
+
+    duration = ossl_time_add(rtt.smoothed_rtt,
+                             ossl_time_max(ossl_time_multiply(rtt.rtt_variance, 4),
+                                           ossl_ticks2time(K_GRANULARITY)));
+    if (!ossl_time_is_infinite(rtt.max_ack_delay))
+        duration = ossl_time_add(duration, rtt.max_ack_delay);
+
+    return duration;
+}
+
+QUIC_PN ossl_ackm_get_largest_acked(OSSL_ACKM *ackm, int pkt_space)
+{
+    return ackm->largest_acked_pkt[pkt_space];
 }

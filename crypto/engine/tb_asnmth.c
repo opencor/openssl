@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -208,7 +208,7 @@ const EVP_PKEY_ASN1_METHOD *ENGINE_pkey_asn1_find_str(ENGINE **pe,
     if (fstr.e != NULL) {
         int ref;
 
-        if (!CRYPTO_UP_REF(&fstr.e->struct_ref, &ref, fstr.e->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&fstr.e->struct_ref, &ref)) {
             CRYPTO_THREAD_unlock(global_engine_lock);
             ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
             return NULL;

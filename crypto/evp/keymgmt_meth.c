@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -23,16 +23,32 @@ static void *keymgmt_new(void)
 
     if ((keymgmt = OPENSSL_zalloc(sizeof(*keymgmt))) == NULL)
         return NULL;
-    if ((keymgmt->lock = CRYPTO_THREAD_lock_new()) == NULL) {
+    if (!CRYPTO_NEW_REF(&keymgmt->refcnt, 1)) {
         EVP_KEYMGMT_free(keymgmt);
-        ERR_raise(ERR_LIB_EVP, ERR_R_CRYPTO_LIB);
         return NULL;
     }
-
-    keymgmt->refcnt = 1;
-
     return keymgmt;
 }
+
+#ifndef FIPS_MODULE
+static void help_get_legacy_alg_type_from_keymgmt(const char *keytype,
+                                                  void *arg)
+{
+    int *type = arg;
+
+    if (*type == NID_undef)
+        *type = evp_pkey_name2type(keytype);
+}
+
+static int get_legacy_alg_type_from_keymgmt(const EVP_KEYMGMT *keymgmt)
+{
+    int type = NID_undef;
+
+    EVP_KEYMGMT_names_do_all(keymgmt, help_get_legacy_alg_type_from_keymgmt,
+                             &type);
+    return type;
+}
+#endif
 
 static void *keymgmt_from_algorithm(int name_id,
                                     const OSSL_ALGORITHM *algodef,
@@ -222,6 +238,10 @@ static void *keymgmt_from_algorithm(int name_id,
     if (prov != NULL)
         ossl_provider_up_ref(prov);
 
+#ifndef FIPS_MODULE
+    keymgmt->legacy_alg = get_legacy_alg_type_from_keymgmt(keymgmt);
+#endif
+
     return keymgmt;
 }
 
@@ -249,7 +269,7 @@ int EVP_KEYMGMT_up_ref(EVP_KEYMGMT *keymgmt)
 {
     int ref = 0;
 
-    CRYPTO_UP_REF(&keymgmt->refcnt, &ref, keymgmt->lock);
+    CRYPTO_UP_REF(&keymgmt->refcnt, &ref);
     return 1;
 }
 
@@ -260,12 +280,12 @@ void EVP_KEYMGMT_free(EVP_KEYMGMT *keymgmt)
     if (keymgmt == NULL)
         return;
 
-    CRYPTO_DOWN_REF(&keymgmt->refcnt, &ref, keymgmt->lock);
+    CRYPTO_DOWN_REF(&keymgmt->refcnt, &ref);
     if (ref > 0)
         return;
     OPENSSL_free(keymgmt->type_name);
     ossl_provider_free(keymgmt->prov);
-    CRYPTO_THREAD_lock_free(keymgmt->lock);
+    CRYPTO_FREE_REF(&keymgmt->refcnt);
     OPENSSL_free(keymgmt);
 }
 
@@ -277,6 +297,11 @@ const OSSL_PROVIDER *EVP_KEYMGMT_get0_provider(const EVP_KEYMGMT *keymgmt)
 int evp_keymgmt_get_number(const EVP_KEYMGMT *keymgmt)
 {
     return keymgmt->name_id;
+}
+
+int evp_keymgmt_get_legacy_alg(const EVP_KEYMGMT *keymgmt)
+{
+    return keymgmt->legacy_alg;
 }
 
 const char *EVP_KEYMGMT_get0_description(const EVP_KEYMGMT *keymgmt)
@@ -350,7 +375,7 @@ void *evp_keymgmt_gen_init(const EVP_KEYMGMT *keymgmt, int selection,
 }
 
 int evp_keymgmt_gen_set_template(const EVP_KEYMGMT *keymgmt, void *genctx,
-                                 void *template)
+                                 void *templ)
 {
     /*
      * It's arguable if we actually should return success in this case, as
@@ -360,7 +385,7 @@ int evp_keymgmt_gen_set_template(const EVP_KEYMGMT *keymgmt, void *genctx,
      */
     if (keymgmt->gen_set_template == NULL)
         return 1;
-    return keymgmt->gen_set_template(genctx, template);
+    return keymgmt->gen_set_template(genctx, templ);
 }
 
 int evp_keymgmt_gen_set_params(const EVP_KEYMGMT *keymgmt, void *genctx,

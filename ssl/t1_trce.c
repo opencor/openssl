@@ -446,6 +446,8 @@ static const ssl_trace_tbl ssl_ciphers_tbl[] = {
     {0xFEFF, "SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA"},
     {0xFF85, "LEGACY-GOST2012-GOST8912-GOST8912"},
     {0xFF87, "GOST2012-NULL-GOST12"},
+    {0xC0B4, "TLS_SHA256_SHA256"},
+    {0xC0B5, "TLS_SHA384_SHA384"},
     {0xC100, "GOST2012-KUZNYECHIK-KUZNYECHIKOMAC"},
     {0xC101, "GOST2012-MAGMA-MAGMAOMAC"},
     {0xC102, "GOST2012-GOST8912-IANA"},
@@ -545,6 +547,8 @@ static const ssl_trace_tbl ssl_groups_tbl[] = {
     {258, "ffdhe4096"},
     {259, "ffdhe6144"},
     {260, "ffdhe8192"},
+    {25497, "X25519Kyber768Draft00"},
+    {25498, "SecP256r1Kyber768Draft00"},
     {0xFF01, "arbitrary_explicit_prime_curves"},
     {0xFF02, "arbitrary_explicit_char2_curves"}
 };

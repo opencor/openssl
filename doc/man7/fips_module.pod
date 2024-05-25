@@ -14,6 +14,9 @@ This guide details different ways that OpenSSL can be used in conjunction
 with the FIPS module. Which is the correct approach to use will depend on your
 own specific circumstances and what you are attempting to achieve.
 
+For information related to installing the FIPS module see
+L<https://github.com/openssl/openssl/blob/master/README-FIPS.md>.
+
 Note that the old functions FIPS_mode() and FIPS_mode_set() are no longer
 present so you must remove them from your application if you use them.
 
@@ -39,7 +42,7 @@ EC_KEY_METHOD_new(), etc.)
 =back
 
 All of the above APIs are deprecated in OpenSSL 3.0 - so a simple rule is to
-avoid using all deprecated functions. See L<migration_guide(7)> for a list of
+avoid using all deprecated functions. See L<ossl-guide-migration(7)> for a list of
 deprecated functions.
 
 =head2 Making all applications use the FIPS module by default
@@ -390,7 +393,7 @@ explicitly loaded, the default provider will not automatically load. This means
 code using the default context by accident will fail because no algorithms will
 be available.
 
-See L<migration_guide(7)/Library Context> for additional information about the
+See L<ossl-guide-migration(7)/Library Context> for additional information about the
 Library Context.
 
 =head2 Using Encoders and Decoders with the FIPS module
@@ -497,7 +500,7 @@ want to operate in a FIPS approved manner.  The algorithms are:
 
 =head1 SEE ALSO
 
-L<migration_guide(7)>, L<crypto(7)>, L<fips_config(5)>,
+L<ossl-guide-migration(7)>, L<crypto(7)>, L<fips_config(5)>,
 L<https://www.openssl.org/source/>
 
 =head1 HISTORY
@@ -507,7 +510,7 @@ in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2021-2022 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2021-2023 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

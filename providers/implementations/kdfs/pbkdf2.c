@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -90,7 +90,11 @@ static void *kdf_pbkdf2_new(void *provctx)
 static void kdf_pbkdf2_cleanup(KDF_PBKDF2 *ctx)
 {
     ossl_prov_digest_reset(&ctx->digest);
+#ifdef FIPS_MODULE
+    OPENSSL_clear_free(ctx->salt, ctx->salt_len);
+#else
     OPENSSL_free(ctx->salt);
+#endif
     OPENSSL_clear_free(ctx->pass, ctx->pass_len);
     memset(ctx, 0, sizeof(*ctx));
 }

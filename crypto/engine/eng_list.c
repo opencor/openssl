@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2023 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -77,7 +77,7 @@ static int engine_list_add(ENGINE *e)
     /*
      * Having the engine in the list assumes a structural reference.
      */
-    if (!CRYPTO_UP_REF(&e->struct_ref, &ref, e->refcnt_lock)) {
+    if (!CRYPTO_UP_REF(&e->struct_ref, &ref)) {
             ERR_raise(ERR_LIB_ENGINE, ENGINE_R_INTERNAL_LIST_ERROR);
             return 0;
     }
@@ -85,20 +85,24 @@ static int engine_list_add(ENGINE *e)
     if (engine_list_head == NULL) {
         /* We are adding to an empty list. */
         if (engine_list_tail != NULL) {
-            CRYPTO_DOWN_REF(&e->struct_ref, &ref, e->refcnt_lock);
+            CRYPTO_DOWN_REF(&e->struct_ref, &ref);
+            ERR_raise(ERR_LIB_ENGINE, ENGINE_R_INTERNAL_LIST_ERROR);
+            return 0;
+        }
+        /*
+         * The first time the list allocates, we should register the cleanup.
+         */
+        if (!engine_cleanup_add_last(engine_list_cleanup)) {
+            CRYPTO_DOWN_REF(&e->struct_ref, &ref);
             ERR_raise(ERR_LIB_ENGINE, ENGINE_R_INTERNAL_LIST_ERROR);
             return 0;
         }
         engine_list_head = e;
         e->prev = NULL;
-        /*
-         * The first time the list allocates, we should register the cleanup.
-         */
-        engine_cleanup_add_last(engine_list_cleanup);
     } else {
         /* We are adding to the tail of an existing list. */
         if ((engine_list_tail == NULL) || (engine_list_tail->next != NULL)) {
-            CRYPTO_DOWN_REF(&e->struct_ref, &ref, e->refcnt_lock);
+            CRYPTO_DOWN_REF(&e->struct_ref, &ref);
             ERR_raise(ERR_LIB_ENGINE, ENGINE_R_INTERNAL_LIST_ERROR);
             return 0;
         }
@@ -238,7 +242,7 @@ ENGINE *ENGINE_get_first(void)
     if (ret) {
         int ref;
 
-        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref, ret->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref)) {
             ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
             return NULL;
         }
@@ -264,7 +268,7 @@ ENGINE *ENGINE_get_last(void)
     if (ret) {
         int ref;
 
-        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref, ret->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref)) {
             ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
             return NULL;
         }
@@ -289,7 +293,7 @@ ENGINE *ENGINE_get_next(ENGINE *e)
         int ref;
 
         /* Return a valid structural reference to the next ENGINE */
-        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref, ret->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref)) {
             ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
             return NULL;
         }
@@ -315,7 +319,7 @@ ENGINE *ENGINE_get_prev(ENGINE *e)
         int ref;
 
         /* Return a valid structural reference to the next ENGINE */
-        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref, ret->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&ret->struct_ref, &ref)) {
             ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
             return NULL;
         }
@@ -435,8 +439,7 @@ ENGINE *ENGINE_by_id(const char *id)
         } else {
             int ref;
 
-            if (!CRYPTO_UP_REF(&iterator->struct_ref, &ref,
-                               iterator->refcnt_lock)) {
+            if (!CRYPTO_UP_REF(&iterator->struct_ref, &ref)) {
                 CRYPTO_THREAD_unlock(global_engine_lock);
                 ERR_raise(ERR_LIB_ENGINE, ERR_R_CRYPTO_LIB);
                 return NULL;
@@ -477,6 +480,6 @@ int ENGINE_up_ref(ENGINE *e)
         ERR_raise(ERR_LIB_ENGINE, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
-    CRYPTO_UP_REF(&e->struct_ref, &i, global_engine_lock);
+    CRYPTO_UP_REF(&e->struct_ref, &i);
     return 1;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -117,7 +117,11 @@ static void kdf_hkdf_reset(void *vctx)
     void *provctx = ctx->provctx;
 
     ossl_prov_digest_reset(&ctx->digest);
+#ifdef FIPS_MODULE
+    OPENSSL_clear_free(ctx->salt, ctx->salt_len);
+#else
     OPENSSL_free(ctx->salt);
+#endif
     OPENSSL_free(ctx->prefix);
     OPENSSL_free(ctx->label);
     OPENSSL_clear_free(ctx->data, ctx->data_len);
@@ -316,6 +320,13 @@ static int kdf_hkdf_get_ctx_params(void *vctx, OSSL_PARAM params[])
             return 0;
         return OSSL_PARAM_set_size_t(p, sz);
     }
+    if ((p = OSSL_PARAM_locate(params, OSSL_KDF_PARAM_INFO)) != NULL) {
+        if (ctx->info == NULL || ctx->info_len == 0) {
+            p->return_size = 0;
+            return 1;
+        }
+        return OSSL_PARAM_set_octet_string(p, ctx->info, ctx->info_len);
+    }
     return -2;
 }
 
@@ -324,6 +335,7 @@ static const OSSL_PARAM *kdf_hkdf_gettable_ctx_params(ossl_unused void *ctx,
 {
     static const OSSL_PARAM known_gettable_ctx_params[] = {
         OSSL_PARAM_size_t(OSSL_KDF_PARAM_SIZE, NULL),
+        OSSL_PARAM_octet_string(OSSL_KDF_PARAM_INFO, NULL, 0),
         OSSL_PARAM_END
     };
     return known_gettable_ctx_params;
@@ -623,7 +635,7 @@ static int prov_tls13_hkdf_generate_secret(OSSL_LIB_CTX *libctx,
     }
     if (prevsecret == NULL) {
         prevsecret = default_zeros;
-        prevsecretlen = 0;
+        prevsecretlen = mdlen;
     } else {
         EVP_MD_CTX *mctx = EVP_MD_CTX_new();
         unsigned char hash[EVP_MAX_MD_SIZE];

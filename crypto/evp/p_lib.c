@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -68,7 +68,11 @@ int EVP_PKEY_get_bits(const EVP_PKEY *pkey)
         if (pkey->ameth != NULL && pkey->ameth->pkey_bits != NULL)
             size = pkey->ameth->pkey_bits(pkey);
     }
-    return size < 0 ? 0 : size;
+    if (size <= 0) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNKNOWN_BITS);
+        return 0;
+    }
+    return size;
 }
 
 int EVP_PKEY_get_security_bits(const EVP_PKEY *pkey)
@@ -80,7 +84,11 @@ int EVP_PKEY_get_security_bits(const EVP_PKEY *pkey)
         if (pkey->ameth != NULL && pkey->ameth->pkey_security_bits != NULL)
             size = pkey->ameth->pkey_security_bits(pkey);
     }
-    return size < 0 ? 0 : size;
+    if (size <= 0) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNKNOWN_SECURITY_BITS);
+        return 0;
+    }
+    return size;
 }
 
 int EVP_PKEY_save_parameters(EVP_PKEY *pkey, int mode)
@@ -717,11 +725,13 @@ static void detect_foreign_key(EVP_PKEY *pkey)
 {
     switch (pkey->type) {
     case EVP_PKEY_RSA:
+    case EVP_PKEY_RSA_PSS:
         pkey->foreign = pkey->pkey.rsa != NULL
                         && ossl_rsa_is_foreign(pkey->pkey.rsa);
         break;
 #  ifndef OPENSSL_NO_EC
     case EVP_PKEY_SM2:
+        break;
     case EVP_PKEY_EC:
         pkey->foreign = pkey->pkey.ec != NULL
                         && ossl_ec_key_is_foreign(pkey->pkey.ec);
@@ -1074,6 +1084,7 @@ int EVP_PKEY_can_sign(const EVP_PKEY *pkey)
     if (pkey->keymgmt == NULL) {
         switch (EVP_PKEY_get_base_id(pkey)) {
         case EVP_PKEY_RSA:
+        case EVP_PKEY_RSA_PSS:
             return 1;
 # ifndef OPENSSL_NO_DSA
         case EVP_PKEY_DSA:
@@ -1198,7 +1209,7 @@ int EVP_PKEY_print_public(BIO *out, const EVP_PKEY *pkey,
 int EVP_PKEY_print_private(BIO *out, const EVP_PKEY *pkey,
                            int indent, ASN1_PCTX *pctx)
 {
-    return print_pkey(pkey, out, indent, EVP_PKEY_KEYPAIR, NULL,
+    return print_pkey(pkey, out, indent, EVP_PKEY_PRIVATE_KEY, NULL,
                       (pkey->ameth != NULL ? pkey->ameth->priv_print : NULL),
                       pctx);
 }
@@ -1448,7 +1459,9 @@ EVP_PKEY *EVP_PKEY_new(void)
 
     ret->type = EVP_PKEY_NONE;
     ret->save_type = EVP_PKEY_NONE;
-    ret->references = 1;
+
+    if (!CRYPTO_NEW_REF(&ret->references, 1))
+        goto err;
 
     ret->lock = CRYPTO_THREAD_lock_new();
     if (ret->lock == NULL) {
@@ -1466,6 +1479,7 @@ EVP_PKEY *EVP_PKEY_new(void)
     return ret;
 
  err:
+    CRYPTO_FREE_REF(&ret->references);
     CRYPTO_THREAD_lock_free(ret->lock);
     OPENSSL_free(ret);
     return NULL;
@@ -1655,7 +1669,7 @@ int EVP_PKEY_up_ref(EVP_PKEY *pkey)
 {
     int i;
 
-    if (CRYPTO_UP_REF(&pkey->references, &i, pkey->lock) <= 0)
+    if (CRYPTO_UP_REF(&pkey->references, &i) <= 0)
         return 0;
 
     REF_PRINT_COUNT("EVP_PKEY", pkey);
@@ -1778,7 +1792,7 @@ void EVP_PKEY_free(EVP_PKEY *x)
     if (x == NULL)
         return;
 
-    CRYPTO_DOWN_REF(&x->references, &i, x->lock);
+    CRYPTO_DOWN_REF(&x->references, &i);
     REF_PRINT_COUNT("EVP_PKEY", x);
     if (i > 0)
         return;
@@ -1788,6 +1802,7 @@ void EVP_PKEY_free(EVP_PKEY *x)
     CRYPTO_free_ex_data(CRYPTO_EX_INDEX_EVP_PKEY, x, &x->ex_data);
 #endif
     CRYPTO_THREAD_lock_free(x->lock);
+    CRYPTO_FREE_REF(&x->references);
 #ifndef FIPS_MODULE
     sk_X509_ATTRIBUTE_pop_free(x->attributes, X509_ATTRIBUTE_free);
 #endif
@@ -1805,7 +1820,11 @@ int EVP_PKEY_get_size(const EVP_PKEY *pkey)
             size = pkey->ameth->pkey_size(pkey);
 #endif
     }
-    return size < 0 ? 0 : size;
+    if (size <= 0) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_UNKNOWN_MAX_SIZE);
+        return 0;
+    }
+    return size;
 }
 
 const char *EVP_PKEY_get0_description(const EVP_PKEY *pkey)
@@ -1897,7 +1916,15 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
              * If |tmp_keymgmt| is present in the operation cache, it means
              * that export doesn't need to be redone.  In that case, we take
              * token copies of the cached pointers, to have token success
-             * values to return.
+             * values to return. It is possible (e.g. in a no-cached-fetch
+             * build), for op->keymgmt to be a different pointer to tmp_keymgmt
+             * even though the name/provider must be the same. In other words
+             * the keymgmt instance may be different but still equivalent, i.e.
+             * same algorithm/provider instance - but we make the simplifying
+             * assumption that the keydata can be used with either keymgmt
+             * instance. Not doing so introduces significant complexity and
+             * probably requires refactoring - since we would have to ripple
+             * the change in keymgmt instance up the call chain.
              */
             if (op != NULL && op->keymgmt != NULL) {
                 keydata = op->keydata;

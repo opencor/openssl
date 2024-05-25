@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -47,7 +47,7 @@ static SSL_CIPHER tls13_ciphers[] = {
         TLS1_3_VERSION, TLS1_3_VERSION,
         0, 0,
         SSL_HIGH,
-        SSL_HANDSHAKE_MAC_SHA256,
+        SSL_HANDSHAKE_MAC_SHA256 | SSL_QUIC,
         128,
         128,
     }, {
@@ -62,7 +62,7 @@ static SSL_CIPHER tls13_ciphers[] = {
         TLS1_3_VERSION, TLS1_3_VERSION,
         0, 0,
         SSL_HIGH,
-        SSL_HANDSHAKE_MAC_SHA384,
+        SSL_HANDSHAKE_MAC_SHA384 | SSL_QUIC,
         256,
         256,
     },
@@ -78,7 +78,7 @@ static SSL_CIPHER tls13_ciphers[] = {
         TLS1_3_VERSION, TLS1_3_VERSION,
         0, 0,
         SSL_HIGH,
-        SSL_HANDSHAKE_MAC_SHA256,
+        SSL_HANDSHAKE_MAC_SHA256 | SSL_QUIC,
         256,
         256,
     },
@@ -112,7 +112,40 @@ static SSL_CIPHER tls13_ciphers[] = {
         SSL_HANDSHAKE_MAC_SHA256,
         64, /* CCM8 uses a short tag, so we have a low security strength */
         128,
-    }
+    },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
+    {
+        1,
+        TLS1_3_RFC_SHA256_SHA256,
+        TLS1_3_RFC_SHA256_SHA256,
+        TLS1_3_CK_SHA256_SHA256,
+        SSL_kANY,
+        SSL_aANY,
+        SSL_eNULL,
+        SSL_SHA256,
+        TLS1_3_VERSION, TLS1_3_VERSION,
+        0, 0,
+        SSL_NOT_DEFAULT | SSL_STRONG_NONE,
+        SSL_HANDSHAKE_MAC_SHA256,
+        0,
+        256,
+    }, {
+        1,
+        TLS1_3_RFC_SHA384_SHA384,
+        TLS1_3_RFC_SHA384_SHA384,
+        TLS1_3_CK_SHA384_SHA384,
+        SSL_kANY,
+        SSL_aANY,
+        SSL_eNULL,
+        SSL_SHA384,
+        TLS1_3_VERSION, TLS1_3_VERSION,
+        0, 0,
+        SSL_NOT_DEFAULT | SSL_STRONG_NONE,
+        SSL_HANDSHAKE_MAC_SHA384,
+        0,
+        384,
+    },
+#endif
 };
 
 /*
@@ -126,6 +159,7 @@ static SSL_CIPHER tls13_ciphers[] = {
  *      Weak ciphers
  */
 static SSL_CIPHER ssl3_ciphers[] = {
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      SSL3_TXT_RSA_NULL_MD5,
@@ -158,6 +192,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 #ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -352,6 +387,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_RSA_WITH_NULL_SHA256,
@@ -368,6 +404,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
     {
      1,
      TLS1_TXT_RSA_WITH_AES_128_SHA256,
@@ -944,6 +981,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      64, /* CCM8 uses a short tag, so we have a low security strength */
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_ECDHE_ECDSA_WITH_NULL_SHA,
@@ -960,6 +998,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -1010,6 +1049,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_ECDHE_RSA_WITH_NULL_SHA,
@@ -1026,6 +1066,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -1076,6 +1117,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_ECDH_anon_WITH_NULL_SHA,
@@ -1092,6 +1134,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -1270,6 +1313,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_PSK_WITH_NULL_SHA,
@@ -1318,6 +1362,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -1596,6 +1641,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_PSK_WITH_NULL_SHA256,
@@ -1628,6 +1674,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
     {
      1,
      TLS1_TXT_DHE_PSK_WITH_AES_128_CBC_SHA256,
@@ -1660,6 +1707,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_DHE_PSK_WITH_NULL_SHA256,
@@ -1692,6 +1740,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
     {
      1,
      TLS1_TXT_RSA_PSK_WITH_AES_128_CBC_SHA256,
@@ -1724,6 +1773,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_RSA_PSK_WITH_NULL_SHA256,
@@ -1756,6 +1806,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+#endif
 #  ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -1838,6 +1889,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+#ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      TLS1_TXT_ECDHE_PSK_WITH_NULL_SHA,
@@ -1886,7 +1938,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
-
+#endif
 # ifndef OPENSSL_NO_WEAK_SSL_CIPHERS
     {
      1,
@@ -2613,6 +2665,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+# ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      "GOST2001-NULL-GOST94",
@@ -2629,6 +2682,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+# endif
     {
      1,
      "IANA-GOST2012-GOST8912-GOST8912",
@@ -2661,6 +2715,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      256,
      256,
      },
+# ifndef OPENSSL_NO_INTEGRITY_ONLY_CIPHERS
     {
      1,
      "GOST2012-NULL-GOST12",
@@ -2677,6 +2732,7 @@ static SSL_CIPHER ssl3_ciphers[] = {
      0,
      0,
      },
+# endif
     {
      1,
      "GOST2012-KUZNYECHIK-KUZNYECHIKOMAC",
@@ -3371,6 +3427,10 @@ void ssl3_free(SSL *s)
     OPENSSL_free(sc->s3.alpn_selected);
     OPENSSL_free(sc->s3.alpn_proposed);
 
+#ifndef OPENSSL_NO_PSK
+    OPENSSL_free(sc->s3.tmp.psk);
+#endif
+
 #ifndef OPENSSL_NO_SRP
     ssl_srp_ctx_free_intern(sc);
 #endif
@@ -3380,6 +3440,7 @@ void ssl3_free(SSL *s)
 int ssl3_clear(SSL *s)
 {
     SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(s);
+    int flags;
 
     if (sc == NULL)
         return 0;
@@ -3401,8 +3462,13 @@ int ssl3_clear(SSL *s)
     OPENSSL_free(sc->s3.alpn_selected);
     OPENSSL_free(sc->s3.alpn_proposed);
 
-    /* NULL/zero-out everything in the s3 struct */
+    /*
+     * NULL/zero-out everything in the s3 struct, but remember if we are doing
+     * QUIC.
+     */
+    flags = sc->s3.flags & TLS1_FLAGS_QUIC;
     memset(&sc->s3, 0, sizeof(sc->s3));
+    sc->s3.flags |= flags;
 
     if (!ssl_free_wbio_buffer(sc))
         return 0;
@@ -3675,13 +3741,13 @@ long ssl3_ctrl(SSL *s, int cmd, long larg, void *parg)
         return tls1_set_sigalgs(sc->cert, parg, larg, 0);
 
     case SSL_CTRL_SET_SIGALGS_LIST:
-        return tls1_set_sigalgs_list(sc->cert, parg, 0);
+        return tls1_set_sigalgs_list(s->ctx, sc->cert, parg, 0);
 
     case SSL_CTRL_SET_CLIENT_SIGALGS:
         return tls1_set_sigalgs(sc->cert, parg, larg, 1);
 
     case SSL_CTRL_SET_CLIENT_SIGALGS_LIST:
-        return tls1_set_sigalgs_list(sc->cert, parg, 1);
+        return tls1_set_sigalgs_list(s->ctx, sc->cert, parg, 1);
 
     case SSL_CTRL_GET_CLIENT_CERT_TYPES:
         {
@@ -3958,13 +4024,13 @@ long ssl3_ctx_ctrl(SSL_CTX *ctx, int cmd, long larg, void *parg)
         return tls1_set_sigalgs(ctx->cert, parg, larg, 0);
 
     case SSL_CTRL_SET_SIGALGS_LIST:
-        return tls1_set_sigalgs_list(ctx->cert, parg, 0);
+        return tls1_set_sigalgs_list(ctx, ctx->cert, parg, 0);
 
     case SSL_CTRL_SET_CLIENT_SIGALGS:
         return tls1_set_sigalgs(ctx->cert, parg, larg, 1);
 
     case SSL_CTRL_SET_CLIENT_SIGALGS_LIST:
-        return tls1_set_sigalgs_list(ctx->cert, parg, 1);
+        return tls1_set_sigalgs_list(ctx, ctx->cert, parg, 1);
 
     case SSL_CTRL_SET_CLIENT_CERT_TYPES:
         return ssl3_set_req_cert_type(ctx->cert, parg, larg);
@@ -4277,15 +4343,15 @@ const SSL_CIPHER *ssl3_choose_cipher(SSL_CONNECTION *s, STACK_OF(SSL_CIPHER) *cl
     }
 
     for (i = 0; i < sk_SSL_CIPHER_num(prio); i++) {
+        int minversion, maxversion;
+
         c = sk_SSL_CIPHER_value(prio, i);
+        minversion = SSL_CONNECTION_IS_DTLS(s) ? c->min_dtls : c->min_tls;
+        maxversion = SSL_CONNECTION_IS_DTLS(s) ? c->max_dtls : c->max_tls;
 
         /* Skip ciphers not supported by the protocol version */
-        if (!SSL_CONNECTION_IS_DTLS(s) &&
-            ((s->version < c->min_tls) || (s->version > c->max_tls)))
-            continue;
-        if (SSL_CONNECTION_IS_DTLS(s) &&
-            (DTLS_VERSION_LT(s->version, c->min_dtls) ||
-             DTLS_VERSION_GT(s->version, c->max_dtls)))
+        if (ssl_version_cmp(s, s->version, minversion) < 0
+            || ssl_version_cmp(s, s->version, maxversion) > 0)
             continue;
 
         /*

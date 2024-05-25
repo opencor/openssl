@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -114,7 +114,7 @@ static const ssl_cipher_table ssl_cipher_table_auth[] = {
 /* *INDENT-ON* */
 
 /* Utility function for table lookup */
-static int ssl_cipher_info_find(const ssl_cipher_table * table,
+static int ssl_cipher_info_find(const ssl_cipher_table *table,
                                 size_t table_cnt, uint32_t mask)
 {
     size_t i;
@@ -465,7 +465,8 @@ DEFINE_RUN_ONCE_STATIC(do_load_builtin_compressions)
             comp->method = method;
             comp->id = SSL_COMP_ZLIB_IDX;
             comp->name = COMP_get_name(method);
-            sk_SSL_COMP_push(ssl_comp_methods, comp);
+            if (!sk_SSL_COMP_push(ssl_comp_methods, comp))
+                OPENSSL_free(comp);
             sk_SSL_COMP_sort(ssl_comp_methods);
         }
     }
@@ -481,7 +482,8 @@ static int load_builtin_compressions(void)
 int ssl_cipher_get_evp_cipher(SSL_CTX *ctx, const SSL_CIPHER *sslc,
                               const EVP_CIPHER **enc)
 {
-    int i = ssl_cipher_info_lookup(ssl_cipher_table_cipher, sslc->algorithm_enc);
+    int i = ssl_cipher_info_lookup(ssl_cipher_table_cipher,
+                                   sslc->algorithm_enc);
 
     if (i == -1) {
         *enc = NULL;
@@ -503,6 +505,33 @@ int ssl_cipher_get_evp_cipher(SSL_CTX *ctx, const SSL_CIPHER *sslc,
                 return 0;
             *enc = ctx->ssl_cipher_methods[i];
         }
+    }
+    return 1;
+}
+
+int ssl_cipher_get_evp_md_mac(SSL_CTX *ctx, const SSL_CIPHER *sslc,
+                              const EVP_MD **md,
+                              int *mac_pkey_type, size_t *mac_secret_size)
+{
+    int i = ssl_cipher_info_lookup(ssl_cipher_table_mac, sslc->algorithm_mac);
+
+    if (i == -1) {
+        *md = NULL;
+        if (mac_pkey_type != NULL)
+            *mac_pkey_type = NID_undef;
+        if (mac_secret_size != NULL)
+            *mac_secret_size = 0;
+    } else {
+        const EVP_MD *digest = ctx->ssl_digest_methods[i];
+
+        if (digest == NULL || !ssl_evp_md_up_ref(digest)) 
+            return 0;
+
+        *md = digest;
+        if (mac_pkey_type != NULL)
+            *mac_pkey_type = ctx->ssl_mac_pkey_id[i];
+        if (mac_secret_size != NULL)
+            *mac_secret_size = ctx->ssl_mac_secret_size[i];
     }
     return 1;
 }
@@ -546,34 +575,17 @@ int ssl_cipher_get_evp(SSL_CTX *ctx, const SSL_SESSION *s,
     if (!ssl_cipher_get_evp_cipher(ctx, c, enc))
         return 0;
 
-    i = ssl_cipher_info_lookup(ssl_cipher_table_mac, c->algorithm_mac);
-    if (i == -1) {
-        *md = NULL;
-        if (mac_pkey_type != NULL)
-            *mac_pkey_type = NID_undef;
-        if (mac_secret_size != NULL)
-            *mac_secret_size = 0;
-        if (c->algorithm_mac == SSL_AEAD)
-            mac_pkey_type = NULL;
-    } else {
-        const EVP_MD *digest = ctx->ssl_digest_methods[i];
-
-        if (digest == NULL
-                || !ssl_evp_md_up_ref(digest)) {
-            ssl_evp_cipher_free(*enc);
-            return 0;
-        }
-        *md = digest;
-        if (mac_pkey_type != NULL)
-            *mac_pkey_type = ctx->ssl_mac_pkey_id[i];
-        if (mac_secret_size != NULL)
-            *mac_secret_size = ctx->ssl_mac_secret_size[i];
+    if (!ssl_cipher_get_evp_md_mac(ctx, c, md, mac_pkey_type,
+                                   mac_secret_size)) {
+        ssl_evp_cipher_free(*enc);
+        return 0;
     }
 
     if ((*enc != NULL)
-        && (*md != NULL 
+        && (*md != NULL
             || (EVP_CIPHER_get_flags(*enc) & EVP_CIPH_FLAG_AEAD_CIPHER))
-        && (!mac_pkey_type || *mac_pkey_type != NID_undef)) {
+        && (c->algorithm_mac == SSL_AEAD
+            || mac_pkey_type == NULL || *mac_pkey_type != NID_undef)) {
         const EVP_CIPHER *evp = NULL;
 
         if (use_etm
@@ -1707,7 +1719,7 @@ char *SSL_CIPHER_description(const SSL_CIPHER *cipher, char *buf, int len)
     const char *ver;
     const char *kx, *au, *enc, *mac;
     uint32_t alg_mkey, alg_auth, alg_enc, alg_mac;
-    static const char *format = "%-30s %-7s Kx=%-8s Au=%-5s Enc=%-22s Mac=%-4s\n";
+    static const char *const format = "%-30s %-7s Kx=%-8s Au=%-5s Enc=%-22s Mac=%-4s\n";
 
     if (buf == NULL) {
         len = 128;
@@ -2183,7 +2195,7 @@ int ssl_cipher_get_overhead(const SSL_CIPHER *c, size_t *mac_overhead,
                             size_t *int_overhead, size_t *blocksize,
                             size_t *ext_overhead)
 {
-    size_t mac = 0, in = 0, blk = 0, out = 0;
+    int mac = 0, in = 0, blk = 0, out = 0;
 
     /* Some hard-coded numbers for the CCM/Poly1305 MAC overhead
      * because there are no handy #defines for those. */
@@ -2207,6 +2219,8 @@ int ssl_cipher_get_overhead(const SSL_CIPHER *c, size_t *mac_overhead,
             return 0;
 
         mac = EVP_MD_get_size(e_md);
+        if (mac <= 0)
+            return 0;
         if (c->algorithm_enc != SSL_eNULL) {
             int cipher_nid = SSL_CIPHER_get_cipher_nid(c);
             const EVP_CIPHER *e_ciph = EVP_get_cipherbynid(cipher_nid);
@@ -2219,21 +2233,25 @@ int ssl_cipher_get_overhead(const SSL_CIPHER *c, size_t *mac_overhead,
 
             in = 1; /* padding length byte */
             out = EVP_CIPHER_get_iv_length(e_ciph);
+            if (out < 0)
+                return 0;
             blk = EVP_CIPHER_get_block_size(e_ciph);
+            if (blk <= 0)
+                return 0;
         }
     }
 
-    *mac_overhead = mac;
-    *int_overhead = in;
-    *blocksize = blk;
-    *ext_overhead = out;
+    *mac_overhead = (size_t)mac;
+    *int_overhead = (size_t)in;
+    *blocksize = (size_t)blk;
+    *ext_overhead = (size_t)out;
 
     return 1;
 }
 
 int ssl_cert_is_disabled(SSL_CTX *ctx, size_t idx)
 {
-    SSL_CERT_LOOKUP *cl;
+    const SSL_CERT_LOOKUP *cl;
 
     /* A provider-loaded key type is always enabled */
     if (idx >= SSL_PKEY_NUM)

@@ -2,8 +2,8 @@ Build and Install
 =================
 
 This document describes installation on all supported operating
-systems (the Unix/Linux family, including macOS), OpenVMS,
-and Windows).
+systems: the Unix/Linux family (including macOS), OpenVMS,
+and Windows.
 
 Table of Contents
 =================
@@ -52,6 +52,8 @@ To install OpenSSL, you will need:
  * Perl 5 with core modules (please read [NOTES-PERL.md](NOTES-PERL.md))
  * The Perl module `Text::Template` (please read [NOTES-PERL.md](NOTES-PERL.md))
  * an ANSI C compiler
+ * POSIX C library (at least POSIX.1-2008), or compatible types and
+   functionality.
  * a development environment in the form of development libraries and C
    header files
  * a supported operating system
@@ -64,6 +66,8 @@ issues and other details, please read one of these:
  * [Notes for Windows platforms](NOTES-WINDOWS.md)
  * [Notes for the DOS platform with DJGPP](NOTES-DJGPP.md)
  * [Notes for the OpenVMS platform](NOTES-VMS.md)
+ * [Notes for the HPE NonStop platform](NOTES-NONSTOP.md)
+ * [Notes on POSIX](NOTES-POSIX.md)
  * [Notes on Perl](NOTES-PERL.md)
  * [Notes on Valgrind](NOTES-VALGRIND.md)
 
@@ -141,7 +145,7 @@ Use the following commands to configure, build and test OpenSSL.
 The testing is optional, but recommended if you intend to install
 OpenSSL for production use.
 
-### Unix / Linux / macOS
+### Unix / Linux / macOS / NonStop
 
     $ ./Configure
     $ make
@@ -198,7 +202,7 @@ the global search path for system libraries.
 Finally, if you plan on using the FIPS module, you need to read the
 [Post-installation Notes](#post-installation-notes) further down.
 
-### Unix / Linux / macOS
+### Unix / Linux / macOS / NonStop
 
 Depending on your distribution, you need to run the following command as
 root user or prepend `sudo` to the command:
@@ -506,11 +510,6 @@ This source is ignored by the FIPS provider.
 Use the `RDSEED` or `RDRAND` command on x86 or `RNDRRS` command on aarch64
 if provided by the CPU.
 
-### librandom
-
-Use librandom (not implemented yet).
-This source is ignored by the FIPS provider.
-
 ### none
 
 Disable automatic seeding.  This is the default on some operating systems where
@@ -529,7 +528,7 @@ Setting the FIPS HMAC key
 
 As part of its self-test validation, the FIPS module must verify itself
 by performing a SHA-256 HMAC computation on itself. The default key is
-the SHA256 value of "the holy handgrenade of antioch" and is sufficient
+the SHA256 value of "holy hand grenade of antioch" and is sufficient
 for meeting the FIPS requirements.
 
 To change the key to a different value, use this flag. The value should
@@ -599,6 +598,14 @@ be used even with this option.
 ### no-async
 
 Do not build support for async operations.
+
+### no-atexit
+
+Do not use `atexit()` in libcrypto builds.
+
+`atexit()` has varied semantics between platforms and can cause SIGSEGV in some
+circumstances. This option disables the atexit registration of OPENSSL_cleanup.
+By default, NonStop configurations use `no-atexit`.
 
 ### no-autoalginit
 
@@ -861,6 +868,10 @@ As synonym for `no-padlockeng`.  Deprecated and should not be used.
 
 Don't build with support for Position Independent Code.
 
+### enable-pie
+
+Build with support for Position Independent Execution.
+
 ### no-pinshared
 
 Don't pin the shared libraries.
@@ -913,6 +924,10 @@ Build support for Stream Control Transmission Protocol (SCTP).
 Do not create shared libraries, only static ones.
 
 See [Notes on shared libraries](#notes-on-shared-libraries) below.
+
+### no-sm2-precomp
+
+Disable using the SM2 precomputed table on aarch64 to make the library smaller.
 
 ### no-sock
 
@@ -971,10 +986,9 @@ Don't build test programs or run any tests.
 
 Build with support for TCP Fast Open (RFC7413). Supported on Linux, macOS and FreeBSD.
 
-### enable-quic
+### no-quic
 
-Build with QUIC support. This is currently just for developers as the
-implementation is by no means complete and usable.
+Don't build with QUIC support.
 
 ### no-threads
 
@@ -1072,6 +1086,14 @@ when needed.
 
 This is only supported on systems where loading of shared libraries is supported.
 
+### enable-unstable-qlog
+
+Enables qlog output support for the QUIC protocol. This functionality is
+unstable and implements a draft version of the qlog specification. The qlog
+output from OpenSSL will change in incompatible ways in future, and is not
+subject to any format stability or compatibility guarantees at this time. See
+the manpage openssl-qlog(7) for details.
+
 ### 386
 
 In 32-bit x86 builds, use the 80386 instruction set only in assembly modules
@@ -1092,6 +1114,10 @@ Similarly `no-dtls` will disable `dtls1` and `dtls1_2`.  The `no-ssl` option is
 synonymous with `no-ssl3`.  Note this only affects version negotiation.
 OpenSSL will still provide the methods for applications to explicitly select
 the individual protocol versions.
+
+### no-integrity-only-ciphers
+
+Don't build support for integrity only ciphers in tls.
 
 ### no-{protocol}-method
 

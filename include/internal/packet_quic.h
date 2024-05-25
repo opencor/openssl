@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -40,10 +40,12 @@ __owur static ossl_inline int PACKET_get_quic_vlint(PACKET *pkt,
 /*
  * Decodes a QUIC variable-length integer in |pkt| and stores the result in
  * |data|. Unlike PACKET_get_quic_vlint, this does not advance the current
- * position.
+ * position. If was_minimal is non-NULL, *was_minimal is set to 1 if the integer
+ * was encoded using the minimal possible number of bytes and 0 otherwise.
  */
-__owur static ossl_inline int PACKET_peek_quic_vlint(PACKET *pkt,
-                                                     uint64_t *data)
+__owur static ossl_inline int PACKET_peek_quic_vlint_ex(PACKET *pkt,
+                                                        uint64_t *data,
+                                                        int *was_minimal)
 {
     size_t enclen;
 
@@ -56,7 +58,17 @@ __owur static ossl_inline int PACKET_peek_quic_vlint(PACKET *pkt,
         return 0;
 
     *data = ossl_quic_vlint_decode_unchecked(pkt->curr);
+
+    if (was_minimal != NULL)
+        *was_minimal = (enclen == ossl_quic_vlint_encode_len(*data));
+
     return 1;
+}
+
+__owur static ossl_inline int PACKET_peek_quic_vlint(PACKET *pkt,
+                                                     uint64_t *data)
+{
+    return PACKET_peek_quic_vlint_ex(pkt, data, NULL);
 }
 
 /*

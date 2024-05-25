@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,9 +14,6 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/provider.h>
-#ifndef OPENSSL_NO_QUIC
-#include <openssl/quic.h>
-#endif
 
 #include "helpers/handshake.h"
 #include "helpers/ssl_test_ctx.h"
@@ -500,28 +497,6 @@ static int test_handshake(int idx)
                 goto err;
         }
     }
-#ifndef OPENSSL_NO_QUIC
-    if (test_ctx->method == SSL_TEST_METHOD_QUIC) {
-        server_ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_server_method());
-        if (test_ctx->extra.server.servername_callback !=
-            SSL_TEST_SERVERNAME_CB_NONE) {
-            if (!TEST_ptr(server2_ctx =
-                            SSL_CTX_new_ex(libctx, NULL,
-                                           OSSL_QUIC_server_method())))
-                goto err;
-        }
-        client_ctx = SSL_CTX_new_ex(libctx, NULL, OSSL_QUIC_client_method());
-        if (test_ctx->handshake_mode == SSL_TEST_HANDSHAKE_RESUME) {
-            resume_server_ctx = SSL_CTX_new_ex(libctx, NULL,
-                                               OSSL_QUIC_server_method());
-            resume_client_ctx = SSL_CTX_new_ex(libctx, NULL,
-                                               OSSL_QUIC_client_method());
-            if (!TEST_ptr(resume_server_ctx)
-                    || !TEST_ptr(resume_client_ctx))
-                goto err;
-        }
-    }
-#endif
 
 #ifdef OPENSSL_NO_AUTOLOAD_CONFIG
     if (!TEST_true(OPENSSL_init_ssl(OPENSSL_INIT_LOAD_CONFIG, NULL)))

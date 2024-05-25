@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -52,6 +52,7 @@ struct quic_sstream_st {
     unsigned int    have_final_size     : 1;
     unsigned int    sent_final_size     : 1;
     unsigned int    acked_final_size    : 1;
+    unsigned int    cleanse             : 1;
 };
 
 static void qss_cull(QUIC_SSTREAM *qss);
@@ -65,8 +66,8 @@ QUIC_SSTREAM *ossl_quic_sstream_new(size_t init_buf_size)
         return NULL;
 
     ring_buf_init(&qss->ring_buf);
-    if (!ring_buf_resize(&qss->ring_buf, init_buf_size)) {
-        ring_buf_destroy(&qss->ring_buf);
+    if (!ring_buf_resize(&qss->ring_buf, init_buf_size, 0)) {
+        ring_buf_destroy(&qss->ring_buf, 0);
         OPENSSL_free(qss);
         return NULL;
     }
@@ -83,7 +84,7 @@ void ossl_quic_sstream_free(QUIC_SSTREAM *qss)
 
     ossl_uint_set_destroy(&qss->new_set);
     ossl_uint_set_destroy(&qss->acked_set);
-    ring_buf_destroy(&qss->ring_buf);
+    ring_buf_destroy(&qss->ring_buf, qss->cleanse);
     OPENSSL_free(qss);
 }
 
@@ -349,12 +350,13 @@ static void qss_cull(QUIC_SSTREAM *qss)
      * can only cull contiguous areas at the start of the ring buffer anyway.
      */
     if (h != NULL)
-        ring_buf_cpop_range(&qss->ring_buf, h->range.start, h->range.end, 0);
+        ring_buf_cpop_range(&qss->ring_buf, h->range.start, h->range.end,
+                            qss->cleanse);
 }
 
 int ossl_quic_sstream_set_buffer_size(QUIC_SSTREAM *qss, size_t num_bytes)
 {
-    return ring_buf_resize(&qss->ring_buf, num_bytes);
+    return ring_buf_resize(&qss->ring_buf, num_bytes, qss->cleanse);
 }
 
 size_t ossl_quic_sstream_get_buffer_size(QUIC_SSTREAM *qss)
@@ -377,8 +379,13 @@ int ossl_quic_sstream_is_totally_acked(QUIC_SSTREAM *qss)
     UINT_RANGE r;
     uint64_t cur_size;
 
-    if ((qss->have_final_size && !qss->acked_final_size)
-        || ossl_list_uint_set_num(&qss->acked_set) != 1)
+    if (qss->have_final_size && !qss->acked_final_size)
+        return 0;
+
+    if (ossl_quic_sstream_get_cur_size(qss) == 0)
+        return 1;
+
+    if (ossl_list_uint_set_num(&qss->acked_set) != 1)
         return 0;
 
     r = ossl_list_uint_set_head(&qss->acked_set)->range;
@@ -409,4 +416,9 @@ void ossl_quic_sstream_adjust_iov(size_t len,
 
         running += iovlen;
     }
+}
+
+void ossl_quic_sstream_set_cleanse(QUIC_SSTREAM *qss, int cleanse)
+{
+    qss->cleanse = cleanse;
 }

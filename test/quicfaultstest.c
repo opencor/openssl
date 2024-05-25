@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -34,8 +34,8 @@ static int test_basic(void)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
-                                             &qtserv, &cssl, NULL)))
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
+                                             &qtserv, &cssl, NULL, NULL)))
         goto err;
 
     if (!TEST_true(qtest_create_quic_connection(qtserv, cssl)))
@@ -104,8 +104,8 @@ static int test_unknown_frame(void)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
-                                             &qtserv, &cssl, &fault)))
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
+                                             &qtserv, &cssl, &fault, NULL)))
         goto err;
 
     if (!TEST_true(qtest_create_quic_connection(qtserv, cssl)))
@@ -141,21 +141,11 @@ static int test_unknown_frame(void)
     if (!TEST_int_eq(SSL_get_error(cssl, ret), SSL_ERROR_SSL))
         goto err;
 
-#if 0
-    /*
-     * TODO(QUIC): We should expect an error on the queue after this - but we
-     * don't have it yet.
-     * Note, just raising the error in the obvious place causes
-     * SSL_handle_events() to succeed, but leave a spurious error on the stack.
-     * We need to either allow SSL_handle_events() to fail, or somehow delay the
-     * raising of the error until the SSL_read() call.
-     */
     if (!TEST_int_eq(ERR_GET_REASON(ERR_peek_error()),
-                     SSL_R_UNKNOWN_FRAME_TYPE_RECEIVED))
+                     SSL_R_QUIC_PROTOCOL_ERROR))
         goto err;
-#endif
 
-    if (!TEST_true(qtest_check_server_protocol_err(qtserv)))
+    if (!TEST_true(qtest_check_server_frame_encoding_err(qtserv)))
         goto err;
 
     testresult = 1;
@@ -171,36 +161,46 @@ static int test_unknown_frame(void)
  * Test that a server that fails to provide transport params cannot be
  * connected to.
  */
-static int drop_transport_params_cb(QTEST_FAULT *fault,
+static int drop_extensions_cb(QTEST_FAULT *fault,
                                     QTEST_ENCRYPTED_EXTENSIONS *ee,
                                     size_t eelen, void *encextcbarg)
 {
-    if (!qtest_fault_delete_extension(fault,
-                                      TLSEXT_TYPE_quic_transport_parameters,
-                                      ee->extensions, &ee->extensionslen))
+    int *ext = (int *)encextcbarg;
+
+    if (!qtest_fault_delete_extension(fault, *ext, ee->extensions,
+                                      &ee->extensionslen, NULL))
         return 0;
 
     return 1;
 }
 
-static int test_no_transport_params(void)
+static int test_drop_extensions(int idx)
 {
     int testresult = 0;
     SSL_CTX *cctx = SSL_CTX_new(OSSL_QUIC_client_method());
     QUIC_TSERVER *qtserv = NULL;
     SSL *cssl = NULL;
     QTEST_FAULT *fault = NULL;
+    int ext, err;
 
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
-                                             &qtserv, &cssl, &fault)))
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey, 0,
+                                             &qtserv, &cssl, &fault, NULL)))
         goto err;
 
+    if (idx == 0) {
+        ext = TLSEXT_TYPE_quic_transport_parameters;
+        err = OSSL_QUIC_ERR_CRYPTO_MISSING_EXT;
+    } else {
+        ext = TLSEXT_TYPE_application_layer_protocol_negotiation;
+        err = OSSL_QUIC_ERR_CRYPTO_NO_APP_PROTO;
+    }
+
     if (!TEST_true(qtest_fault_set_hand_enc_ext_listener(fault,
-                                                         drop_transport_params_cb,
-                                                         NULL)))
+                                                         drop_extensions_cb,
+                                                         &ext)))
         goto err;
 
     /*
@@ -210,7 +210,7 @@ static int test_no_transport_params(void)
     if (!TEST_false(qtest_create_quic_connection(qtserv, cssl)))
         goto err;
 
-    if (!TEST_true(qtest_check_server_protocol_err(qtserv)))
+    if (!TEST_true(qtest_check_server_transport_err(qtserv, err)))
         goto err;
 
     testresult = 1;
@@ -273,8 +273,9 @@ static int test_corrupted_data(int idx)
     if (!TEST_ptr(cctx))
         goto err;
 
-    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, cert, privkey, 0,
-                                             &qtserv, &cssl, &fault)))
+    if (!TEST_true(qtest_create_quic_objects(NULL, cctx, NULL, cert, privkey,
+                                             QTEST_FLAG_FAKE_TIME, &qtserv,
+                                             &cssl, &fault, NULL)))
         goto err;
 
     if (idx == 0) {
@@ -315,16 +316,9 @@ static int test_corrupted_data(int idx)
      * Introduce a small delay so that the above packet has time to be detected
      * as lost. Loss detection times are based on RTT which should be very
      * fast for us since there isn't really a network. The loss delay timer is
-     * always at least 1ms though. We sleep for 100ms.
-     * TODO(QUIC): This assumes the calculated RTT will always be way less than
-     * 100ms - which it should be...but can we always guarantee this? An
-     * alternative might be to put in our own ossl_time_now() implementation for
-     * these tests and control the timer as part of the test. This approach has
-     * the added advantage that the test will behave reliably when run in a
-     * debugger. Without it may get unreliable debugging results. This would
-     * require some significant refactoring of the ssl/quic code though.
+     * always at least 1ms though. We skip forward 100ms
      */
-    OSSL_sleep(100);
+    qtest_add_time(100);
 
     /* Send rest of message */
     if (!TEST_true(ossl_quic_tserver_write(qtserv, sid, (unsigned char *)msg + 5,
@@ -399,7 +393,7 @@ int setup_tests(void)
 
     ADD_TEST(test_basic);
     ADD_TEST(test_unknown_frame);
-    ADD_TEST(test_no_transport_params);
+    ADD_ALL_TESTS(test_drop_extensions, 2);
     ADD_ALL_TESTS(test_corrupted_data, 2);
 
     return 1;

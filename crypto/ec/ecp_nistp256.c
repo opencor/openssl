@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2011-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -1773,7 +1773,6 @@ static void batch_mul(felem x_out, felem y_out, felem z_out,
 struct nistp256_pre_comp_st {
     smallfelem g_pre_comp[2][16][3];
     CRYPTO_REF_COUNT references;
-    CRYPTO_RWLOCK *lock;
 };
 
 const EC_METHOD *EC_GFp_nistp256_method(void)
@@ -1852,11 +1851,7 @@ static NISTP256_PRE_COMP *nistp256_pre_comp_new(void)
     if (ret == NULL)
         return ret;
 
-    ret->references = 1;
-
-    ret->lock = CRYPTO_THREAD_lock_new();
-    if (ret->lock == NULL) {
-        ERR_raise(ERR_LIB_EC, ERR_R_CRYPTO_LIB);
+    if (!CRYPTO_NEW_REF(&ret->references, 1)) {
         OPENSSL_free(ret);
         return NULL;
     }
@@ -1867,7 +1862,7 @@ NISTP256_PRE_COMP *EC_nistp256_pre_comp_dup(NISTP256_PRE_COMP *p)
 {
     int i;
     if (p != NULL)
-        CRYPTO_UP_REF(&p->references, &i, p->lock);
+        CRYPTO_UP_REF(&p->references, &i);
     return p;
 }
 
@@ -1878,13 +1873,13 @@ void EC_nistp256_pre_comp_free(NISTP256_PRE_COMP *pre)
     if (pre == NULL)
         return;
 
-    CRYPTO_DOWN_REF(&pre->references, &i, pre->lock);
+    CRYPTO_DOWN_REF(&pre->references, &i);
     REF_PRINT_COUNT("EC_nistp256", pre);
     if (i > 0)
         return;
     REF_ASSERT_ISNT(i < 0);
 
-    CRYPTO_THREAD_lock_free(pre->lock);
+    CRYPTO_FREE_REF(&pre->references);
     OPENSSL_free(pre);
 }
 

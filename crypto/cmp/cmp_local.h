@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2024 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -49,6 +49,7 @@ struct ossl_cmp_ctx_st {
     int keep_alive; /* persistent connection: 0=no, 1=prefer, 2=require */
     int msg_timeout; /* max seconds to wait for each CMP message round trip */
     int total_timeout; /* max number of seconds an enrollment may take, incl. */
+    int tls_used; /* whether to use TLS for client-side HTTP connections */
     /* attempts polling for a response if a 'waiting' PKIStatus is received */
     time_t end_time; /* session start time + totaltimeout */
 # ifndef OPENSSL_NO_HTTP
@@ -63,6 +64,7 @@ struct ossl_cmp_ctx_st {
      * certificate responses (ip/cp/kup), revocation responses (rp), and PKIConf
      */
     int unprotectedErrors;
+    int noCacheExtraCerts;
     X509 *srvCert; /* certificate used to identify the server */
     X509 *validatedSrvCert; /* caches any already validated server cert */
     X509_NAME *expected_sender; /* expected sender in header of response */
@@ -94,6 +96,7 @@ struct ossl_cmp_ctx_st {
     ASN1_OCTET_STRING *transactionID; /* the current transaction ID */
     ASN1_OCTET_STRING *senderNonce; /* last nonce sent */
     ASN1_OCTET_STRING *recipNonce; /* last nonce received */
+    ASN1_OCTET_STRING *first_senderNonce; /* sender nonce when starting to poll */
     ASN1_UTF8STRING *freeText; /* optional string to include each msg */
     STACK_OF(OSSL_CMP_ITAV) *geninfo_ITAVs;
     int implicitConfirm; /* set implicitConfirm in IR/KUR/CR messages */
@@ -103,7 +106,8 @@ struct ossl_cmp_ctx_st {
     /* certificate template */
     EVP_PKEY *newPkey; /* explicit new private/public key for cert enrollment */
     int newPkey_priv; /* flag indicating if newPkey contains private key */
-    X509_NAME *issuer; /* issuer name to used in cert template */
+    X509_NAME *issuer; /* issuer name to used in cert template, also in rr */
+    ASN1_INTEGER *serialNumber; /* certificate serial number to use in rr */
     int days; /* Number of days new certificates are asked to be valid for */
     X509_NAME *subjectName; /* subject name to be used in cert template */
     STACK_OF(GENERAL_NAME) *subjectAltNames; /* to add to the cert template */
@@ -204,6 +208,39 @@ typedef struct ossl_cmp_cakeyupdanncontent_st {
 } OSSL_CMP_CAKEYUPDANNCONTENT;
 DECLARE_ASN1_FUNCTIONS(OSSL_CMP_CAKEYUPDANNCONTENT)
 
+typedef struct ossl_cmp_rootcakeyupdate_st OSSL_CMP_ROOTCAKEYUPDATE;
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_ROOTCAKEYUPDATE)
+
+typedef struct ossl_cmp_certreqtemplate_st OSSL_CMP_CERTREQTEMPLATE;
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_CERTREQTEMPLATE)
+
+/*-
+ * CRLSource ::= CHOICE {
+ *      dpn          [0] DistributionPointName,
+ *      issuer       [1] GeneralNames }
+ */
+
+typedef struct ossl_cmp_crlsource_st {
+    int type;
+    union {
+        DIST_POINT_NAME *dpn;
+        GENERAL_NAMES *issuer;
+    } value;
+} OSSL_CMP_CRLSOURCE;
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_CRLSOURCE)
+
+/*
+ * CRLStatus ::= SEQUENCE {
+ *      source       CRLSource,
+ *      thisUpdate   Time OPTIONAL }
+ */
+
+struct ossl_cmp_crlstatus_st {
+    OSSL_CMP_CRLSOURCE *source;
+    ASN1_TIME *thisUpdate;
+}; /* OSSL_CMP_CRLSTATUS */
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_CRLSTATUS)
+
 /*-
  * declared already here as it will be used in OSSL_CMP_MSG (nested) and
  * infoType and infoValue
@@ -249,8 +286,19 @@ struct ossl_cmp_itav_st {
         OSSL_CMP_MSGS *origPKIMessage;
         /* NID_id_it_suppLangTags - Supported Language Tags */
         STACK_OF(ASN1_UTF8STRING) *suppLangTagsValue;
+        /* NID_id_it_certProfile - Certificate Profile */
+        STACK_OF(ASN1_UTF8STRING) *certProfile;
         /* NID_id_it_caCerts - CA Certificates */
         STACK_OF(X509) *caCerts;
+        /* NID_id_it_rootCaCert - Root CA Certificate */
+        X509 *rootCaCert;
+        /* NID_id_it_rootCaKeyUpdate - Root CA Certificate Update */
+        OSSL_CMP_ROOTCAKEYUPDATE *rootCaKeyUpdate;
+        /* NID_id_it_crlStatusList -  CRL Update Retrieval */
+        STACK_OF(OSSL_CMP_CRLSTATUS) *crlStatusList;
+        /* NID_id_it_crls - Certificate Status Lists */
+        STACK_OF(X509_CRL) *crls;
+
         /* this is to be used for so far undeclared objects */
         ASN1_TYPE *other;
     } infoValue;
@@ -737,6 +785,21 @@ DECLARE_ASN1_FUNCTIONS(OSSL_CMP_PROTECTEDPART)
  *   }
  */
 
+/*
+ * RootCaKeyUpdateContent ::= SEQUENCE {
+ *      newWithNew       CMPCertificate,
+ *      newWithOld   [0] CMPCertificate OPTIONAL,
+ *      oldWithNew   [1] CMPCertificate OPTIONAL
+ * }
+ */
+
+struct ossl_cmp_rootcakeyupdate_st {
+    X509 *newWithNew;
+    X509 *newWithOld;
+    X509 *oldWithNew;
+} /* OSSL_CMP_ROOTCAKEYUPDATE */;
+DECLARE_ASN1_FUNCTIONS(OSSL_CMP_ROOTCAKEYUPDATE)
+
 /* from cmp_asn.c */
 int ossl_cmp_asn1_get_int(const ASN1_INTEGER *a);
 
@@ -797,6 +860,8 @@ int ossl_cmp_ctx_set1_extraCertsIn(OSSL_CMP_CTX *ctx,
 int ossl_cmp_ctx_set1_recipNonce(OSSL_CMP_CTX *ctx,
                                  const ASN1_OCTET_STRING *nonce);
 EVP_PKEY *ossl_cmp_ctx_get0_newPubkey(const OSSL_CMP_CTX *ctx);
+int ossl_cmp_ctx_set1_first_senderNonce(OSSL_CMP_CTX *ctx,
+                                        const ASN1_OCTET_STRING *nonce);
 
 /* from cmp_status.c */
 int ossl_cmp_pkisi_get_status(const OSSL_CMP_PKISI *si);
@@ -913,6 +978,7 @@ ossl_cmp_certrepmessage_get0_certresponse(const OSSL_CMP_CERTREPMESSAGE *crm,
 X509 *ossl_cmp_certresponse_get1_cert(const OSSL_CMP_CTX *ctx,
                                       const OSSL_CMP_CERTRESPONSE *crep);
 OSSL_CMP_MSG *ossl_cmp_msg_load(const char *file);
+int ossl_cmp_is_error_with_waiting(const OSSL_CMP_MSG *msg);
 
 /* from cmp_protect.c */
 int ossl_cmp_msg_add_extraCerts(OSSL_CMP_CTX *ctx, OSSL_CMP_MSG *msg);
@@ -932,6 +998,8 @@ int ossl_cmp_verify_popo(const OSSL_CMP_CTX *ctx,
                          const OSSL_CMP_MSG *msg, int accept_RAVerified);
 
 /* from cmp_client.c */
+/* expected max time per msg round trip, used for last try during polling: */
+# define OSSL_CMP_EXPECTED_RESP_TIME 2
 int ossl_cmp_exchange_certConf(OSSL_CMP_CTX *ctx, int certReqId,
                                int fail_info, const char *txt);
 int ossl_cmp_exchange_error(OSSL_CMP_CTX *ctx, int status, int fail_info,

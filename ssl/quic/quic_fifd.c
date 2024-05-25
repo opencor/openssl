@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -9,6 +9,7 @@
 
 #include "internal/quic_fifd.h"
 #include "internal/quic_wire.h"
+#include "internal/qlog_event_helpers.h"
 
 DEFINE_LIST_OF(tx_history, OSSL_ACKM_TX_PKT);
 
@@ -34,7 +35,9 @@ int ossl_quic_fifd_init(QUIC_FIFD *fifd,
                         void *confirm_frame_arg,
                         void (*sstream_updated)(uint64_t stream_id,
                                                 void *arg),
-                        void *sstream_updated_arg)
+                        void *sstream_updated_arg,
+                        QLOG *(*get_qlog_cb)(void *arg),
+                        void *get_qlog_cb_arg)
 {
     if (cfq == NULL || ackm == NULL || txpim == NULL
         || get_sstream_by_id == NULL || regen_frame == NULL)
@@ -51,6 +54,8 @@ int ossl_quic_fifd_init(QUIC_FIFD *fifd,
     fifd->confirm_frame_arg     = confirm_frame_arg;
     fifd->sstream_updated       = sstream_updated;
     fifd->sstream_updated_arg   = sstream_updated_arg;
+    fifd->get_qlog_cb           = get_qlog_cb;
+    fifd->get_qlog_cb_arg       = get_qlog_cb_arg;
     return 1;
 }
 
@@ -77,6 +82,7 @@ static void on_acked(void *arg)
             continue;
 
         if (chunks[i].end >= chunks[i].start)
+            /* coverity[check_return]: Best effort - we cannot fail here. */
             ossl_quic_sstream_mark_acked(sstream,
                                          chunks[i].start, chunks[i].end);
 
@@ -92,6 +98,9 @@ static void on_acked(void *arg)
             fifd->confirm_frame(OSSL_QUIC_FRAME_TYPE_RESET_STREAM,
                                 chunks[i].stream_id, pkt,
                                 fifd->confirm_frame_arg);
+
+        if (ossl_quic_sstream_is_totally_acked(sstream))
+            fifd->sstream_updated(chunks[i].stream_id, fifd->sstream_updated_arg);
     }
 
     /* GCR */
@@ -101,6 +110,14 @@ static void on_acked(void *arg)
     }
 
     ossl_quic_txpim_pkt_release(fifd->txpim, pkt);
+}
+
+static QLOG *fifd_get_qlog(QUIC_FIFD *fifd)
+{
+    if (fifd->get_qlog_cb == NULL)
+        return NULL;
+
+    return fifd->get_qlog_cb(fifd->get_qlog_cb_arg);
 }
 
 static void on_lost(void *arg)
@@ -113,6 +130,8 @@ static void on_lost(void *arg)
     QUIC_CFQ_ITEM *cfq_item, *cfq_item_next;
     int sstream_updated;
 
+    ossl_qlog_event_recovery_packet_lost(fifd_get_qlog(fifd), pkt);
+
     /* STREAM and CRYPTO stream chunks, FIN and stream FC frames */
     for (i = 0; i < num_chunks; ++i) {
         sstream = fifd->get_sstream_by_id(chunks[i].stream_id,
@@ -124,6 +143,12 @@ static void on_lost(void *arg)
         sstream_updated = 0;
 
         if (chunks[i].end >= chunks[i].start) {
+            /*
+             * Note: If the stream is being reset, we do not need to retransmit
+             * old data as this is pointless. In this case this will be handled
+             * by (sstream == NULL) above as the QSM will free the QUIC_SSTREAM
+             * and our call to get_sstream_by_id above will return NULL.
+             */
             ossl_quic_sstream_mark_lost(sstream,
                                         chunks[i].start, chunks[i].end);
             sstream_updated = 1;
@@ -277,4 +302,11 @@ int ossl_quic_fifd_pkt_commit(QUIC_FIFD *fifd, QUIC_TXPIM_PKT *pkt)
 
     /* Inform the ACKM. */
     return ossl_ackm_on_tx_packet(fifd->ackm, &pkt->ackm_pkt);
+}
+
+void ossl_quic_fifd_set_qlog_cb(QUIC_FIFD *fifd, QLOG *(*get_qlog_cb)(void *arg),
+                                void *get_qlog_cb_arg)
+{
+    fifd->get_qlog_cb       = get_qlog_cb;
+    fifd->get_qlog_cb_arg   = get_qlog_cb_arg;
 }

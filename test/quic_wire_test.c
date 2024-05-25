@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -533,23 +533,36 @@ static int encode_case_12_dec(PACKET *pkt, ossl_ssize_t fail)
 {
     uint64_t max_streams_1 = 0, max_streams_2 = 0,
             frame_type_1 = 0, frame_type_2 = 0;
+    int is_minimal = 1, success_if;
 
-    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_1),
-                     fail < 0 || fail >= 1))
+    success_if = (fail < 0 || fail >= 1);
+    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_1,
+                                                      &is_minimal),
+                     success_if))
         return 0;
 
+    if (!TEST_true(!success_if || is_minimal))
+        return 0;
+
+    success_if = (fail < 0 || fail >= 3);
     if (!TEST_int_eq(ossl_quic_wire_decode_frame_max_streams(pkt,
                                                              &max_streams_1),
-                     fail < 0 || fail >= 3))
+                     success_if))
         return 0;
 
-    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_2),
-                     fail < 0 || fail >= 4))
+    success_if = (fail < 0 || fail >= 4);
+    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_2,
+                                                      &is_minimal),
+                     success_if))
         return 0;
 
+    if (!TEST_true(!success_if || is_minimal))
+        return 0;
+
+    success_if = (fail < 0);
     if (!TEST_int_eq(ossl_quic_wire_decode_frame_max_streams(pkt,
                                                              &max_streams_2),
-                     fail < 0))
+                     success_if))
         return 0;
 
     if ((fail < 0 || fail >= 3)
@@ -663,18 +676,30 @@ static int encode_case_15_dec(PACKET *pkt, ossl_ssize_t fail)
 {
     uint64_t max_streams_1 = 0, max_streams_2 = 0,
             frame_type_1 = 0, frame_type_2 = 0;
+    int is_minimal = 1, success_if;
 
-    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_1),
-                     fail < 0 || fail >= 1))
+    success_if = (fail < 0 || fail >= 1);
+    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_1,
+                                                      &is_minimal),
+                     success_if))
         return 0;
 
+    if (!TEST_true(!success_if || is_minimal))
+        return 0;
+
+    success_if = (fail < 0 || fail >= 3);
     if (!TEST_int_eq(ossl_quic_wire_decode_frame_streams_blocked(pkt,
                                                                  &max_streams_1),
-                     fail < 0 || fail >= 3))
+                     success_if))
         return 0;
 
-    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_2),
-                     fail < 0 || fail >= 4))
+    success_if = (fail < 0 || fail >= 4);
+    if (!TEST_int_eq(ossl_quic_wire_peek_frame_header(pkt, &frame_type_2,
+                                                      &is_minimal),
+                     success_if))
+        return 0;
+
+    if (!TEST_true(!success_if || is_minimal))
         return 0;
 
     if (!TEST_int_eq(ossl_quic_wire_decode_frame_streams_blocked(pkt,
@@ -721,8 +746,10 @@ static const OSSL_QUIC_FRAME_NEW_CONN_ID encode_case_16_f = {
         {0x33, 0x44, 0x55, 0x66}
     },
     {
-        0xde, 0x06, 0xcb, 0x76, 0x5d, 0xb1, 0xa7, 0x71,
-        0x78, 0x09, 0xbb, 0xe8, 0x50, 0x19, 0x12, 0x9a
+        {
+            0xde, 0x06, 0xcb, 0x76, 0x5d, 0xb1, 0xa7, 0x71,
+            0x78, 0x09, 0xbb, 0xe8, 0x50, 0x19, 0x12, 0x9a
+        }
     }
 };
 
@@ -758,10 +785,10 @@ static int encode_case_16_dec(PACKET *pkt, ossl_ssize_t fail)
                      encode_case_16_conn_id, sizeof(encode_case_16_conn_id)))
         return 0;
 
-    if (!TEST_mem_eq(f.stateless_reset_token,
-                     sizeof(f.stateless_reset_token),
-                     encode_case_16_f.stateless_reset_token,
-                     sizeof(encode_case_16_f.stateless_reset_token)))
+    if (!TEST_mem_eq(f.stateless_reset.token,
+                     sizeof(f.stateless_reset.token),
+                     encode_case_16_f.stateless_reset.token,
+                     sizeof(encode_case_16_f.stateless_reset.token)))
         return 0;
 
     return 1;
@@ -786,8 +813,10 @@ static const OSSL_QUIC_FRAME_NEW_CONN_ID encode_case_16b_f = {
         {0x33, 0x44, 0x55, 0x66}
     },
     {
-        0xde, 0x06, 0xcb, 0x76, 0x5d, 0xb1, 0xa7, 0x71,
-        0x78, 0x09, 0xbb, 0xe8, 0x50, 0x19, 0x12, 0x9a
+        {
+            0xde, 0x06, 0xcb, 0x76, 0x5d, 0xb1, 0xa7, 0x71,
+            0x78, 0x09, 0xbb, 0xe8, 0x50, 0x19, 0x12, 0x9a
+        }
     }
 };
 
@@ -1539,11 +1568,78 @@ err:
     return testresult;
 }
 
+/* is_minimal=0 test */
+static const unsigned char non_minimal_1[] = {
+    0x40, 0x00,
+};
+
+static const unsigned char non_minimal_2[] = {
+    0x40, 0x3F,
+};
+
+static const unsigned char non_minimal_3[] = {
+    0x80, 0x00, 0x00, 0x00,
+};
+
+static const unsigned char non_minimal_4[] = {
+    0x80, 0x00, 0x3F, 0xFF,
+};
+
+static const unsigned char non_minimal_5[] = {
+    0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+static const unsigned char non_minimal_6[] = {
+    0xC0, 0x00, 0x00, 0x00, 0x3F, 0xFF, 0xFF, 0xFF
+};
+
+static const unsigned char *const non_minimal[] = {
+    non_minimal_1,
+    non_minimal_2,
+    non_minimal_3,
+    non_minimal_4,
+    non_minimal_5,
+    non_minimal_6,
+};
+
+static const size_t non_minimal_len[] = {
+    OSSL_NELEM(non_minimal_1),
+    OSSL_NELEM(non_minimal_2),
+    OSSL_NELEM(non_minimal_3),
+    OSSL_NELEM(non_minimal_4),
+    OSSL_NELEM(non_minimal_5),
+    OSSL_NELEM(non_minimal_6),
+};
+
+static int test_wire_minimal(int idx)
+{
+    int testresult = 0;
+    int is_minimal;
+    uint64_t frame_type;
+    PACKET pkt;
+
+    if (!TEST_true(PACKET_buf_init(&pkt, non_minimal[idx],
+                                   non_minimal_len[idx])))
+        goto err;
+
+    if (!TEST_true(ossl_quic_wire_peek_frame_header(&pkt, &frame_type,
+                                                    &is_minimal)))
+        goto err;
+
+    if (!TEST_false(is_minimal))
+        goto err;
+
+    testresult = 1;
+err:
+    return testresult;
+}
+
 int setup_tests(void)
 {
     ADD_ALL_TESTS(test_wire_encode,     OSSL_NELEM(encode_cases));
     ADD_ALL_TESTS(test_wire_ack,        OSSL_NELEM(ack_cases));
     ADD_ALL_TESTS(test_wire_pkt_hdr_pn, OSSL_NELEM(pn_tests));
     ADD_TEST(test_wire_retry_integrity_tag);
+    ADD_ALL_TESTS(test_wire_minimal,    OSSL_NELEM(non_minimal_len));
     return 1;
 }

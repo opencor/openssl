@@ -1,5 +1,5 @@
 /*
- * Copyright 2001-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2001-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -34,7 +34,7 @@ int engine_unlocked_init(ENGINE *e)
          * OK, we return a functional reference which is also a structural
          * reference.
          */
-        if (!CRYPTO_UP_REF(&e->struct_ref, &ref, e->refcnt_lock)) {
+        if (!CRYPTO_UP_REF(&e->struct_ref, &ref)) {
             e->finish(e);
             return 0;
         }

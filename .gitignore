@@ -6,13 +6,20 @@
 /Makefile
 /MINFO
 /TABLE
-/*.pc
 /rehash.time
 /inc.*
 /makefile.*
 /out.*
 /tmp.*
 /configdata.pm
+/builddata.pm
+/installdata.pm
+
+# Exporters
+/*.pc
+/OpenSSLConfig*.cmake
+/exporters/*.pc
+/exporters/OpenSSLConfig*.cmake
 
 # Links under apps
 /apps/CA.pl
@@ -47,6 +54,7 @@
 /include/openssl/ui.h
 /include/openssl/x509.h
 /include/openssl/x509v3.h
+/include/openssl/x509_acert.h
 /include/openssl/x509_vfy.h
 /include/openssl/core_names.h
 /include/internal/param_names.h
@@ -245,3 +253,7 @@ MAKE0[0-9][0-9][0-9].@@@
 # Windows manifest files
 *.manifest
 doc-nits
+
+# LSP (Language Server Protocol) support
+.cache/
+compile_commands.json

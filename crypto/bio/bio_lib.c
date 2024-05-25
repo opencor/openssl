@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -88,22 +88,16 @@ BIO *BIO_new_ex(OSSL_LIB_CTX *libctx, const BIO_METHOD *method)
     bio->libctx = libctx;
     bio->method = method;
     bio->shutdown = 1;
-    bio->references = 1;
+
+    if (!CRYPTO_NEW_REF(&bio->references, 1))
+        goto err;
 
     if (!CRYPTO_new_ex_data(CRYPTO_EX_INDEX_BIO, bio, &bio->ex_data))
         goto err;
 
-    bio->lock = CRYPTO_THREAD_lock_new();
-    if (bio->lock == NULL) {
-        ERR_raise(ERR_LIB_BIO, ERR_R_CRYPTO_LIB);
-        CRYPTO_free_ex_data(CRYPTO_EX_INDEX_BIO, bio, &bio->ex_data);
-        goto err;
-    }
-
     if (method->create != NULL && !method->create(bio)) {
         ERR_raise(ERR_LIB_BIO, ERR_R_INIT_FAIL);
         CRYPTO_free_ex_data(CRYPTO_EX_INDEX_BIO, bio, &bio->ex_data);
-        CRYPTO_THREAD_lock_free(bio->lock);
         goto err;
     }
     if (method->create == NULL)
@@ -112,6 +106,7 @@ BIO *BIO_new_ex(OSSL_LIB_CTX *libctx, const BIO_METHOD *method)
     return bio;
 
 err:
+    CRYPTO_FREE_REF(&bio->references);
     OPENSSL_free(bio);
     return NULL;
 }
@@ -128,7 +123,7 @@ int BIO_free(BIO *a)
     if (a == NULL)
         return 0;
 
-    if (CRYPTO_DOWN_REF(&a->references, &ret, a->lock) <= 0)
+    if (CRYPTO_DOWN_REF(&a->references, &ret) <= 0)
         return 0;
 
     REF_PRINT_COUNT("BIO", a);
@@ -147,7 +142,7 @@ int BIO_free(BIO *a)
 
     CRYPTO_free_ex_data(CRYPTO_EX_INDEX_BIO, a, &a->ex_data);
 
-    CRYPTO_THREAD_lock_free(a->lock);
+    CRYPTO_FREE_REF(&a->references);
 
     OPENSSL_free(a);
 
@@ -193,7 +188,7 @@ int BIO_up_ref(BIO *a)
 {
     int i;
 
-    if (CRYPTO_UP_REF(&a->references, &i, a->lock) <= 0)
+    if (CRYPTO_UP_REF(&a->references, &i) <= 0)
         return 0;
 
     REF_PRINT_COUNT("BIO", a);
@@ -423,8 +418,8 @@ int BIO_sendmmsg(BIO *b, BIO_MSG *msg,
         args.msgs_processed = msgs_processed;
 
         ret = (size_t)bio_call_callback(b, BIO_CB_SENDMMSG, (void *)&args,
-                                        0, 0, 0, 0, NULL);
-        if (ret == 0)
+                                        0, 0, 0, 1, NULL);
+        if (ret <= 0)
             return 0;
     }
 
@@ -438,7 +433,7 @@ int BIO_sendmmsg(BIO *b, BIO_MSG *msg,
 
     if (HAS_CALLBACK(b))
         ret = (size_t)bio_call_callback(b, BIO_CB_SENDMMSG | BIO_CB_RETURN,
-                                        (void *)&args, ret, 0, 0, 0, NULL);
+                                        (void *)&args, ret, 0, 0, ret, NULL);
 
     return ret;
 }
@@ -470,8 +465,8 @@ int BIO_recvmmsg(BIO *b, BIO_MSG *msg,
         args.msgs_processed = msgs_processed;
 
         ret = bio_call_callback(b, BIO_CB_RECVMMSG, (void *)&args,
-                                0, 0, 0, 0, NULL);
-        if (ret == 0)
+                                0, 0, 0, 1, NULL);
+        if (ret <= 0)
             return 0;
     }
 
@@ -485,7 +480,7 @@ int BIO_recvmmsg(BIO *b, BIO_MSG *msg,
 
     if (HAS_CALLBACK(b))
         ret = (size_t)bio_call_callback(b, BIO_CB_RECVMMSG | BIO_CB_RETURN,
-                                        (void *)&args, ret, 0, 0, 0, NULL);
+                                        (void *)&args, ret, 0, 0, ret, NULL);
 
     return ret;
 }
@@ -822,7 +817,7 @@ BIO *BIO_find_type(BIO *bio, int type)
         ERR_raise(ERR_LIB_BIO, ERR_R_PASSED_NULL_PARAMETER);
         return NULL;
     }
-    mask = type & 0xff;
+    mask = type & BIO_TYPE_MASK;
     do {
         if (bio->method != NULL) {
             mt = bio->method->type;
@@ -858,7 +853,7 @@ void BIO_free_all(BIO *bio)
 
     while (bio != NULL) {
         b = bio;
-        ref = b->references;
+        CRYPTO_GET_REF(&b->references, &ref);
         bio = bio->next_bio;
         BIO_free(b);
         /* Since ref count > 1, don't free anyone else. */
@@ -955,8 +950,7 @@ void bio_cleanup(void)
     CRYPTO_THREAD_lock_free(bio_lookup_lock);
     bio_lookup_lock = NULL;
 #endif
-    CRYPTO_THREAD_lock_free(bio_type_lock);
-    bio_type_lock = NULL;
+    CRYPTO_FREE_REF(&bio_type_count);
 }
 
 /* Internal variant of the below BIO_wait() not calling ERR_raise(...) */
@@ -971,8 +965,12 @@ static int bio_wait(BIO *bio, time_t max_time, unsigned int nap_milliseconds)
         return 1;
 
 #ifndef OPENSSL_NO_SOCK
-    if (BIO_get_fd(bio, &fd) > 0 && fd < FD_SETSIZE)
-        return BIO_socket_wait(fd, BIO_should_read(bio), max_time);
+    if (BIO_get_fd(bio, &fd) > 0) {
+        int ret = BIO_socket_wait(fd, BIO_should_read(bio), max_time);
+
+        if (ret != -1)
+            return ret;
+    }
 #endif
     /* fall back to polling since no sockets are available */
 

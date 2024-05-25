@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2000-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -95,11 +95,12 @@ struct evp_keymgmt_st {
     int id;                      /* libcrypto internal */
 
     int name_id;
+    /* NID for the legacy alg if there is one */
+    int legacy_alg;
     char *type_name;
     const char *description;
     OSSL_PROVIDER *prov;
     CRYPTO_REF_COUNT refcnt;
-    CRYPTO_RWLOCK *lock;
 
     /* Constructor(s), destructor, information */
     OSSL_FUNC_keymgmt_new_fn *new;
@@ -141,7 +142,6 @@ struct evp_keyexch_st {
     const char *description;
     OSSL_PROVIDER *prov;
     CRYPTO_REF_COUNT refcnt;
-    CRYPTO_RWLOCK *lock;
 
     OSSL_FUNC_keyexch_newctx_fn *newctx;
     OSSL_FUNC_keyexch_init_fn *init;
@@ -161,7 +161,6 @@ struct evp_signature_st {
     const char *description;
     OSSL_PROVIDER *prov;
     CRYPTO_REF_COUNT refcnt;
-    CRYPTO_RWLOCK *lock;
 
     OSSL_FUNC_signature_newctx_fn *newctx;
     OSSL_FUNC_signature_sign_init_fn *sign_init;
@@ -196,7 +195,6 @@ struct evp_asym_cipher_st {
     const char *description;
     OSSL_PROVIDER *prov;
     CRYPTO_REF_COUNT refcnt;
-    CRYPTO_RWLOCK *lock;
 
     OSSL_FUNC_asym_cipher_newctx_fn *newctx;
     OSSL_FUNC_asym_cipher_encrypt_init_fn *encrypt_init;
@@ -217,7 +215,6 @@ struct evp_kem_st {
     const char *description;
     OSSL_PROVIDER *prov;
     CRYPTO_REF_COUNT refcnt;
-    CRYPTO_RWLOCK *lock;
 
     OSSL_FUNC_kem_newctx_fn *newctx;
     OSSL_FUNC_kem_encapsulate_init_fn *encapsulate_init;

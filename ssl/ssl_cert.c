@@ -78,13 +78,10 @@ CERT *ssl_cert_new(size_t ssl_pkey_num)
     }
 
     ret->key = &(ret->pkeys[SSL_PKEY_RSA]);
-    ret->references = 1;
     ret->sec_cb = ssl_security_default_callback;
     ret->sec_level = OPENSSL_TLS_SECURITY_LEVEL;
     ret->sec_ex = NULL;
-    ret->lock = CRYPTO_THREAD_lock_new();
-    if (ret->lock == NULL) {
-        ERR_raise(ERR_LIB_SSL, ERR_R_CRYPTO_LIB);
+    if (!CRYPTO_NEW_REF(&ret->references, 1)) {
         OPENSSL_free(ret->pkeys);
         OPENSSL_free(ret);
         return NULL;
@@ -111,11 +108,8 @@ CERT *ssl_cert_dup(CERT *cert)
         return NULL;
     }
 
-    ret->references = 1;
     ret->key = &ret->pkeys[cert->key - cert->pkeys];
-    ret->lock = CRYPTO_THREAD_lock_new();
-    if (ret->lock == NULL) {
-        ERR_raise(ERR_LIB_SSL, ERR_R_CRYPTO_LIB);
+    if (!CRYPTO_NEW_REF(&ret->references, 1)) {
         OPENSSL_free(ret->pkeys);
         OPENSSL_free(ret);
         return NULL;
@@ -272,7 +266,7 @@ void ssl_cert_free(CERT *c)
 
     if (c == NULL)
         return;
-    CRYPTO_DOWN_REF(&c->references, &i, c->lock);
+    CRYPTO_DOWN_REF(&c->references, &i);
     REF_PRINT_COUNT("CERT", c);
     if (i > 0)
         return;
@@ -291,7 +285,7 @@ void ssl_cert_free(CERT *c)
     OPENSSL_free(c->psk_identity_hint);
 #endif
     OPENSSL_free(c->pkeys);
-    CRYPTO_THREAD_lock_free(c->lock);
+    CRYPTO_FREE_REF(&c->references);
     OPENSSL_free(c);
 }
 
@@ -1246,13 +1240,13 @@ int ssl_cert_lookup_by_nid(int nid, size_t *pidx, SSL_CTX *ctx)
     return 0;
 }
 
-SSL_CERT_LOOKUP *ssl_cert_lookup_by_pkey(const EVP_PKEY *pk, size_t *pidx, SSL_CTX *ctx)
+const SSL_CERT_LOOKUP *ssl_cert_lookup_by_pkey(const EVP_PKEY *pk, size_t *pidx, SSL_CTX *ctx)
 {
     size_t i;
 
     /* check classic pk types */
     for (i = 0; i < OSSL_NELEM(ssl_cert_info); i++) {
-        SSL_CERT_LOOKUP *tmp_lu = &ssl_cert_info[i];
+        const SSL_CERT_LOOKUP *tmp_lu = &ssl_cert_info[i];
 
         if (EVP_PKEY_is_a(pk, OBJ_nid2sn(tmp_lu->nid))
             || EVP_PKEY_is_a(pk, OBJ_nid2ln(tmp_lu->nid))) {
@@ -1276,7 +1270,7 @@ SSL_CERT_LOOKUP *ssl_cert_lookup_by_pkey(const EVP_PKEY *pk, size_t *pidx, SSL_C
     return NULL;
 }
 
-SSL_CERT_LOOKUP *ssl_cert_lookup_by_idx(size_t idx, SSL_CTX *ctx)
+const SSL_CERT_LOOKUP *ssl_cert_lookup_by_idx(size_t idx, SSL_CTX *ctx)
 {
     if (idx >= (OSSL_NELEM(ssl_cert_info) + ctx->sigalg_list_len))
         return NULL;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2022-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,7 +13,9 @@
 # include <openssl/ssl.h>
 # include "internal/quic_wire_pkt.h"
 # include "internal/quic_types.h"
+# include "internal/quic_predef.h"
 # include "internal/quic_record_util.h"
+# include "internal/qlog.h"
 
 # ifndef OPENSSL_NO_QUIC
 
@@ -46,6 +48,10 @@ typedef struct ossl_qtx_args_st {
 
     /* Maximum datagram payload length (MDPL) for TX purposes. */
     size_t          mdpl;
+
+    /* Callback returning QLOG instance to use, or NULL. */
+    QLOG           *(*get_qlog_cb)(void *arg);
+    void           *get_qlog_cb_arg;
 } OSSL_QTX_ARGS;
 
 /* Instantiates a new QTX. */
@@ -62,6 +68,10 @@ void ossl_qtx_set_mutator(OSSL_QTX *qtx, ossl_mutate_packet_cb mutatecb,
 void ossl_qtx_set_msg_callback(OSSL_QTX *qtx, ossl_msg_cb msg_callback,
                                SSL *msg_callback_ssl);
 void ossl_qtx_set_msg_callback_arg(OSSL_QTX *qtx, void *msg_callback_arg);
+
+/* Change QLOG instance retrieval callback in use after instantiation. */
+void ossl_qtx_set_qlog_cb(OSSL_QTX *qtx, QLOG *(*get_qlog_cb)(void *arg),
+                          void *get_qlog_cb_arg);
 
 /*
  * Secret Management
@@ -130,6 +140,16 @@ int ossl_qtx_calculate_plaintext_payload_len(OSSL_QTX *qtx, uint32_t enc_level,
                                              size_t ciphertext_len,
                                              size_t *plaintext_len);
 
+/*
+ * Given the value plaintext_len represented a plaintext packet payload length
+ * in bytes, determines how many ciphertext bytes it will encrypt to. The value
+ * output does not include packet headers. Returns 0 if the specified EL is not
+ * provisioned. The result is written to *ciphertext_len.
+ */
+int ossl_qtx_calculate_ciphertext_payload_len(OSSL_QTX *qtx, uint32_t enc_level,
+                                              size_t plaintext_len,
+                                              size_t *ciphertext_len);
+
 uint32_t ossl_qrl_get_suite_cipher_tag_len(uint32_t suite_id);
 
 
@@ -138,7 +158,7 @@ uint32_t ossl_qrl_get_suite_cipher_tag_len(uint32_t suite_id);
  * -------------------
  */
 
-typedef struct ossl_qtx_pkt_st {
+struct ossl_qtx_pkt_st {
     /* Logical packet header to be serialized. */
     QUIC_PKT_HDR               *hdr;
 
@@ -166,7 +186,7 @@ typedef struct ossl_qtx_pkt_st {
 
     /* Packet flags. Zero or more OSSL_QTX_PKT_FLAG_* values. */
     uint32_t                    flags;
-} OSSL_QTX_PKT;
+};
 
 /*
  * More packets will be written which should be coalesced into a single

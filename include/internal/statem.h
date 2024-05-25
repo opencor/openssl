@@ -1,11 +1,13 @@
 /*
- * Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
  */
+#ifndef OSSL_INTERNAL_STATEM_H
+# define OSSL_INTERNAL_STATEM_H
 
 /*****************************************************************************
  *                                                                           *
@@ -165,3 +167,5 @@ int ossl_statem_set_mutator(SSL *s,
                             ossl_statem_mutate_handshake_cb mutate_handshake_cb,
                             ossl_statem_finish_mutate_handshake_cb finish_mutate_handshake_cb,
                             void *mutatearg);
+
+#endif

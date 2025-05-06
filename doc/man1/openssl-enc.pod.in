@@ -39,6 +39,8 @@ B<openssl> B<enc>|I<cipher>
 [B<-v>]
 [B<-debug>]
 [B<-none>]
+[B<-skeymgmt> I<skeymgmt>]
+[B<-skeyopt> I<opt>:I<value>]
 {- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_r_synopsis -}
 {- $OpenSSL::safe::opt_provider_synopsis -}
 
@@ -98,13 +100,19 @@ Base64 process the data. This means that if encryption is taking place
 the data is base64 encoded after encryption. If decryption is set then
 the input data is base64 decoded before being decrypted.
 
+When the B<-A> option not given,
+on encoding a newline is inserted after each 64 characters, and
+on decoding a newline is expected among the first 1024 bytes of input.
+
 =item B<-base64>
 
 Same as B<-a>
 
 =item B<-A>
 
-If the B<-a> option is set then base64 process the data on one line.
+If the B<-a> option is set then base64 encoding produces output without any
+newline character, and base64 decoding does not require any newlines.
+Therefore it can be helpful to use the B<-A> option when decoding unknown input.
 
 =item B<-k> I<password>
 
@@ -210,6 +218,21 @@ or zlib-dynamic option.
 =item B<-none>
 
 Use NULL cipher (no encryption or decryption of input).
+
+=item B<-skeymgmt> I<skeymgmt>
+
+Some providers may support opaque symmetric keys objects. To use them, we need
+to know the name of the B<EVP_SKEYMGMT> to be used. If not specified, the name
+of the cipher will be used.
+
+To find out the name of the suitable symmetric key management,
+please refer to the output of the C<openssl list -skey-managers> command.
+
+=item B<-skeyopt> I<opt>:I<value>
+
+To obtain an existing opaque symmetric key or generate a new one, key
+options are specified as opt:value. These options can't be used together with
+any options implying raw key directly or indirectly.
 
 {- $OpenSSL::safe::opt_r_item -}
 
@@ -463,10 +486,17 @@ or
 =head1 BUGS
 
 The B<-A> option when used with large files doesn't work properly.
+On the other hand, when base64 decoding without the B<-A> option,
+if the first 1024 bytes of input do not include a newline character
+the first two lines of input are ignored.
 
 The B<openssl enc> command only supports a fixed number of algorithms with
 certain parameters. So if, for example, you want to use RC2 with a
 76 bit key or RC4 with an 84 bit key you can't use this program.
+
+=head1 SEE ALSO
+
+L<openssl-list(1)>, L<EVP_SKEY(3)>
 
 =head1 HISTORY
 
@@ -478,9 +508,11 @@ The B<-ciphers> and B<-engine> options were deprecated in OpenSSL 3.0.
 
 The B<-saltlen> option was added in OpenSSL 3.2.
 
+The B<-skeymgmt> and B<-skeyopt> options were added in OpenSSL 3.5.
+
 =head1 COPYRIGHT
 
-Copyright 2000-2023 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2000-2025 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

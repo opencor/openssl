@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -22,6 +22,7 @@
 #include "internal/thread_once.h"
 #include "internal/cryptlib.h"
 #include "internal/comp.h"
+#include "internal/ssl_unwrap.h"
 
 /* NB: make sure indices in these tables match values above */
 
@@ -338,7 +339,8 @@ int ssl_load_ciphers(SSL_CTX *ctx)
             ctx->disabled_mac_mask |= t->mask;
         } else {
             int tmpsize = EVP_MD_get_size(md);
-            if (!ossl_assert(tmpsize >= 0))
+
+            if (!ossl_assert(tmpsize > 0))
                 return 0;
             ctx->ssl_mac_secret_size[i] = tmpsize;
         }

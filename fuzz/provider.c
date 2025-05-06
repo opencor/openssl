@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2023-2024 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -160,7 +160,7 @@ static int read_utf8_string(const uint8_t **buf, size_t *len, char **res)
     size_t found_len;
     int r;
 
-    found_len = strnlen((const char *) *buf, *len);
+    found_len = OPENSSL_strnlen((const char *) *buf, *len);
 
     if (found_len == *len) {
         r = -1;

@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2005-2022 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2005-2025 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -7,7 +7,7 @@
 # https://www.openssl.org/source/license.html
 
 
-# Ascetic x86_64 AT&T to MASM/NASM assembler translator by <appro>.
+# Ascetic x86_64 AT&T to MASM/NASM assembler translator by <@dot-asm>.
 #
 # Why AT&T to MASM and not vice versa? Several reasons. Because AT&T
 # format is way easier to parse. Because it's simpler to "gear" from
@@ -957,7 +957,9 @@ my %globals;
                         $current_segment = ".text";
                         push(@segment_stack, $current_segment);
                     }
-		    $self->{value} = $current_segment if ($flavour eq "mingw64");
+                    if ($flavour eq "mingw64" || $flavour eq "macosx") {
+		        $self->{value} = $current_segment;
+                    }
 		}
 		$$line = "";
 		return $self;
@@ -1012,6 +1014,7 @@ my %globals;
 				    $align = $$line;
 				    $align =~ s/(.*)(align\s*=\s*\d+$)/$2/;
 				    $$line =~ s/(.*)(\s+align\s*=\s*\d+$)/$1/;
+				    $$line =~ s/,.*//;
 				    $$line = ".CRT\$XCU" if ($$line eq ".init");
 				    $$line = ".rdata" if ($$line eq ".rodata");
 				    if ($nasm) {

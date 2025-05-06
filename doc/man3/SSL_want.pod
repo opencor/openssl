@@ -22,7 +22,7 @@ SSL_want_client_hello_cb - obtain state information TLS/SSL I/O operation
 
 =head1 DESCRIPTION
 
-SSL_want() returns state information for the SSL object B<ssl>.
+SSL_want() returns state information for the SSL object B<ssl>. B<ssl> B<MUST NOT> be NULL.
 
 The other SSL_want_*() calls are shortcuts for the possible states returned
 by SSL_want().
@@ -111,6 +111,8 @@ L<ssl(7)>, L<SSL_get_error(3)>
 
 The SSL_want_client_hello_cb() function and the SSL_CLIENT_HELLO_CB return value
 were added in OpenSSL 1.1.1.
+
+SSL_want_retry_verify() was added in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 

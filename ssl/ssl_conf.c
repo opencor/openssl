@@ -1,11 +1,13 @@
 /*
- * Copyright 2012-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2012-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
  */
+
+#include "internal/e_os.h"
 
 #include <stdio.h>
 #include "ssl_local.h"
@@ -14,6 +16,7 @@
 #include <openssl/decoder.h>
 #include <openssl/core_dispatch.h>
 #include "internal/nelem.h"
+#include "internal/ssl_unwrap.h"
 
 /*
  * structure holding name tables. This is used for permitted elements in lists
@@ -86,7 +89,9 @@ struct ssl_conf_ctx_st {
     /* Pointer to SSL or SSL_CTX options field or NULL if none */
     uint64_t *poptions;
     /* Certificate filenames for each type */
-    char *cert_filename[SSL_PKEY_NUM];
+    char **cert_filename;
+    /* Number of elements in the cert_filename array */
+    size_t num_cert_filename;
     /* Pointer to SSL or SSL_CTX cert_flags or NULL if none */
     uint32_t *pcert_flags;
     /* Pointer to SSL or SSL_CTX verify_mode or NULL if none */
@@ -403,6 +408,7 @@ static int cmd_Options(SSL_CONF_CTX *cctx, const char *value)
         SSL_FLAG_TBL_INV("RxCertificateCompression", SSL_OP_NO_RX_CERTIFICATE_COMPRESSION),
         SSL_FLAG_TBL("KTLSTxZerocopySendfile", SSL_OP_ENABLE_KTLS_TX_ZEROCOPY_SENDFILE),
         SSL_FLAG_TBL("IgnoreUnexpectedEOF", SSL_OP_IGNORE_UNEXPECTED_EOF),
+        SSL_FLAG_TBL("LegacyECPointFormats", SSL_OP_LEGACY_EC_POINT_FORMATS),
     };
     if (value == NULL)
         return -3;
@@ -451,12 +457,18 @@ static int cmd_Certificate(SSL_CONF_CTX *cctx, const char *value)
         }
     }
     if (rv > 0 && c != NULL && cctx->flags & SSL_CONF_FLAG_REQUIRE_PRIVATE) {
-        char **pfilename = &cctx->cert_filename[c->key - c->pkeys];
+        size_t fileidx = c->key - c->pkeys;
 
-        OPENSSL_free(*pfilename);
-        *pfilename = OPENSSL_strdup(value);
-        if (*pfilename == NULL)
+        if (fileidx >= cctx->num_cert_filename) {
             rv = 0;
+        } else {
+            char **pfilename = &cctx->cert_filename[c->key - c->pkeys];
+
+            OPENSSL_free(*pfilename);
+            *pfilename = OPENSSL_strdup(value);
+            if (*pfilename == NULL)
+                rv = 0;
+        }
     }
 
     return rv > 0;
@@ -649,21 +661,47 @@ static int cmd_DHParameters(SSL_CONF_CTX *cctx, const char *value)
     return rv > 0;
 }
 
+/*
+ * |value| input is "<number[,number]>"
+ * where the first number is the padding block size for
+ * application data, and the optional second is the
+ * padding block size for handshake messages
+ */
 static int cmd_RecordPadding(SSL_CONF_CTX *cctx, const char *value)
 {
     int rv = 0;
-    int block_size = atoi(value);
+    unsigned long block_padding = 0, hs_padding = 0;
+    char *commap = NULL, *copy = NULL;
+    char *endptr = NULL;
+
+    copy = OPENSSL_strdup(value);
+    if (copy == NULL)
+        goto out;
+    commap = strstr(copy, ",");
+    if (commap != NULL) {
+        *commap = '\0';
+        if (*(commap + 1) == '\0')
+            goto out;
+        if (!OPENSSL_strtoul(commap + 1, &endptr, 0, &hs_padding))
+            goto out;
+    }
+    if (!OPENSSL_strtoul(copy, &endptr, 0, &block_padding))
+        goto out;
+    if (commap == NULL)
+        hs_padding = block_padding;
 
     /*
-     * All we care about is a non-negative value,
+     * All we care about are non-negative values,
      * the setters check the range
      */
-    if (block_size >= 0) {
-        if (cctx->ctx)
-            rv = SSL_CTX_set_block_padding(cctx->ctx, block_size);
-        if (cctx->ssl)
-            rv = SSL_set_block_padding(cctx->ssl, block_size);
-    }
+    if (cctx->ctx)
+        rv = SSL_CTX_set_block_padding_ex(cctx->ctx, (size_t)block_padding,
+                                          (size_t)hs_padding);
+    if (cctx->ssl)
+        rv = SSL_set_block_padding_ex(cctx->ssl, (size_t)block_padding,
+                                      (size_t)hs_padding);
+out:
+    OPENSSL_free(copy);
     return rv;
 }
 
@@ -734,6 +772,7 @@ static const ssl_conf_cmd_tbl ssl_conf_cmds[] = {
     SSL_CONF_CMD_SWITCH("no_anti_replay", SSL_CONF_FLAG_SERVER),
     SSL_CONF_CMD_SWITCH("no_etm", 0),
     SSL_CONF_CMD_SWITCH("no_ems", 0),
+    SSL_CONF_CMD_SWITCH("legacy_ec_point_formats", 0),
     SSL_CONF_CMD_STRING(SignatureAlgorithms, "sigalgs", 0),
     SSL_CONF_CMD_STRING(ClientSignatureAlgorithms, "client_sigalgs", 0),
     SSL_CONF_CMD_STRING(Curves, "curves", 0),
@@ -833,6 +872,8 @@ static const ssl_switch_tbl ssl_cmd_switches[] = {
     {SSL_OP_NO_ENCRYPT_THEN_MAC, 0},
     /* no Extended master secret */
     {SSL_OP_NO_EXTENDED_MASTER_SECRET, 0},
+    /* enable legacy EC point formats */
+    {SSL_OP_LEGACY_EC_POINT_FORMATS, 0}
 };
 
 static int ssl_conf_cmd_skip_prefix(SSL_CONF_CTX *cctx, const char **pcmd)
@@ -1023,12 +1064,13 @@ int SSL_CONF_CTX_finish(SSL_CONF_CTX *cctx)
             c = sc->cert;
     }
     if (c != NULL && cctx->flags & SSL_CONF_FLAG_REQUIRE_PRIVATE) {
-        for (i = 0; i < SSL_PKEY_NUM; i++) {
+        for (i = 0; i < cctx->num_cert_filename; i++) {
             const char *p = cctx->cert_filename[i];
+
             /*
              * If missing private key try to load one from certificate file
              */
-            if (p && !c->pkeys[i].privatekey) {
+            if (p != NULL && c->pkeys[i].privatekey == NULL) {
                 if (!cmd_PrivateKey(cctx, p))
                     return 0;
             }
@@ -1046,12 +1088,21 @@ int SSL_CONF_CTX_finish(SSL_CONF_CTX *cctx)
     return 1;
 }
 
+static void free_cert_filename(SSL_CONF_CTX *cctx)
+{
+    size_t i;
+
+    for (i = 0; i < cctx->num_cert_filename; i++)
+        OPENSSL_free(cctx->cert_filename[i]);
+    OPENSSL_free(cctx->cert_filename);
+    cctx->cert_filename = NULL;
+    cctx->num_cert_filename = 0;
+}
+
 void SSL_CONF_CTX_free(SSL_CONF_CTX *cctx)
 {
     if (cctx) {
-        size_t i;
-        for (i = 0; i < SSL_PKEY_NUM; i++)
-            OPENSSL_free(cctx->cert_filename[i]);
+        free_cert_filename(cctx);
         OPENSSL_free(cctx->prefix);
         sk_X509_NAME_pop_free(cctx->canames, X509_NAME_free);
         OPENSSL_free(cctx);
@@ -1091,6 +1142,7 @@ void SSL_CONF_CTX_set_ssl(SSL_CONF_CTX *cctx, SSL *ssl)
 {
     cctx->ssl = ssl;
     cctx->ctx = NULL;
+    free_cert_filename(cctx);
     if (ssl != NULL) {
         SSL_CONNECTION *sc = SSL_CONNECTION_FROM_SSL(ssl);
 
@@ -1101,6 +1153,10 @@ void SSL_CONF_CTX_set_ssl(SSL_CONF_CTX *cctx, SSL *ssl)
         cctx->max_version = &sc->max_proto_version;
         cctx->pcert_flags = &sc->cert->cert_flags;
         cctx->pvfy_flags = &sc->verify_mode;
+        cctx->cert_filename = OPENSSL_zalloc(sc->ssl_pkey_num
+                                             * sizeof(*cctx->cert_filename));
+        if (cctx->cert_filename != NULL)
+            cctx->num_cert_filename = sc->ssl_pkey_num;
     } else {
         cctx->poptions = NULL;
         cctx->min_version = NULL;
@@ -1114,12 +1170,17 @@ void SSL_CONF_CTX_set_ssl_ctx(SSL_CONF_CTX *cctx, SSL_CTX *ctx)
 {
     cctx->ctx = ctx;
     cctx->ssl = NULL;
+    free_cert_filename(cctx);
     if (ctx) {
         cctx->poptions = &ctx->options;
         cctx->min_version = &ctx->min_proto_version;
         cctx->max_version = &ctx->max_proto_version;
         cctx->pcert_flags = &ctx->cert->cert_flags;
         cctx->pvfy_flags = &ctx->verify_mode;
+        cctx->cert_filename = OPENSSL_zalloc((SSL_PKEY_NUM + ctx->sigalg_list_len)
+                                             * sizeof(*cctx->cert_filename));
+        if (cctx->cert_filename != NULL)
+            cctx->num_cert_filename = SSL_PKEY_NUM + ctx->sigalg_list_len;
     } else {
         cctx->poptions = NULL;
         cctx->min_version = NULL;

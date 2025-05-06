@@ -71,7 +71,7 @@ int ossl_ccm_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     const OSSL_PARAM *p;
     size_t sz;
 
-    if (params == NULL)
+    if (ossl_param_is_empty(params))
         return 1;
 
     p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_TAG);
@@ -171,8 +171,7 @@ int ossl_ccm_get_ctx_params(void *vctx, OSSL_PARAM params[])
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
             return 0;
         }
-        if (!OSSL_PARAM_set_octet_string(p, ctx->iv, p->data_size)
-            && !OSSL_PARAM_set_octet_ptr(p, &ctx->iv, p->data_size)) {
+        if (!OSSL_PARAM_set_octet_string_or_ptr(p, ctx->iv, p->data_size)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
             return 0;
         }
@@ -184,8 +183,7 @@ int ossl_ccm_get_ctx_params(void *vctx, OSSL_PARAM params[])
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_IV_LENGTH);
             return 0;
         }
-        if (!OSSL_PARAM_set_octet_string(p, ctx->iv, p->data_size)
-            && !OSSL_PARAM_set_octet_ptr(p, &ctx->iv, p->data_size)) {
+        if (!OSSL_PARAM_set_octet_string_or_ptr(p, ctx->iv, p->data_size)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
             return 0;
         }

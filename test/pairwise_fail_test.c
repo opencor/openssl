@@ -96,7 +96,7 @@ static int test_keygen_pairwise_failure(void)
     if (strcmp(pairwise_name, "rsa") == 0) {
         if (!TEST_true(setup_selftest_pairwise_failure(type)))
             goto err;
-        if (!TEST_ptr_null(pkey = EVP_PKEY_Q_keygen(libctx, NULL, "RSA", 2048)))
+        if (!TEST_ptr_null(pkey = EVP_PKEY_Q_keygen(libctx, NULL, "RSA", (size_t)2048)))
             goto err;
     } else if (strncmp(pairwise_name, "ec", 2) == 0) {
         if (strcmp(pairwise_name, "eckat") == 0)
@@ -126,6 +126,39 @@ static int test_keygen_pairwise_failure(void)
         if (!TEST_true(setup_selftest_pairwise_failure(type)))
             goto err;
         if (!TEST_ptr(ctx = EVP_PKEY_CTX_new_from_name(libctx, "ED25519", NULL)))
+            goto err;
+        if (!TEST_int_eq(EVP_PKEY_keygen_init(ctx), 1))
+            goto err;
+        if (!TEST_int_le(EVP_PKEY_keygen(ctx, &pkey), 0))
+            goto err;
+        if (!TEST_ptr_null(pkey))
+            goto err;
+    } else if (strncmp(pairwise_name, "ml-dsa", 6) == 0) {
+        if (!TEST_true(setup_selftest_pairwise_failure(type)))
+            goto err;
+        if (!TEST_ptr(ctx = EVP_PKEY_CTX_new_from_name(libctx, "ML-DSA-87", NULL)))
+            goto err;
+        if (!TEST_int_eq(EVP_PKEY_keygen_init(ctx), 1))
+            goto err;
+        if (!TEST_int_le(EVP_PKEY_keygen(ctx, &pkey), 0))
+            goto err;
+        if (!TEST_ptr_null(pkey))
+            goto err;
+    } else if (strncmp(pairwise_name, "slh-dsa", 7) == 0) {
+        if (!TEST_true(setup_selftest_pairwise_failure(type)))
+            goto err;
+        if (!TEST_ptr(ctx = EVP_PKEY_CTX_new_from_name(libctx, "SLH-DSA-SHA2-256f", NULL)))
+            goto err;
+        if (!TEST_int_eq(EVP_PKEY_keygen_init(ctx), 1))
+            goto err;
+        if (!TEST_int_le(EVP_PKEY_keygen(ctx, &pkey), 0))
+            goto err;
+        if (!TEST_ptr_null(pkey))
+            goto err;
+    } else if (strncmp(pairwise_name, "ml-kem", 6) == 0) {
+        if (!TEST_true(setup_selftest_pairwise_failure(type)))
+            goto err;
+        if (!TEST_ptr(ctx = EVP_PKEY_CTX_new_from_name(libctx, "ML-KEM-1024", NULL)))
             goto err;
         if (!TEST_int_eq(EVP_PKEY_keygen_init(ctx), 1))
             goto err;

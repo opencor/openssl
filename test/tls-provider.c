@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -62,7 +62,7 @@ int tls_provider_init(const OSSL_CORE_HANDLE *handle,
 /*
  * Top secret. This algorithm only works if no one knows what this number is.
  * Please don't tell anyone what it is.
- * 
+ *
  * This algorithm is for testing only - don't really use it!
  */
 static const unsigned char private_constant[XOR_KEY_SIZE] = {
@@ -716,10 +716,8 @@ static void xor_freekey(void *keydata)
         return;
     assert(refcnt == 0);
 
-    if (key != NULL) {
-        OPENSSL_free(key->tls_name);
-        key->tls_name = NULL;
-    }
+    OPENSSL_free(key->tls_name);
+    key->tls_name = NULL;
     CRYPTO_FREE_REF(&key->references);
     OPENSSL_free(key);
 }
@@ -930,9 +928,10 @@ static void *xor_gen_init(void *provctx, int selection,
                       | OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS)) == 0)
         return NULL;
 
-    if ((gctx = OPENSSL_zalloc(sizeof(*gctx))) != NULL)
-        gctx->selection = selection;
+    if ((gctx = OPENSSL_zalloc(sizeof(*gctx))) == NULL)
+        return NULL;
 
+    gctx->selection = selection;
     gctx->libctx = PROV_XOR_LIBCTX_OF(provctx);
 
     if (!xor_gen_set_params(gctx, params)) {
@@ -1115,7 +1114,7 @@ static const OSSL_DISPATCH xor_keymgmt_functions[] = {
     OSSL_DISPATCH_END
 };
 
-/* We're re-using most XOR keymgmt functions also for signature operations: */
+/* We're reusing most XOR keymgmt functions also for signature operations: */
 static void *xor_xorhmacsig_gen(void *genctx, OSSL_CALLBACK *osslcb, void *cbarg)
 {
     XORKEY *k = xor_gen(genctx, osslcb, cbarg);
@@ -1821,7 +1820,7 @@ static int key2any_check_selection(int selection, int selection_mask)
          * If the caller asked for the currently checked bit(s), return
          * whether the decoder description says it's supported.
          */
-        if (check1) 
+        if (check1)
             return check2;
     }
 
@@ -2614,7 +2613,7 @@ static int xor_get_aid(unsigned char** oidbuf, const char *tls_name) {
 
    X509_ALGOR_set0(algor, OBJ_txt2obj(tls_name, 0), V_ASN1_UNDEF, NULL);
 
-   aidlen = i2d_X509_ALGOR(algor, oidbuf); 
+   aidlen = i2d_X509_ALGOR(algor, oidbuf);
    X509_ALGOR_free(algor);
    return(aidlen);
 }
@@ -2892,7 +2891,7 @@ int xor_sig_digest_sign_final(void *vpxor_sigctx,
     }
 
     return xor_sig_sign(vpxor_sigctx, sig, siglen, sigsize, digest, (size_t)dlen);
-        
+
 }
 
 int xor_sig_digest_verify_final(void *vpxor_sigctx, const unsigned char *sig,

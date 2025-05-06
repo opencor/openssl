@@ -521,6 +521,35 @@ at the end of this document.
 
 [rng]: #notes-on-random-number-generation
 
+### jitter
+
+When configured with `enable-jitter`, a "JITTER" RNG is compiled that
+can provide an alternative software seed source. It can be configured
+by setting `seed` option in `openssl.cnf`. A minimal `openssl.cnf` is
+shown below:
+
+    openssl_conf = openssl_init
+
+    [openssl_init]
+    random = random
+
+    [random]
+    seed=JITTER
+
+It uses a statically linked [jitterentropy-library] as the seed source.
+
+Additional configuration flags available:
+
+    --with-jitter-include=DIR
+
+The directory for the location of the jitterentropy.h include file, if
+it is outside the system include path.
+
+    --with-jitter-lib=DIR
+
+This is the directory containing the static libjitterentropy.a
+library, if it is outside the system library path.
+
 Setting the FIPS HMAC key
 -------------------------
 
@@ -752,6 +781,12 @@ Don't build support for Elliptic Curves.
 
 Don't build support for binary Elliptic Curves
 
+### no-tls-deprecated-ec
+
+Disable legacy TLS EC groups that were deprecated in RFC8422.  These are the
+Koblitz curves, B<secp160r1>, B<secp160r2>, B<secp192r1>, B<secp224r1>, and the
+binary Elliptic curves that would also be disabled by C<no-ec2m>.
+
 ### enable-ec_nistp_64_gcc_128
 
 Enable support for optimised implementations of some commonly used NIST
@@ -805,6 +840,26 @@ Build (and install) the FIPS provider
 Don't perform FIPS module run-time checks related to enforcement of security
 parameters such as minimum security strength of keys.
 
+### no-fips-post
+
+Don't perform FIPS module Power On Self Tests.
+
+This option MUST be used for debugging only as it makes the FIPS provider
+non-compliant. It is useful when setting breakpoints in FIPS algorithms.
+
+### enable-fips-jitter
+
+Use the CPU Jitter library as a FIPS validated entropy source.
+
+This option will only produce a compliant FIPS provider if you have:
+
+1. independently performed the required [SP 800-90B] entropy assessments;
+2. meet the minimum required entropy as specified by [jitterentropy-library];
+3. obtain an [ESV] certificate for the [jitterentropy-library] and
+4. have had the resulting FIPS provider certified by the [CMVP].
+
+Failure to do all of these will produce a non-compliant FIPS provider.
+
 ### enable-fuzz-libfuzzer, enable-fuzz-afl
 
 Build with support for fuzzing using either libfuzzer or AFL.
@@ -835,6 +890,16 @@ Disabling this also disables the legacy algorithms: MD2 (already disabled by def
 ### no-makedepend
 
 Don't generate dependencies.
+
+### no-ml-dsa
+
+Disable Module-Lattice-Based Digital Signature Standard (ML-DSA) support.
+ML-DSA is based on CRYSTALS-DILITHIUM. See [FIPS 204].
+
+### no-ml-kem
+
+Disable Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM)
+support.  ML-KEM is based on CRYSTALS-KYBER. See [FIPS 203].
 
 ### no-module
 
@@ -924,6 +989,11 @@ Build support for Stream Control Transmission Protocol (SCTP).
 Do not create shared libraries, only static ones.
 
 See [Notes on shared libraries](#notes-on-shared-libraries) below.
+
+### no-slh-dsa
+
+Disable Stateless Hash Based Digital Signature Standard support.
+(SLH-DSA is based on SPHINCS+. See [FIPS 205])
 
 ### no-sm2-precomp
 
@@ -1028,6 +1098,17 @@ application. Supported on POSIX compliant platforms and Windows.
 Build with support for the integrated tracing api.
 
 See manual pages OSSL_trace_set_channel(3) and OSSL_trace_enabled(3) for details.
+
+### enable-sslkeylog
+
+Build with support for the SSLKEYLOGFILE environment variable
+
+When enabled, setting SSLKEYLOGFILE to a file path records the keys exchanged
+during a TLS handshake for use in analysis tools like wireshark.  Note that the
+use of this mechanism allows for decryption of application payloads found in
+captured packets using keys from the key log file and therefore has significant
+security consequences.  See Section 3 of
+[the draft standard for SSLKEYLOGFILE](https://datatracker.ietf.org/doc/draft-ietf-tls-keylogfile/)
 
 ### no-ts
 
@@ -1140,9 +1221,9 @@ Build with support for the specified algorithm.
 ### no-{algorithm}
 
     no-{aria|bf|blake2|camellia|cast|chacha|cmac|
-        des|dh|dsa|ecdh|ecdsa|idea|md4|mdc2|ocb|
-        poly1305|rc2|rc4|rmd160|scrypt|seed|
-        siphash|siv|sm2|sm3|sm4|whirlpool}
+        des|dh|dsa|ecdh|ecdsa|idea|md4|mdc2|ml-dsa|
+        ml-kem|ocb|poly1305|rc2|rc4|rmd160|scrypt|
+        seed|siphash|siv|sm2|sm3|sm4|whirlpool}
 
 Build without support for the specified algorithm.
 
@@ -1297,7 +1378,7 @@ Configure OpenSSL
 ### Automatic Configuration
 
 In previous version, the `config` script determined the platform type and
-compiler and then called `Configure`. Starting with this release, they are
+compiler and then called `Configure`. Starting with version 3.0, they are
 the same.
 
 #### Unix / Linux / macOS
@@ -1640,6 +1721,12 @@ described here.  Examine the Makefiles themselves for the full list.
     build_docs
                    Build all documentation components.
 
+    debuginfo
+                    On unix platforms, this target can be used to create .debug
+                    libraries, which separate the DWARF information in the
+                    shared library ELF files into a separate file for use
+                    in post-mortem (core dump) debugging
+
     clean
                    Remove all build artefacts and return the directory to a "clean"
                    state.
@@ -1752,7 +1839,7 @@ More about our support resources can be found in the [SUPPORT] file.
 
 ### Configuration Errors
 
-If the `./Configure` or `./Configure` command fails with an error message,
+If the `./config` or `./Configure` command fails with an error message,
 read the error message carefully and try to figure out whether you made
 a mistake (e.g., by providing a wrong option), or whether the script is
 working incorrectly. If you think you encountered a bug, please
@@ -1964,3 +2051,24 @@ is used, as it is the version of the GNU assembler that will be checked.
 
 [10-main.conf]:
     Configurations/10-main.conf
+
+[CMVP]:
+    <https://csrc.nist.gov/projects/cryptographic-module-validation-program>
+
+[ESV]:
+    <https://csrc.nist.gov/Projects/cryptographic-module-validation-program/entropy-validations>
+
+[FIPS 203]:
+    <https://csrc.nist.gov/pubs/fips/203/final>
+
+[FIPS 204]:
+    <https://csrc.nist.gov/pubs/fips/204/final>
+
+[SP 800-90B]:
+    <https://csrc.nist.gov/pubs/sp/800/90/b/final>
+
+[jitterentropy-library]:
+    <https://github.com/smuellerDD/jitterentropy-library>
+
+[FIPS 205]:
+    <https://csrc.nist.gov/pubs/fips/205/final>

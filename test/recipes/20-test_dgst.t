@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2017-2023 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2017-2025 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -17,7 +17,7 @@ use OpenSSL::Test::Utils;
 
 setup("test_dgst");
 
-plan tests => 13;
+plan tests => 17;
 
 sub tsignverify {
     my $testtext = shift;
@@ -131,8 +131,6 @@ SKIP: {
     skip "EdDSA is not supported by this OpenSSL build", 2
         if disabled("ecx");
 
-    skip "EdDSA is not supported with `dgst` CLI", 2;
-
     subtest "Ed25519 signature generation and verification with `dgst` CLI" => sub {
         tsignverify("Ed25519",
                     srctop_file("test","tested25519.pem"),
@@ -143,6 +141,27 @@ SKIP: {
         tsignverify("Ed448",
                     srctop_file("test","tested448.pem"),
                     srctop_file("test","tested448pub.pem"));
+    };
+}
+
+SKIP: {
+    skip "ML-DSA is not supported by this OpenSSL build", 3
+        if disabled("ml-dsa");
+
+    subtest "ML-DSA-44 signature generation and verification with `dgst` CLI" => sub {
+        tsignverify("Ml-DSA-44",
+                    srctop_file("test","testmldsa44.pem"),
+                    srctop_file("test","testmldsa44pub.pem"));
+    };
+    subtest "ML-DSA-65 signature generation and verification with `dgst` CLI" => sub {
+        tsignverify("Ml-DSA-65",
+                    srctop_file("test","testmldsa65.pem"),
+                    srctop_file("test","testmldsa65pub.pem"));
+    };
+    subtest "ML-DSA-87 signature generation and verification with `dgst` CLI" => sub {
+        tsignverify("Ml-DSA-87",
+                    srctop_file("test","testmldsa87.pem"),
+                    srctop_file("test","testmldsa87pub.pem"));
     };
 }
 
@@ -231,7 +250,7 @@ subtest "SHAKE digest generation with no xoflen set `dgst` CLI" => sub {
 };
 
 SKIP: {
-    skip "ECDSA is not supported by this OpenSSL build", 1
+    skip "ECDSA is not supported by this OpenSSL build", 2
         if disabled("ec");
 
     subtest "signing with xoflen is not supported `dgst` CLI" => sub {
@@ -243,5 +262,17 @@ SKIP: {
                      '-out', 'test.sig',
                      srctop_file('test', 'data.bin')])),
                      "Generating signature with xoflen should fail");
+    };
+
+    subtest "signing using the nonce-type sigopt" => sub {
+        plan tests => 1;
+        my $data_to_sign = srctop_file('test', 'data.bin');
+
+        ok(run(app(['openssl', 'dgst', '-sha256',
+                     '-sign', srctop_file("test","testec-p256.pem"),
+                     '-out', 'test.sig',
+                     '-sigopt', 'nonce-type:1',
+                     srctop_file('test', 'data.bin')])),
+                     "Sign using the nonce-type sigopt");
     }
 }

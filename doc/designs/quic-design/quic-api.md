@@ -563,7 +563,7 @@ int SSL_shutdown_ex(SSL *ssl,
 are read only on the first call to `SSL_shutdown_ex` for a given SSL object and
 subsequent calls to `SSL_shutdown_ex` ignore the `args` argument. `args_len`
 should be set to `sizeof(*args)`. This function is idempotent; once the shutdown
-process for a SSL object is complete, further calls are a no-op and return 1.
+process for an SSL object is complete, further calls are a no-op and return 1.
 
 Calling `SSL_shutdown_ex` on a QUIC connection SSL object causes the immediate
 close of the QUIC connection. “Immediate close” is as defined by RFC 9000.
@@ -744,7 +744,7 @@ no-ops. This is considered a success case.
  *
  * For SSL_get_stream_read_state, this means that there is no more data to read,
  * and that any future SSL_read calls will return any residual data waiting to
- * be read followed by a SSL_ERROR_ZERO_RETURN condition.
+ * be read followed by an SSL_ERROR_ZERO_RETURN condition.
  *
  * For SSL_get_stream_write_state, this means that the local application has
  * already indicated the end of the stream by calling SSL_stream_conclude,
@@ -949,7 +949,7 @@ int SSL_is_connection(SSL *ssl);
 
 ```c
 /*
- * If the object represents a stream, returns a SSL_STREAM_TYPE value
+ * If the object represents a stream, returns an SSL_STREAM_TYPE value
  * designating whether the stream can be used for transmission, reception,
  * or both.
  *
@@ -1214,7 +1214,7 @@ Options:
 #### MTU Signalling
 
 **See also:**
-[BIO_s_dgram_pair(3)](https://www.openssl.org/docs/manmaster/man3/BIO_s_dgram_pair.html)
+[BIO_s_dgram_pair(3)](https://docs.openssl.org/master/man3/BIO_s_dgram_pair)
 
 `BIO_dgram_get_mtu` (`BIO_CTRL_DGRAM_GET_MTU`) and `BIO_dgram_set_mtu`
 (`BIO_CTRL_DGRAM_SET_MTU`) already exist for `BIO_s_dgram` and are implemented
@@ -1229,7 +1229,7 @@ from the OS using `BIO_CTRL_DGRAM_QUERY_MTU`.
 #### `BIO_sendmmsg` and `BIO_recvmmsg`
 
 **See also:**
-[BIO_sendmmsg(3)](https://www.openssl.org/docs/manmaster/man3/BIO_sendmmsg.html)
+[BIO_sendmmsg(3)](https://docs.openssl.org/master/man3/BIO_sendmmsg)
 
 The BIO interface features a new high-performance API for the execution of
 multiple read or write operations in a single system call, on supported OSes. On
@@ -1265,7 +1265,7 @@ corresponding `BIO_meth` getter/setter functions.
 #### Truncation Mode
 
 **See also:**
-[BIO_s_dgram_pair(3)](https://www.openssl.org/docs/manmaster/man3/BIO_s_dgram_pair.html)
+[BIO_s_dgram_pair(3)](https://docs.openssl.org/master/man3/BIO_s_dgram_pair)
 
 The controls `BIO_dgram_set_no_trunc` (`BIO_CTRL_DGRAM_SET_NO_TRUNC`) and
 `BIO_dgram_get_no_trunc` (`BIO_CTRL_DGRAM_GET_NO_TRUNC`) are introduced. This is
@@ -1278,7 +1278,7 @@ For compatibility, the default behaviour is off.
 #### Capability Negotiation
 
 **See also:**
-[BIO_s_dgram_pair(3)](https://www.openssl.org/docs/manmaster/man3/BIO_s_dgram_pair.html)
+[BIO_s_dgram_pair(3)](https://docs.openssl.org/master/man3/BIO_s_dgram_pair)
 
 Where a `BIO_s_dgram_pair` is used, there is the potential for such a memory BIO
 to be used by existing application code which is being adapted for use with
@@ -1314,7 +1314,7 @@ The usage is as follows:
 #### Local Address Support
 
 **See also:**
-[BIO_s_dgram_pair(3)](https://www.openssl.org/docs/manmaster/man3/BIO_s_dgram_pair.html)
+[BIO_s_dgram_pair(3)](https://docs.openssl.org/master/man3/BIO_s_dgram_pair)
 
 Support for local addressing (the reception of destination addresses for
 incoming packets, and the specification of source addresses for outgoing
@@ -1349,7 +1349,7 @@ enabled).
 #### `BIO_s_dgram_pair`
 
 **See also:**
-[BIO_s_dgram_pair(3)](https://www.openssl.org/docs/manmaster/man3/BIO_s_dgram_pair.html)
+[BIO_s_dgram_pair(3)](https://docs.openssl.org/master/man3/BIO_s_dgram_pair)
 
 A new BIO implementation, `BIO_s_dgram_pair`, is provided. This is similar to
 the existing BIO pair but provides datagram semantics. It provides full support
@@ -1403,7 +1403,7 @@ local addressing.
 
 A new predicate function `BIO_err_is_non_fatal` is defined which determines if
 an error code represents a non-fatal or transient error. For details, see
-[BIO_sendmmsg(3)](https://www.openssl.org/docs/manmaster/man3/BIO_sendmmsg.html).
+[BIO_sendmmsg(3)](https://docs.openssl.org/master/man3/BIO_sendmmsg).
 
 Q & A
 -----

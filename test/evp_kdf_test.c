@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2018-2025 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2018-2020, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -17,6 +17,7 @@
 #include <openssl/kdf.h>
 #include <openssl/core_names.h>
 #include "internal/numbers.h"
+#include "internal/sizes.h"
 #include "testutil.h"
 
 
@@ -239,26 +240,35 @@ static int test_kdf_hkdf(void)
     return ret;
 }
 
-static int do_kdf_hkdf_gettables(int expand_only, int has_digest)
+static int do_kdf_hkdf_gettables(int extract_only, int has_digest)
 {
     int ret = 0;
     size_t sz = 0;
     OSSL_PARAM *params;
-    OSSL_PARAM params_get[2];
+    OSSL_PARAM params_get[5];
+    char digest[OSSL_MAX_NAME_SIZE];
+    char mode_utf8[OSSL_MAX_NAME_SIZE];
+    int mode_int = -1;
+    char salt[16] = { 0 };
+    char info[16] = { 0 };
     const OSSL_PARAM *gettables, *p;
     EVP_KDF_CTX *kctx = NULL;
 
     if (!TEST_ptr(params = construct_hkdf_params(
                                                  has_digest ? "sha256" : NULL,
                                                  "secret", 6, "salt",
-                                                 expand_only ? NULL : "label"))
+                                                 extract_only ? NULL : "label"))
         || !TEST_ptr(kctx = get_kdfbyname(OSSL_KDF_NAME_HKDF))
         || !TEST_true(EVP_KDF_CTX_set_params(kctx, params)))
         goto err;
 
     /* Check OSSL_KDF_PARAM_SIZE is gettable */
     if (!TEST_ptr(gettables = EVP_KDF_CTX_gettable_params(kctx))
-        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_SIZE)))
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_SIZE))
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_MODE))
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_DIGEST))
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_SALT))
+        || !TEST_ptr(p = OSSL_PARAM_locate_const(gettables, OSSL_KDF_PARAM_INFO)))
         goto err;
 
     /* Get OSSL_KDF_PARAM_SIZE as a size_t */
@@ -266,16 +276,42 @@ static int do_kdf_hkdf_gettables(int expand_only, int has_digest)
     params_get[1] = OSSL_PARAM_construct_end();
     if (has_digest) {
         if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 1)
-            || !TEST_size_t_eq(sz, expand_only ? SHA256_DIGEST_LENGTH : SIZE_MAX))
+            || !TEST_size_t_eq(sz, extract_only ? SHA256_DIGEST_LENGTH : SIZE_MAX))
             goto err;
     } else {
         if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 0))
             goto err;
     }
 
-    /* Get params returns -2 if an unsupported parameter is requested */
+    params_get[0] = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, digest,
+                                                     sizeof(digest));
+    params_get[1] = OSSL_PARAM_construct_end();
+    if (has_digest) {
+        if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 1)
+            || !TEST_str_eq(digest, "SHA2-256"))
+            goto err;
+    } else {
+        if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 0))
+            goto err;
+    }
+
+    params_get[0] = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_MODE, mode_utf8,
+                                                     sizeof(mode_utf8));
+    params_get[1] = OSSL_PARAM_construct_int(OSSL_KDF_PARAM_MODE, &mode_int);
+    params_get[2] = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT, salt, sizeof(salt));
+    params_get[3] = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_INFO, info, sizeof(info));
+    params_get[4] = OSSL_PARAM_construct_end();
+    if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 1)
+        || !TEST_str_eq(mode_utf8, extract_only ? "EXTRACT_ONLY" : "EXTRACT_AND_EXPAND")
+        || !TEST_int_eq(mode_int, extract_only ? EVP_KDF_HKDF_MODE_EXTRACT_ONLY :
+                        EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND)
+        || !TEST_str_eq(info, extract_only ? "" : "label")
+        || !TEST_str_eq(salt, "salt"))
+        goto err;
+
+    /* Get params returns 1 if an unsupported parameter is requested */
     params_get[0] = OSSL_PARAM_construct_end();
-    if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), -2))
+    if (!TEST_int_eq(EVP_KDF_CTX_get_params(kctx, params_get), 1))
         goto err;
     ret = 1;
 err:
@@ -289,7 +325,7 @@ static int test_kdf_hkdf_gettables(void)
     return do_kdf_hkdf_gettables(0, 1);
 }
 
-static int test_kdf_hkdf_gettables_expandonly(void)
+static int test_kdf_hkdf_gettables_extractonly(void)
 {
     return do_kdf_hkdf_gettables(1, 1);
 }
@@ -857,7 +893,7 @@ err:
 #ifndef OPENSSL_NO_SCRYPT
 static int test_kdf_scrypt(void)
 {
-    int ret;
+    int i, ret;
     EVP_KDF_CTX *kctx;
     OSSL_PARAM params[7], *p = params;
     unsigned char out[64];
@@ -883,15 +919,21 @@ static int test_kdf_scrypt(void)
     *p++ = OSSL_PARAM_construct_uint(OSSL_KDF_PARAM_SCRYPT_MAXMEM, &maxmem);
     *p = OSSL_PARAM_construct_end();
 
-    ret =
-        TEST_ptr(kctx = get_kdfbyname(OSSL_KDF_NAME_SCRYPT))
-        && TEST_true(EVP_KDF_CTX_set_params(kctx, params))
-        /* failure test *//*
-        && TEST_int_le(EVP_KDF_derive(kctx, out, sizeof(out), NULL), 0)*/
-        && TEST_true(OSSL_PARAM_set_uint(p - 1, 10 * 1024 * 1024))
-        && TEST_true(EVP_KDF_CTX_set_params(kctx, p - 1))
-        && TEST_int_gt(EVP_KDF_derive(kctx, out, sizeof(out), NULL), 0)
-        && TEST_mem_eq(out, sizeof(out), expected, sizeof(expected));
+    ret = TEST_ptr(kctx = get_kdfbyname(OSSL_KDF_NAME_SCRYPT));
+    for (i = 0; ret && i < 2; ++i) {
+        ret = ret
+            && TEST_true(EVP_KDF_CTX_set_params(kctx, params));
+        if (i == 0)
+            ret = ret
+                && TEST_int_le(EVP_KDF_derive(kctx, out, sizeof(out), NULL), 0)
+                && TEST_true(OSSL_PARAM_set_uint(p - 1, 10 * 1024 * 1024))
+                && TEST_true(EVP_KDF_CTX_set_params(kctx, p - 1));
+        ret = ret
+            && TEST_int_gt(EVP_KDF_derive(kctx, out, sizeof(out), NULL), 0)
+            && TEST_mem_eq(out, sizeof(out), expected, sizeof(expected));
+        if (i == 0)
+            EVP_KDF_CTX_reset(kctx);
+    }
 
     EVP_KDF_CTX_free(kctx);
     return ret;
@@ -1771,7 +1813,7 @@ static int test_kdf_get_kdf(void)
         || !TEST_ptr(kdf2 = EVP_KDF_fetch(NULL, LN_tls1_prf, NULL))
         || !test_kdfs_same(kdf1, kdf2))
         ok = 0;
-    /* kdf1 is re-used below, so don't free it here */
+    /* kdf1 is reused below, so don't free it here */
     EVP_KDF_free(kdf2);
     kdf2 = NULL;
 
@@ -1966,6 +2008,64 @@ err:
     return ret;
 }
 
+/* Test that changing the KBKDF algorithm from KMAC to HMAC works correctly */
+static int test_kbkdf_mac_change(void)
+{
+    int ret = 0;
+    EVP_KDF_CTX *kctx = NULL;
+    OSSL_PARAM params[9], *p = params;
+    /* Test data taken from the evptest corpus */
+    int l = 0, sep = 0, r = 8;
+    static /* const */ unsigned char key[] = {
+        0x3e, 0xdc, 0x6b, 0x5b, 0x8f, 0x7a, 0xad, 0xbd,
+        0x71, 0x37, 0x32, 0xb4, 0x82, 0xb8, 0xf9, 0x79,
+        0x28, 0x6e, 0x1e, 0xa3, 0xb8, 0xf8, 0xf9, 0x9c,
+        0x30, 0xc8, 0x84, 0xcf, 0xe3, 0x34, 0x9b, 0x83
+    };
+    static /* const */ unsigned char info[] = {
+        0x98, 0xe9, 0x98, 0x8b, 0xb4, 0xcc, 0x8b, 0x34,
+        0xd7, 0x92, 0x2e, 0x1c, 0x68, 0xad, 0x69, 0x2b,
+        0xa2, 0xa1, 0xd9, 0xae, 0x15, 0x14, 0x95, 0x71,
+        0x67, 0x5f, 0x17, 0xa7, 0x7a, 0xd4, 0x9e, 0x80,
+        0xc8, 0xd2, 0xa8, 0x5e, 0x83, 0x1a, 0x26, 0x44,
+        0x5b, 0x1f, 0x0f, 0xf4, 0x4d, 0x70, 0x84, 0xa1,
+        0x72, 0x06, 0xb4, 0x89, 0x6c, 0x81, 0x12, 0xda,
+        0xad, 0x18, 0x60, 0x5a
+    };
+    static const unsigned char output[] = {
+        0x6c, 0x03, 0x76, 0x52, 0x99, 0x06, 0x74, 0xa0,
+        0x78, 0x44, 0x73, 0x2d, 0x0a, 0xd9, 0x85, 0xf9
+    };
+    unsigned char out[sizeof(output)];
+
+    params[0] = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_MAC,
+                                                 OSSL_MAC_NAME_KMAC128, 0);
+    params[1] = OSSL_PARAM_construct_end();
+    if (!TEST_ptr(kctx = get_kdfbyname(OSSL_KDF_NAME_KBKDF))
+            || !TEST_true(EVP_KDF_CTX_set_params(kctx, params)))
+        goto err;
+
+    *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_MODE, "COUNTER", 0);
+    *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_MAC, "HMAC", 0);
+    *p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, "SHA256", 0);
+    *p++ = OSSL_PARAM_construct_int(OSSL_KDF_PARAM_KBKDF_USE_L, &l);
+    *p++ = OSSL_PARAM_construct_int(OSSL_KDF_PARAM_KBKDF_USE_SEPARATOR, &sep);
+    *p++ = OSSL_PARAM_construct_int(OSSL_KDF_PARAM_KBKDF_R, &r);
+    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY,
+                                             key, sizeof(key));
+    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_INFO,
+                                             info, sizeof(info));
+    *p = OSSL_PARAM_construct_end();
+    if (!TEST_true(EVP_KDF_derive(kctx, out, sizeof(out), params))
+            || !TEST_mem_eq(out, sizeof(out), output, sizeof(output)))
+        goto err;
+
+    ret = 1;
+err:
+    EVP_KDF_CTX_free(kctx);
+    return ret;
+}
+
 int setup_tests(void)
 {
     ADD_TEST(test_kdf_pbkdf1);
@@ -2002,7 +2102,7 @@ int setup_tests(void)
     ADD_TEST(test_kdf_hkdf_1byte_key);
     ADD_TEST(test_kdf_hkdf_empty_salt);
     ADD_TEST(test_kdf_hkdf_gettables);
-    ADD_TEST(test_kdf_hkdf_gettables_expandonly);
+    ADD_TEST(test_kdf_hkdf_gettables_extractonly);
     ADD_TEST(test_kdf_hkdf_gettables_no_digest);
     ADD_TEST(test_kdf_hkdf_derive_set_params_fail);
     ADD_TEST(test_kdf_hkdf_set_invalid_mode);
@@ -2029,5 +2129,6 @@ int setup_tests(void)
     ADD_TEST(test_kdf_krb5kdf);
     ADD_TEST(test_kdf_hmac_drbg_settables);
     ADD_TEST(test_kdf_hmac_drbg_gettables);
+    ADD_TEST(test_kbkdf_mac_change);
     return 1;
 }

@@ -59,7 +59,7 @@ static char *change_path(const char *file)
 
     ret = chdir(s);
     if (ret == 0)
-        new_config_name = strdup(last + DIRSEP_PRESERVE + 1);
+        new_config_name = OPENSSL_strdup(last + DIRSEP_PRESERVE + 1);
  err:
     OPENSSL_free(s);
     return new_config_name;
@@ -186,7 +186,7 @@ static int test_check_overflow(void)
     char max[(sizeof(long) * 8) / 3 + 3];
     char *p;
 
-    p = max + sprintf(max, "0%ld", LONG_MAX) - 1;
+    p = max + BIO_snprintf(max, sizeof(max), "0%ld", LONG_MAX) - 1;
     setenv("FNORD", max, 1);
     if (!TEST_true(NCONF_get_number(NULL, "missing", "FNORD", &val))
             || !TEST_long_eq(val, LONG_MAX))

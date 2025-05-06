@@ -94,7 +94,7 @@ static int aes_set_ctx_params(void *vctx, const OSSL_PARAM params[])
     EVP_CTRL_TLS1_1_MULTIBLOCK_PARAM mb_param;
 # endif
 
-    if (params == NULL)
+    if (ossl_param_is_empty(params))
         return 1;
 
     p = OSSL_PARAM_locate_const(params, OSSL_CIPHER_PARAM_AEAD_MAC_KEY);
@@ -271,15 +271,13 @@ static int aes_get_ctx_params(void *vctx, OSSL_PARAM params[])
     }
     p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_IV);
     if (p != NULL
-        && !OSSL_PARAM_set_octet_string(p, ctx->base.oiv, ctx->base.ivlen)
-        && !OSSL_PARAM_set_octet_ptr(p, &ctx->base.oiv, ctx->base.ivlen)) {
+        && !OSSL_PARAM_set_octet_string_or_ptr(p, ctx->base.oiv, ctx->base.ivlen)) {
         ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
         return 0;
     }
     p = OSSL_PARAM_locate(params, OSSL_CIPHER_PARAM_UPDATED_IV);
     if (p != NULL
-        && !OSSL_PARAM_set_octet_string(p, ctx->base.iv, ctx->base.ivlen)
-        && !OSSL_PARAM_set_octet_ptr(p, &ctx->base.iv, ctx->base.ivlen)) {
+        && !OSSL_PARAM_set_octet_string_or_ptr(p, ctx->base.iv, ctx->base.ivlen)) {
         ERR_raise(ERR_LIB_PROV, PROV_R_FAILED_TO_SET_PARAMETER);
         return 0;
     }
@@ -338,6 +336,9 @@ static void *aes_cbc_hmac_sha1_dupctx(void *provctx)
 {
     PROV_AES_HMAC_SHA1_CTX *ctx = provctx;
 
+    if (!ossl_prov_is_running())
+        return NULL;
+
     if (ctx == NULL)
         return NULL;
 
@@ -374,6 +375,9 @@ static void *aes_cbc_hmac_sha256_newctx(void *provctx, size_t kbits,
 static void *aes_cbc_hmac_sha256_dupctx(void *provctx)
 {
     PROV_AES_HMAC_SHA256_CTX *ctx = provctx;
+
+    if (!ossl_prov_is_running())
+        return NULL;
 
     return OPENSSL_memdup(ctx, sizeof(*ctx));
 }

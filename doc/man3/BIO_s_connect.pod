@@ -64,7 +64,7 @@ a single call: that is it creates a new connect BIO with hostname B<name>.
 
 BIO_set_conn_hostname() uses the string B<name> to set the hostname.
 The hostname can be an IP address; if the address is an IPv6 one, it
-must be enclosed with brackets C<[> and C<]>.
+must be enclosed in brackets C<[> and C<]>.
 The hostname can also include the port in the form hostname:port;
 see L<BIO_parse_hostserv(3)> and BIO_set_conn_port() for details.
 
@@ -223,7 +223,8 @@ BIO_set_conn_int_port(), BIO_get_conn_int_port(), BIO_set_conn_ip(), and BIO_get
 were removed in OpenSSL 1.1.0.
 Use BIO_set_conn_address() and BIO_get_conn_address() instead.
 
-Connect BIOs support BIO_gets() since OpenSSL 3.2.
+Connect BIOs support BIO_gets(), BIO_get0_dgram_bio(), BIO_get_sock_type(),
+BIO_set_sock_type() were added in OpenSSL 3.2.
 
 =head1 COPYRIGHT
 

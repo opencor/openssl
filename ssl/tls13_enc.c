@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,6 +12,7 @@
 #include "internal/ktls.h"
 #include "record/record_local.h"
 #include "internal/cryptlib.h"
+#include "internal/ssl_unwrap.h"
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/core_names.h>
@@ -188,7 +189,7 @@ int tls13_generate_secret(SSL_CONNECTION *s, const EVP_MD *md,
 
     mdleni = EVP_MD_get_size(md);
     /* Ensure cast to size_t is safe */
-    if (!ossl_assert(mdleni >= 0)) {
+    if (!ossl_assert(mdleni > 0)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         EVP_KDF_CTX_free(kctx);
         return 0;
@@ -361,7 +362,7 @@ static int derive_secret_key_and_iv(SSL_CONNECTION *s, const EVP_MD *md,
     int mode, mac_mdleni;
 
     /* Ensure cast to size_t is safe */
-    if (!ossl_assert(hashleni >= 0)) {
+    if (!ossl_assert(hashleni > 0)) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
         return 0;
     }
@@ -379,7 +380,7 @@ static int derive_secret_key_and_iv(SSL_CONNECTION *s, const EVP_MD *md,
         && mac_type == NID_hmac) {
         mac_mdleni = EVP_MD_get_size(mac_md);
 
-        if (mac_mdleni < 0) {
+        if (mac_mdleni <= 0) {
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
             return 0;
         }

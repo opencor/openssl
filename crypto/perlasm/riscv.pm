@@ -2,7 +2,7 @@
 # This file is dual-licensed, meaning that you can use it under your
 # choice of either of the following two licenses:
 #
-# Copyright 2023 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2023-2024 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License"). You can obtain
 # a copy in the file LICENSE in the source distribution or at
@@ -382,6 +382,16 @@ sub rev8 {
     my $rd = read_reg shift;
     my $rs = read_reg shift;
     return ".word ".($template | ($rs << 15) | ($rd << 7));
+}
+
+sub rori {
+    # Encoding for rori rd, rs1, shamt instruction on RV64
+    #               XXXXXXX_ shamt _ rs1 _XXX_ rd  _XXXXXXX
+    my $template = 0b0110000_00000_00000_101_00000_0010011;
+    my $rd = read_reg shift;
+    my $rs1 = read_reg shift;
+    my $shamt = shift;
+    return ".word ".($template | ($shamt << 20) | ($rs1 << 15) | ($rd << 7));
 }
 
 sub roriw {

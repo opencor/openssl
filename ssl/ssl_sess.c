@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright 2005 Nokia. All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -17,6 +17,7 @@
 #include <openssl/engine.h>
 #include "internal/refcount.h"
 #include "internal/cryptlib.h"
+#include "internal/ssl_unwrap.h"
 #include "ssl_local.h"
 #include "statem/statem_local.h"
 
@@ -82,8 +83,8 @@ SSL_SESSION *SSL_get1_session(SSL *ssl)
     if (!CRYPTO_THREAD_read_lock(ssl->lock))
         return NULL;
     sess = SSL_get_session(ssl);
-    if (sess != NULL)
-        SSL_SESSION_up_ref(sess);
+    if (sess != NULL && !SSL_SESSION_up_ref(sess))
+        sess = NULL;
     CRYPTO_THREAD_unlock(ssl->lock);
     return sess;
 }
@@ -109,6 +110,7 @@ SSL_SESSION *SSL_SESSION_new(void)
     if (ss == NULL)
         return NULL;
 
+    ss->ext.max_fragment_len_mode = TLSEXT_max_fragment_length_UNSPECIFIED;
     ss->verify_result = 1;      /* avoid 0 (= X509_V_OK) just in case */
    /* 5 minute timeout by default */
     ss->timeout = ossl_seconds2time(60 * 5 + 4);
@@ -138,7 +140,12 @@ static SSL_SESSION *ssl_session_dup_intern(const SSL_SESSION *src, int ticket)
     dest = OPENSSL_malloc(sizeof(*dest));
     if (dest == NULL)
         return NULL;
-    memcpy(dest, src, sizeof(*dest));
+
+    /*
+     * src is logically read-only but the prev/next pointers are not, they are
+     * part of the session cache and can be modified concurrently.
+     */
+    memcpy(dest, src, offsetof(SSL_SESSION, prev));
 
     /*
      * Set the various pointers to NULL so that we can call SSL_SESSION_free in
@@ -506,7 +513,10 @@ SSL_SESSION *lookup_sess_in_cache(SSL_CONNECTION *s,
         ret = lh_SSL_SESSION_retrieve(s->session_ctx->sessions, &data);
         if (ret != NULL) {
             /* don't allow other threads to steal it: */
-            SSL_SESSION_up_ref(ret);
+            if (!SSL_SESSION_up_ref(ret)) {
+                CRYPTO_THREAD_unlock(s->session_ctx->lock);
+                return NULL;
+            }
         }
         CRYPTO_THREAD_unlock(s->session_ctx->lock);
         if (ret == NULL)
@@ -516,7 +526,7 @@ SSL_SESSION *lookup_sess_in_cache(SSL_CONNECTION *s,
     if (ret == NULL && s->session_ctx->get_session_cb != NULL) {
         int copy = 1;
 
-        ret = s->session_ctx->get_session_cb(SSL_CONNECTION_GET_SSL(s),
+        ret = s->session_ctx->get_session_cb(SSL_CONNECTION_GET_USER_SSL(s),
                                              sess_id, sess_id_len, &copy);
 
         if (ret != NULL) {
@@ -536,8 +546,8 @@ SSL_SESSION *lookup_sess_in_cache(SSL_CONNECTION *s,
              * reference count itself [i.e. copy == 0], or things won't be
              * thread-safe).
              */
-            if (copy)
-                SSL_SESSION_up_ref(ret);
+            if (copy && !SSL_SESSION_up_ref(ret))
+                return NULL;
 
             /*
              * Add the externally cached session to the internal cache as
@@ -720,7 +730,8 @@ int SSL_CTX_add_session(SSL_CTX *ctx, SSL_SESSION *c)
      * it has two ways of access: each session is in a doubly linked list and
      * an lhash
      */
-    SSL_SESSION_up_ref(c);
+    if (!SSL_SESSION_up_ref(c))
+        return 0;
     /*
      * if session c is in already in cache, we take back the increment later
      */
@@ -838,7 +849,7 @@ void SSL_SESSION_free(SSL_SESSION *ss)
     if (ss == NULL)
         return;
     CRYPTO_DOWN_REF(&ss->references, &i);
-    REF_PRINT_COUNT("SSL_SESSION", ss);
+    REF_PRINT_COUNT("SSL_SESSION", i, ss);
     if (i > 0)
         return;
     REF_ASSERT_ISNT(i < 0);
@@ -872,7 +883,7 @@ int SSL_SESSION_up_ref(SSL_SESSION *ss)
     if (CRYPTO_UP_REF(&ss->references, &i) <= 0)
         return 0;
 
-    REF_PRINT_COUNT("SSL_SESSION", ss);
+    REF_PRINT_COUNT("SSL_SESSION", i, ss);
     REF_ASSERT_ISNT(i < 2);
     return ((i > 1) ? 1 : 0);
 }
@@ -884,16 +895,20 @@ int SSL_set_session(SSL *s, SSL_SESSION *session)
     if (sc == NULL)
         return 0;
 
+    if (session != NULL && !SSL_SESSION_up_ref(session))
+        return 0;
+
     ssl_clear_bad_session(sc);
     if (s->defltmeth != s->method) {
-        if (!SSL_set_ssl_method(s, s->defltmeth))
+        if (!SSL_set_ssl_method(s, s->defltmeth)) {
+            SSL_SESSION_free(session);
             return 0;
+        }
     }
 
-    if (session != NULL) {
-        SSL_SESSION_up_ref(session);
+    if (session != NULL)
         sc->verify_result = session->verify_result;
-    }
+
     SSL_SESSION_free(sc->session);
     sc->session = session;
 
@@ -941,10 +956,12 @@ long SSL_SESSION_get_timeout(const SSL_SESSION *s)
     return (long)ossl_time_to_time_t(s->timeout);
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_4
 long SSL_SESSION_get_time(const SSL_SESSION *s)
 {
     return (long) SSL_SESSION_get_time_ex(s);
 }
+#endif
 
 time_t SSL_SESSION_get_time_ex(const SSL_SESSION *s)
 {
@@ -973,10 +990,12 @@ time_t SSL_SESSION_set_time_ex(SSL_SESSION *s, time_t t)
     return t;
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_4
 long SSL_SESSION_set_time(SSL_SESSION *s, long t)
 {
     return (long) SSL_SESSION_set_time_ex(s, (time_t) t);
 }
+#endif
 
 int SSL_SESSION_get_protocol_version(const SSL_SESSION *s)
 {
@@ -1183,7 +1202,14 @@ int SSL_set_session_ticket_ext(SSL *s, void *ext_data, int ext_len)
     return 0;
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_4
 void SSL_CTX_flush_sessions(SSL_CTX *s, long t)
+{
+    SSL_CTX_flush_sessions_ex(s, (time_t) t);
+}
+#endif
+
+void SSL_CTX_flush_sessions_ex(SSL_CTX *s, time_t t)
 {
     STACK_OF(SSL_SESSION) *sk;
     SSL_SESSION *current;

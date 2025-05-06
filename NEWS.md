@@ -7,6 +7,8 @@ release. For more details please read the CHANGES file.
 OpenSSL Releases
 ----------------
 
+ - [OpenSSL 3.5](#openssl-35)
+ - [OpenSSL 3.4](#openssl-34)
  - [OpenSSL 3.3](#openssl-33)
  - [OpenSSL 3.2](#openssl-32)
  - [OpenSSL 3.1](#openssl-31)
@@ -18,22 +20,188 @@ OpenSSL Releases
  - [OpenSSL 1.0.0](#openssl-100)
  - [OpenSSL 0.9.x](#openssl-09x)
 
+OpenSSL 3.5
+-----------
+
+### Major changes between OpenSSL 3.5 and OpenSSL 3.6 [under development]
+
+This release incorporates the following potentially significant or incompatible
+changes:
+
+  * The VxWorks platforms have been removed.
+
+### Major changes between OpenSSL 3.4 and OpenSSL 3.5 [under development]
+
+OpenSSL 3.5.0 is a feature release adding significant new functionality to
+OpenSSL.
+
+This release incorporates the following potentially significant or incompatible
+changes:
+
+  * Default encryption cipher for the `req`, `cms`, and `smime` applications
+    changed from `des-ede3-cbc` to `aes-256-cbc`.
+
+  * The default TLS supported groups list has been changed to include and
+    prefer hybrid PQC KEM groups. Some practically unused groups were removed
+    from the default list.
+
+  * The default TLS keyshares have been changed to offer X25519MLKEM768 and
+    and X25519.
+
+  * All `BIO_meth_get_*()` functions were deprecated.
+
+This release adds the following new features:
+
+  * Support for server side QUIC (RFC 9000)
+
+  * Support for 3rd party QUIC stacks including 0-RTT support
+
+  * Support for PQC algorithms (ML-KEM, ML-DSA and SLH-DSA)
+
+  * A new configuration option `no-tls-deprecated-ec` to disable support for
+    TLS groups deprecated in RFC8422
+
+  * A new configuration option `enable-fips-jitter` to make the FIPS provider
+    to use the `JITTER` seed source
+
+  * Support for central key generation in CMP
+
+  * Support added for opaque symmetric key objects (EVP_SKEY)
+
+  * Support for multiple TLS keyshares and improved TLS key establishment group
+    configurability
+
+  * API support for pipelining in provided cipher algorithms
+
+Known issues in 3.5.0
+
+  * <https://github.com/openssl/openssl/issues/27282>
+    Calling SSL_accept on objects returned from SSL_accept_connection
+    results in error.  It is expected that making this call will advance
+    the SSL handshake for the passed connection, but currently it does not.
+    This can be handled by calling SSL_do_handshake instead.  A fix is planned
+    for OpenSSL 3.5.1
+
 OpenSSL 3.4
 -----------
 
-### Major changes between OpenSSL 3.3 and OpenSSL 3.4 [under development]
+### Major changes between OpenSSL 3.4.0 and OpenSSL 3.4.1 [11 Feb 2025]
+
+OpenSSL 3.4.1 is a security patch release. The most severe CVE fixed in this
+release is High.
+
+This release incorporates the following bug fixes and mitigations:
+
+  * Fixed RFC7250 handshakes with unauthenticated servers don't abort as expected.
+    ([CVE-2024-12797])
+
+  * Fixed timing side-channel in ECDSA signature computation.
+    ([CVE-2024-13176])
+
+### Major changes between OpenSSL 3.3 and OpenSSL 3.4.0 [22 Oct 2024]
 
 OpenSSL 3.4.0 is a feature release adding significant new functionality to
 OpenSSL.
 
-This release is in development.
+This release incorporates the following potentially significant or incompatible
+changes:
 
-  * Added initial Attribute Certificate (RFC 5755) support.
+  * Deprecation of TS_VERIFY_CTX_set_* functions and addition of replacement
+    TS_VERIFY_CTX_set0_* functions with improved semantics
+
+  * Redesigned use of OPENSSLDIR/ENGINESDIR/MODULESDIR on Windows such that
+    what were formerly build time locations can now be defined at run time
+    with registry keys
+
+  * The X25519 and X448 key exchange implementation in the FIPS provider
+    is unapproved and has `fips=no` property.
+
+  * SHAKE-128 and SHAKE-256 implementations have no default digest length
+    anymore. That means these algorithms cannot be used with
+    EVP_DigestFinal/_ex() unless the `xoflen` param is set before.
+
+  * Setting `config_diagnostics=1` in the config file will cause errors to
+    be returned from SSL_CTX_new() and SSL_CTX_new_ex() if there is an error
+    in the ssl module configuration.
+
+  * An empty renegotiate extension will be used in TLS client hellos instead
+    of the empty renegotiation SCSV, for all connections with a minimum TLS
+    version > 1.0.
+
+  * Deprecation of SSL_SESSION_get_time(), SSL_SESSION_set_time() and
+    SSL_CTX_flush_sessions() functions in favor of their respective `_ex`
+    functions which are Y2038-safe on platforms with Y2038-safe `time_t`
+
+This release adds the following new features:
+
+  * Support for directly fetched composite signature algorithms such as
+    RSA-SHA2-256 including new API functions
+
+  * FIPS indicators support in the FIPS provider and various updates of the FIPS
+    provider required for future FIPS 140-3 validations
+
+  * Implementation of RFC 9579 (PBMAC1) in PKCS#12
+
+  * An optional additional random seed source RNG `JITTER` using a statically
+    linked jitterentropy library
+
+  * New options `-not_before` and `-not_after` for explicit setting start and
+    end dates of certificates created with the `req` and `x509` apps
+
+  * Support for integrity-only cipher suites TLS_SHA256_SHA256 and
+    TLS_SHA384_SHA384 in TLS 1.3, as defined in RFC 9150
+
+  * Support for retrieving certificate request templates and CRLs in CMP
+
+  * Support for additional X.509v3 extensions related to Attribute Certificates
+
+  * Initial Attribute Certificate (RFC 5755) support
+
+  * Possibility to customize ECC groups initialization to use precomputed values
+    to save CPU time and use of this feature by the P-256 implementation
 
 OpenSSL 3.3
 -----------
 
-### Major changes between OpenSSL 3.2 and OpenSSL 3.3 [under development]
+### Major changes between OpenSSL 3.3.2 and OpenSSL 3.3.3 [under development]
+
+OpenSSL 3.3.3 is a security patch release. The most severe CVE fixed in this
+release is Low.
+
+This release incorporates the following bug fixes and mitigations:
+
+  * Fixed possible OOB memory access with invalid low-level GF(2^m) elliptic
+    curve parameters.
+    ([CVE-2024-9143])
+
+### Major changes between OpenSSL 3.3.1 and OpenSSL 3.3.2 [3 Sep 2024]
+
+OpenSSL 3.3.2 is a security patch release. The most severe CVE fixed in this
+release is Moderate.
+
+This release incorporates the following bug fixes and mitigations:
+
+  * Fixed possible denial of service in X.509 name checks
+    ([CVE-2024-6119])
+
+  * Fixed possible buffer overread in SSL_select_next_proto()
+    ([CVE-2024-5535])
+
+### Major changes between OpenSSL 3.3.0 and OpenSSL 3.3.1 [4 Jun 2024]
+
+OpenSSL 3.3.1 is a security patch release. The most severe CVE fixed in this
+release is Low.
+
+This release incorporates the following bug fixes and mitigations:
+
+  * Fixed potential use after free after SSL_free_buffers() is called
+    ([CVE-2024-4741])
+
+  * Fixed an issue where checking excessively long DSA keys or parameters may
+    be very slow
+    ([CVE-2024-4603])
+
+### Major changes between OpenSSL 3.2 and OpenSSL 3.3.0 [9 Apr 2024]
 
 OpenSSL 3.3.0 is a feature release adding significant new functionality to
 OpenSSL.
@@ -95,6 +263,8 @@ This release adds the following new features:
   * Added X509_STORE_get1_objects to avoid issues with the existing
     X509_STORE_get0_objects API in multi-threaded applications.
 
+  * Support for using certificate profiles and extened delayed delivery in CMP
+
 This release incorporates the following potentially significant or incompatible
 changes:
 
@@ -102,7 +272,7 @@ changes:
 
   * Optimized AES-CTR for ARM Neoverse V1 and V2
 
-  * Enable AES and SHA3 optimisations on Applie Silicon M3-based MacOS systems
+  * Enable AES and SHA3 optimisations on Apple Silicon M3-based MacOS systems
     similar to M1/M2.
 
   * Various optimizations for cryptographic routines using RISC-V vector crypto
@@ -171,8 +341,10 @@ This release incorporates the following bug fixes and mitigations:
 
   * Fixed PKCS12 Decoding crashes
     ([CVE-2024-0727])
+
   * Fixed excessive time spent checking invalid RSA public keys
     ([CVE-2023-6237])
+
   * Fixed POLY1305 MAC implementation corrupting vector registers on PowerPC
     CPUs which support PowerISA 2.07
     ([CVE-2023-6129])
@@ -545,7 +717,7 @@ OpenSSL 1.1.1
     * Rewrite of the packet construction code for "safer" packet handling
     * Rewrite of the extension handling code
     For further important information, see the [TLS1.3 page](
-    https://wiki.openssl.org/index.php/TLS1.3) in the OpenSSL Wiki.
+    https://github.com/openssl/openssl/wiki/TLS1.3) in the OpenSSL Wiki.
 
   * Complete rewrite of the OpenSSL random number generator to introduce the
     following capabilities
@@ -1725,6 +1897,12 @@ OpenSSL 0.9.x
 
 <!-- Links -->
 
+[CVE-2024-13176]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-13176
+[CVE-2024-9143]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-9143
+[CVE-2024-6119]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-6119
+[CVE-2024-5535]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-5535
+[CVE-2024-4741]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-4741
+[CVE-2024-4603]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-4603
 [CVE-2024-2511]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-2511
 [CVE-2024-0727]: https://www.openssl.org/news/vulnerabilities.html#CVE-2024-0727
 [CVE-2023-6237]: https://www.openssl.org/news/vulnerabilities.html#CVE-2023-6237
@@ -1894,7 +2072,10 @@ OpenSSL 0.9.x
 [CVE-2006-2940]: https://www.openssl.org/news/vulnerabilities.html#CVE-2006-2940
 [CVE-2006-2937]: https://www.openssl.org/news/vulnerabilities.html#CVE-2006-2937
 [CVE-2005-2969]: https://www.openssl.org/news/vulnerabilities.html#CVE-2005-2969
-[OpenSSL Guide]: https://www.openssl.org/docs/manmaster/man7/ossl-guide-introduction.html
+[OpenSSL Guide]: https://docs.openssl.org/master/man7/ossl-guide-introduction
 [CHANGES.md]: ./CHANGES.md
 [README-QUIC.md]: ./README-QUIC.md
 [issue tracker]: https://github.com/openssl/openssl/issues
+[CMVP]: https://csrc.nist.gov/projects/cryptographic-module-validation-program
+[ESV]: https://csrc.nist.gov/Projects/cryptographic-module-validation-program/entropy-validations
+[jitterentropy-library]: https://github.com/smuellerDD/jitterentropy-library

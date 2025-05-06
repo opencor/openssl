@@ -178,9 +178,9 @@ int pkey_main(int argc, char **argv)
     if (text && text_pub)
         BIO_printf(bio_err,
                    "Warning: The -text option is ignored with -text_pub\n");
-    if (traditional && (noout || outformat != FORMAT_PEM))
+    if (traditional && (noout || pubout))
         BIO_printf(bio_err,
-                   "Warning: The -traditional is ignored since there is no PEM output\n");
+                   "Warning: -traditional is ignored with no private key output\n");
 
     /* -pubout and -text is the same as -text_pub */
     if (!text_pub && pubout && text) {
@@ -208,15 +208,15 @@ int pkey_main(int argc, char **argv)
         goto end;
     }
 
-    out = bio_open_owner(outfile, outformat, private);
-    if (out == NULL)
-        goto end;
-
     if (pubin)
         pkey = load_pubkey(infile, informat, 1, passin, e, "Public Key");
     else
         pkey = load_key(infile, informat, 1, passin, e, "key");
     if (pkey == NULL)
+        goto end;
+
+    out = bio_open_owner(outfile, outformat, private);
+    if (out == NULL)
         goto end;
 
 #ifndef OPENSSL_NO_EC
@@ -295,8 +295,14 @@ int pkey_main(int argc, char **argv)
                     goto end;
             } else {
                 assert(private);
-                if (!i2d_PrivateKey_bio(out, pkey))
-                    goto end;
+                if (traditional) {
+                    if (!i2d_PrivateKey_bio(out, pkey))
+                        goto end;
+                } else {
+                    if (!i2d_PKCS8PrivateKey_bio(out, pkey, NULL, NULL, 0,
+                                                 NULL, NULL))
+                        goto end;
+                }
             }
         } else {
             BIO_printf(bio_err, "Bad format specified for key\n");

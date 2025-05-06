@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -20,11 +20,20 @@
 typedef struct ht_internal_st HT;
 
 /*
+ * Represents a key to a hashtable
+ */
+typedef struct ht_key_header_st {
+    size_t keysize;
+    uint8_t *keybuf;
+} HT_KEY;
+
+/*
  * Represents a value in the hash table
  */
 typedef struct ht_value_st {
     void *value;
     uintptr_t *type_id;
+    HT_KEY key;
 } HT_VALUE;
 
 /*
@@ -42,16 +51,10 @@ typedef struct ht_config_st {
     OSSL_LIB_CTX *ctx;
     void (*ht_free_fn)(HT_VALUE *obj);
     uint64_t (*ht_hash_fn)(uint8_t *key, size_t keylen);
-    uint32_t init_neighborhoods;
+    size_t init_neighborhoods;
+    uint32_t collision_check;
+    uint32_t lockless_reads;
 } HT_CONFIG;
-
-/*
- * Key value for a hash lookup
- */
-typedef struct ht_key_header_st {
-    size_t keysize;
-    uint8_t *keybuf;
-} HT_KEY;
 
 /*
  * Hashtable key rules
@@ -134,6 +137,26 @@ memset((key), 0, sizeof(*(key))); \
  */
 #define HT_SET_KEY_STRING_CASE(key, member, value) do { \
    ossl_ht_strcase((key)->keyfields.member, value, sizeof((key)->keyfields.member) -1); \
+} while(0)
+
+/*
+ * Same as HT_SET_KEY_STRING but also takes length of the string.
+ */
+#define HT_SET_KEY_STRING_N(key, member, value, len) do { \
+    if ((value) != NULL) { \
+        if (len < sizeof((key)->keyfields.member)) \
+            strncpy((key)->keyfields.member, value, len); \
+        else \
+            strncpy((key)->keyfields.member, value, sizeof((key)->keyfields.member) - 1); \
+    } \
+} while(0)
+
+/* Same as HT_SET_KEY_STRING_CASE but also takes length of the string. */
+#define HT_SET_KEY_STRING_CASE_N(key, member, value, len) do { \
+    if (len < sizeof((key)->keyfields.member)) \
+        ossl_ht_strcase((key)->keyfields.member, value, len); \
+    else \
+        ossl_ht_strcase((key)->keyfields.member, value, sizeof((key)->keyfields.member) - 1); \
 } while(0)
 
 /*
@@ -247,7 +270,7 @@ static void ossl_unused ossl_ht_strcase(char *tgt, const char *src, int len)
 /*
  * Create a new hashtable
  */
-HT *ossl_ht_new(HT_CONFIG *conf);
+HT *ossl_ht_new(const HT_CONFIG *conf);
 
 /*
  * Frees a hash table, potentially freeing all elements

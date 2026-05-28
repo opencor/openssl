@@ -1,4 +1,4 @@
-# Copyright 2016-2024 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2016-2026 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -45,8 +45,10 @@ use constant {
     AL_DESC_CLOSE_NOTIFY => 0,
     AL_DESC_UNEXPECTED_MESSAGE => 10,
     AL_DESC_BAD_RECORD_MAC => 20,
+	AL_DESC_BAD_CERTIFICATE => 42,
     AL_DESC_ILLEGAL_PARAMETER => 47,
     AL_DESC_DECODE_ERROR => 50,
+    AL_DESC_DECRYPT_ERROR => 51,
     AL_DESC_PROTOCOL_VERSION => 70,
     AL_DESC_NO_RENEGOTIATION => 100,
     AL_DESC_MISSING_EXTENSION => 109
@@ -99,6 +101,8 @@ use constant {
     EXT_RENEGOTIATE => 65281,
     EXT_NPN => 13172,
     EXT_CRYPTOPRO_BUG_EXTENSION => 0xfde8,
+    EXT_ECH => 0xfe0d,
+    EXT_ECH_OUTER => 0xfd00,
     EXT_UNKNOWN => 0xfffe,
     #Unknown extension that should appear last
     EXT_FORCE_LAST => 0xffff
@@ -128,6 +132,7 @@ use constant {
     SIG_ALG_DSA_SHA256 => 0x0402,
     SIG_ALG_DSA_SHA384 => 0x0502,
     SIG_ALG_DSA_SHA512 => 0x0602,
+    SIG_ALG_MLDSA65 => 0x0905,
     OSSL_SIG_ALG_RSA_PKCS1_SHA224 => 0x0301,
     OSSL_SIG_ALG_DSA_SHA224 => 0x0302,
     OSSL_SIG_ALG_ECDSA_SHA224 => 0x0303
@@ -190,7 +195,7 @@ sub get_messages
     }
     $server = $serverin;
 
-    if ($record->content_type == TLSProxy::Record::RT_CCS) {
+    if ($record->content_type == TLSProxy::Record::RT_CCS()) {
         if ($payload ne "") {
             #We can't handle this yet
             die "CCS received before message data complete\n";
@@ -202,7 +207,7 @@ sub get_messages
                 TLSProxy::Record->client_encrypting(1);
             }
         }
-    } elsif ($record->content_type == TLSProxy::Record::RT_HANDSHAKE) {
+    } elsif ($record->content_type == TLSProxy::Record::RT_HANDSHAKE()) {
         if ($record->len == 0 || $record->len_real == 0) {
             print "  Message truncated\n";
         } else {
@@ -302,7 +307,7 @@ sub get_messages
                 }
             }
         }
-    } elsif ($record->content_type == TLSProxy::Record::RT_APPLICATION_DATA) {
+    } elsif ($record->content_type == TLSProxy::Record::RT_APPLICATION_DATA()) {
         print "  [ENCRYPTED APPLICATION DATA]\n";
         print "  [".$record->decrypt_data."]\n";
 
@@ -310,7 +315,7 @@ sub get_messages
             $success = 1;
             $end = 1;
         }
-    } elsif ($record->content_type == TLSProxy::Record::RT_ALERT) {
+    } elsif ($record->content_type == TLSProxy::Record::RT_ALERT()) {
         my ($alertlev, $alertdesc) = unpack('CC', $record->decrypt_data);
         print "  [$alertlev, $alertdesc]\n";
         #A CloseNotify from the client indicates we have finished successfully
@@ -617,7 +622,7 @@ sub repack
             if (TLSProxy::Proxy->is_tls13()) {
                 #Add content type (1 byte) and 16 tag bytes
                 $rec->data($rec->decrypt_data
-                    .pack("C", TLSProxy::Record::RT_HANDSHAKE).("\0"x16));
+                    .pack("C", TLSProxy::Record::RT_HANDSHAKE()).("\0"x16));
             } elsif ($rec->etm()) {
                 my $data = $rec->decrypt_data;
                 #Add padding
@@ -632,7 +637,7 @@ sub repack
                     $data .= pack("C", $macval);
                 }
 
-                if ($rec->version() >= TLSProxy::Record::VERS_TLS_1_1) {
+                if ($rec->version() >= TLSProxy::Record::VERS_TLS_1_1()) {
                     #Explicit IV
                     $data = ("\0"x16).$data;
                 }

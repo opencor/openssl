@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -27,17 +27,17 @@ static int ct_base64_decode(const char *in, unsigned char **out)
     int outlen, i;
     unsigned char *outbuf = NULL;
 
-    if (inlen == 0) {
+    if (inlen == 0 || inlen > INT_MAX) {
         *out = NULL;
         return 0;
     }
 
-    outlen = (inlen / 4) * 3;
+    outlen = (int)((inlen / 4) * 3);
     outbuf = OPENSSL_malloc(outlen);
     if (outbuf == NULL)
         goto err;
 
-    outlen = EVP_DecodeBlock(outbuf, (unsigned char *)in, inlen);
+    outlen = EVP_DecodeBlock(outbuf, (unsigned char *)in, (int)inlen);
     if (outlen < 0) {
         ERR_raise(ERR_LIB_CT, CT_R_BASE64_DECODE_ERROR);
         goto err;
@@ -59,13 +59,13 @@ err:
 }
 
 SCT *SCT_new_from_base64(unsigned char version, const char *logid_base64,
-                         ct_log_entry_type_t entry_type, uint64_t timestamp,
-                         const char *extensions_base64,
-                         const char *signature_base64)
+    ct_log_entry_type_t entry_type, uint64_t timestamp,
+    const char *extensions_base64,
+    const char *signature_base64)
 {
     SCT *sct = SCT_new();
     unsigned char *dec = NULL;
-    const unsigned char* p = NULL;
+    const unsigned char *p = NULL;
     int declen;
 
     if (sct == NULL) {
@@ -118,7 +118,7 @@ SCT *SCT_new_from_base64(unsigned char version, const char *logid_base64,
 
     return sct;
 
- err:
+err:
     OPENSSL_free(dec);
     SCT_free(sct);
     return NULL;
@@ -131,8 +131,8 @@ SCT *SCT_new_from_base64(unsigned char version, const char *logid_base64,
  * -1 on internal (malloc) failure
  */
 int CTLOG_new_from_base64_ex(CTLOG **ct_log, const char *pkey_base64,
-                             const char *name, OSSL_LIB_CTX *libctx,
-                             const char *propq)
+    const char *name, OSSL_LIB_CTX *libctx,
+    const char *propq)
 {
     unsigned char *pkey_der = NULL;
     int pkey_der_len;
@@ -168,7 +168,7 @@ int CTLOG_new_from_base64_ex(CTLOG **ct_log, const char *pkey_base64,
 }
 
 int CTLOG_new_from_base64(CTLOG **ct_log, const char *pkey_base64,
-                          const char *name)
+    const char *name)
 {
     return CTLOG_new_from_base64_ex(ct_log, pkey_base64, name, NULL, NULL);
 }

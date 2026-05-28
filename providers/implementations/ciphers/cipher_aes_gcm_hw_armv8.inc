@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -13,7 +13,7 @@
  */
 
 size_t armv8_aes_gcm_encrypt(const unsigned char *in, unsigned char *out, size_t len,
-                             const void *key, unsigned char ivec[16], u64 *Xi)
+                             const void *key, unsigned char ivec[16], uint64_t *Xi)
 {
     AES_KEY *aes_key = (AES_KEY *)key;
     size_t align_bytes = len - len % 16;
@@ -45,7 +45,7 @@ size_t armv8_aes_gcm_encrypt(const unsigned char *in, unsigned char *out, size_t
 }
 
 size_t armv8_aes_gcm_decrypt(const unsigned char *in, unsigned char *out, size_t len,
-                             const void *key, unsigned char ivec[16], u64 *Xi)
+                             const void *key, unsigned char ivec[16], uint64_t *Xi)
 {
     AES_KEY *aes_key = (AES_KEY *)key;
     size_t align_bytes = len - len % 16;

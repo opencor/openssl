@@ -58,7 +58,8 @@
 /include/openssl/x509_acert.h
 /include/openssl/x509_vfy.h
 /include/openssl/core_names.h
-/include/internal/param_names.h
+
+/apps/include/configuration.h
 
 # Auto generated parameter name files
 /crypto/params_idx.c
@@ -76,6 +77,7 @@ providers/common/der/der_rsa_gen.c
 providers/common/der/der_wrap_gen.c
 providers/common/der/der_sm2_gen.c
 providers/common/der/der_ml_dsa_gen.c
+providers/common/der/der_hkdf_gen.c
 providers/common/include/prov/der_slh_dsa.h
 providers/common/include/prov/der_dsa.h
 providers/common/include/prov/der_ec.h
@@ -85,6 +87,104 @@ providers/common/include/prov/der_digests.h
 providers/common/include/prov/der_wrap.h
 providers/common/include/prov/der_sm2.h
 providers/common/include/prov/der_ml_dsa.h
+providers/common/include/prov/der_hkdf.h
+providers/fips/fipsparams.inc
+providers/implementations/asymciphers/rsa_enc.inc
+providers/implementations/asymciphers/sm2_enc.inc
+providers/implementations/exchange/dh_exch.inc
+providers/implementations/exchange/ecdh_exch.inc
+providers/implementations/exchange/ecx_exch.inc
+providers/implementations/encode_decode/decode_der2key.inc
+providers/implementations/encode_decode/decode_epki2pki.inc
+providers/implementations/encode_decode/decode_pem2der.inc
+providers/implementations/encode_decode/decode_pvk2key.inc
+providers/implementations/encode_decode/decode_spki2typespki.inc
+providers/implementations/encode_decode/encode_key2any.inc
+providers/implementations/encode_decode/encode_key2ms.inc
+providers/implementations/kdfs/argon2.inc
+providers/implementations/kdfs/hkdf.inc
+providers/implementations/kdfs/hmacdrbg_kdf.inc
+providers/implementations/kdfs/ikev2kdf.inc
+providers/implementations/kdfs/kbkdf.inc
+providers/implementations/kdfs/krb5kdf.inc
+providers/implementations/kdfs/pbkdf1.inc
+providers/implementations/kdfs/pbkdf2.inc
+providers/implementations/kdfs/pkcs12kdf.inc
+providers/implementations/kdfs/pvkkdf.inc
+providers/implementations/kdfs/scrypt.inc
+providers/implementations/kdfs/snmpkdf.inc
+providers/implementations/kdfs/srtpkdf.inc
+providers/implementations/kdfs/sshkdf.inc
+providers/implementations/kdfs/sskdf.inc
+providers/implementations/kdfs/tls1_prf.inc
+providers/implementations/kdfs/x942kdf.inc
+providers/implementations/kdfs/x963kdf.inc
+providers/implementations/kem/ec_kem.inc
+providers/implementations/kem/ecx_kem.inc
+providers/implementations/kem/ml_kem_kem.inc
+providers/implementations/kem/rsa_kem.inc
+providers/implementations/keymgmt/ml_dsa_kmgmt.inc
+providers/implementations/keymgmt/ml_kem_kmgmt.inc
+providers/implementations/keymgmt/mlx_kmgmt.inc
+providers/implementations/signature/dsa_sig.inc
+providers/implementations/signature/ecdsa_sig.inc
+providers/implementations/keymgmt/dh_kmgmt.inc
+providers/implementations/keymgmt/dsa_kmgmt.inc
+providers/implementations/keymgmt/ecx_kmgmt.inc
+providers/implementations/keymgmt/lms_kmgmt.inc
+providers/implementations/keymgmt/mac_legacy_kmgmt.inc
+providers/implementations/keymgmt/ml_dsa_kmgmt.inc
+providers/implementations/keymgmt/ml_kem_kmgmt.inc
+providers/implementations/keymgmt/mlx_kmgmt.inc
+providers/implementations/keymgmt/slh_dsa_kmgmt.inc
+providers/implementations/keymgmt/template_kmgmt.inc
+providers/implementations/signature/eddsa_sig.inc
+providers/implementations/signature/mac_legacy_sig.inc
+providers/implementations/signature/ml_dsa_sig.inc
+providers/implementations/signature/rsa_sig.inc
+providers/implementations/signature/slh_dsa_sig.inc
+providers/implementations/signature/sm2_sig.inc
+providers/implementations/skeymgmt/generic.inc
+providers/implementations/storemgmt/file_store_any2obj.inc
+providers/implementations/storemgmt/file_store.inc
+providers/implementations/storemgmt/winstore_store.inc
+providers/implementations/ciphers/cipher_aes_cbc_hmac_sha.inc
+providers/implementations/ciphers/cipher_aes_cbc_hmac_sha_etm.inc
+providers/implementations/ciphers/cipher_aes_gcm_siv.inc
+providers/implementations/ciphers/cipher_aes_ocb.inc
+providers/implementations/ciphers/cipher_aes_siv.inc
+providers/implementations/ciphers/cipher_aes_wrp.inc
+providers/implementations/ciphers/cipher_aes_xts.inc
+providers/implementations/ciphers/ciphercommon.inc
+providers/implementations/ciphers/ciphercommon_ccm.inc
+providers/implementations/ciphers/ciphercommon_gcm.inc
+providers/implementations/ciphers/cipher_chacha20.inc
+providers/implementations/ciphers/cipher_chacha20_poly1305.inc
+providers/implementations/ciphers/cipher_null.inc
+providers/implementations/ciphers/cipher_rc4_hmac_md5.inc
+providers/implementations/ciphers/cipher_sm2_xts.c
+providers/implementations/ciphers/cipher_sm4_xts.inc
+providers/implementations/digests/blake2_prov.inc
+providers/implementations/digests/digestcommon.inc
+providers/implementations/digests/mdc2_prov.inc
+providers/implementations/digests/sha2_prov.inc
+providers/implementations/digests/sha3_prov.inc
+providers/implementations/digests/ml_dsa_mu_prov.inc
+providers/implementations/digests/cshake_prov.inc
+providers/implementations/include/prov/blake2_params.inc
+providers/implementations/macs/cmac_prov.inc
+providers/implementations/macs/gmac_prov.inc
+providers/implementations/macs/hmac_prov.inc
+providers/implementations/macs/kmac_prov.inc
+providers/implementations/macs/poly1305_prov.inc
+providers/implementations/macs/siphash_prov.inc
+providers/implementations/rands/drbg_ctr.inc
+providers/implementations/rands/drbg_hash.inc
+providers/implementations/rands/drbg_hmac.inc
+providers/implementations/rands/fips_crng_test.inc
+providers/implementations/rands/seed_src.inc
+providers/implementations/rands/seed_src_jitter.inc
+providers/implementations/rands/test_rng.inc
 
 # error code files
 /crypto/err/openssl.txt.old
@@ -100,6 +200,7 @@ providers/common/include/prov/der_ml_dsa.h
 /test/gost2814789t
 /test/ssltest_old
 /test/*test
+/test/*memfail
 /test/fips_aesavs
 /test/fips_desmovs
 /test/fips_dhvs
@@ -154,11 +255,14 @@ providers/common/include/prov/der_ml_dsa.h
 /demos/guide/quic-client-non-block
 /demos/guide/quic-hq-interop
 /demos/guide/quic-multi-stream
+/demos/guide/quic-server-block
+/demos/guide/quic-server-non-block
 /demos/guide/tls-client-block
 /demos/guide/tls-client-non-block
 /demos/http3/libnghttp3.pc
 /demos/http3/nghttp3/
 /demos/http3/ossl-nghttp3-demo
+/demos/http3/ossl-nghttp3-demo-server
 /demos/kdf/argon2
 /demos/kdf/hkdf
 /demos/kdf/pbkdf2
@@ -174,6 +278,8 @@ providers/common/include/prov/der_ml_dsa.h
 /demos/pkey/EVP_PKEY_DSA_paramvalidate
 /demos/pkey/EVP_PKEY_EC_keygen
 /demos/pkey/EVP_PKEY_RSA_keygen
+/demos/quic/server/server
+/demos/quic/poll-server/quic-server-ssl-poll-http
 /demos/signature/EVP_DSA_Signature_demo
 /demos/signature/EVP_EC_Signature_demo
 /demos/signature/EVP_ED_Signature_demo
@@ -205,8 +311,6 @@ providers/common/include/prov/der_ml_dsa.h
 
 # Misc auto generated files
 /doc/man7/openssl_user_macros.pod
-/tools/c_rehash
-/tools/c_rehash.pl
 /util/shlib_wrap.sh
 /util/wrap.pl
 /tags
@@ -270,7 +374,7 @@ providers/common/include/prov/der_ml_dsa.h
 # Auto generated assembly language source files
 *.s
 !/crypto/*/asm/*.s
-/crypto/arm*.S
+/crypto/*.S
 /crypto/*/*.S
 *.asm
 !/crypto/*/asm/*.asm
@@ -327,3 +431,11 @@ doc-nits
 # LSP (Language Server Protocol) support
 .cache/
 compile_commands.json
+
+# coverage files
+*.gcda
+*.gcno
+lcov.info
+run_tests
+depend
+

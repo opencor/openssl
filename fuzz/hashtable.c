@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,13 +52,13 @@ static HT *fuzzer_table = NULL;
 /*
  * Operational values
  */
-#define OP_INSERT  0
-#define OP_DELETE  1
-#define OP_LOOKUP  2
-#define OP_FLUSH   3
+#define OP_INSERT 0
+#define OP_DELETE 1
+#define OP_LOOKUP 2
+#define OP_FLUSH 3
 #define OP_FOREACH 4
-#define OP_FILTER  5
-#define OP_END     6 
+#define OP_FILTER 5
+#define OP_END 6
 
 #define OP_MASK 0x3f
 #define INSERT_REPLACE_MASK 0x40
@@ -99,11 +99,11 @@ static void fuzz_free_cb(HT_VALUE *v)
 
 int FuzzerInitialize(int *argc, char ***argv)
 {
-    HT_CONFIG fuzz_conf = {NULL, fuzz_free_cb, NULL, 0, 1};
+    HT_CONFIG fuzz_conf = { NULL, fuzz_free_cb, NULL, 0, 1, 0 };
 
     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
     ERR_clear_error();
-    prediction_table = OPENSSL_zalloc(sizeof(FUZZER_VALUE) * 65537);
+    prediction_table = OPENSSL_calloc(65537, sizeof(FUZZER_VALUE));
     if (prediction_table == NULL)
         return -1;
     fuzzer_table = ossl_ht_new(&fuzz_conf);
@@ -152,7 +152,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
     /*
      * Now do our operation
      */
-    switch(OPERATION(op_flags)) {
+    switch (OPERATION(op_flags)) {
     case OP_INSERT:
         valptr = &prediction_table[keyval];
 
@@ -183,10 +183,10 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
          */
         if (IS_REPLACE(op_flags))
             rc = ossl_ht_fz_FUZZER_VALUE_insert(fuzzer_table, TO_HT_KEY(&key),
-                                                valptr, &lval);
+                valptr, &lval);
         else
             rc = ossl_ht_fz_FUZZER_VALUE_insert(fuzzer_table, TO_HT_KEY(&key),
-                                                valptr, NULL);
+                valptr, NULL);
 
         if (rc == -1)
             /* failed to grow the hash table due to too many collisions */
@@ -276,7 +276,8 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
         HT_SET_KEY_FIELD(&key, fuzzkey, keyval);
 
         /* lock the table for reading */
-        ossl_ht_read_lock(fuzzer_table);
+        if (!ossl_ht_read_lock(fuzzer_table))
+            return 0;
 
         /*
          * If the value to find is not already allocated
@@ -323,7 +324,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
 
     case OP_FLUSH:
         /*
-         * only flush the table rarely 
+         * only flush the table rarely
          */
         if ((flushes % 100000) != 1) {
             skipped_values++;
@@ -341,7 +342,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
         /*
          * now check to make sure everything is free
          */
-       for (i = 0; i < USHRT_MAX; i++)
+        for (i = 0; i < USHRT_MAX; i++)
             OPENSSL_assert((prediction_table[i].flags & FZ_FLAG_ALLOCATED) == 0);
 
         /* good flush */

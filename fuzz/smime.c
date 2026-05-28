@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2023-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ int FuzzerInitialize(int *argc, char ***argv)
 
 int FuzzerTestOneInput(const uint8_t *buf, size_t len)
 {
-    BIO *b = BIO_new_mem_buf(buf, len);
+    BIO *b = BIO_new_mem_buf(buf, (int)len);
     PKCS7 *p7 = SMIME_read_PKCS7(b, NULL);
 
     if (p7 != NULL) {
@@ -32,7 +32,7 @@ int FuzzerTestOneInput(const uint8_t *buf, size_t len)
             STACK_OF(X509_ALGOR) *algs;
 
             PKCS7_cert_from_signer_info(p7,
-                                        sk_PKCS7_SIGNER_INFO_value(p7si, i));
+                sk_PKCS7_SIGNER_INFO_value(p7si, i));
             algs = PKCS7_get_smimecap(sk_PKCS7_SIGNER_INFO_value(p7si, i));
             sk_X509_ALGOR_pop_free(algs, X509_ALGOR_free);
         }

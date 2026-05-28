@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -102,8 +102,7 @@ const char *X509_verify_cert_error_string(long n)
     case X509_V_ERR_KEYUSAGE_NO_DIGITAL_SIGNATURE:
         return "key usage does not include digital signature";
     case X509_V_ERR_PROXY_CERTIFICATES_NOT_ALLOWED:
-        return
-            "proxy certificates not allowed, please set the appropriate flag";
+        return "proxy certificates not allowed, please set the appropriate flag";
     case X509_V_ERR_INVALID_EXTENSION:
         return "invalid or inconsistent certificate extension";
     case X509_V_ERR_INVALID_POLICY_EXTENSION:
@@ -174,6 +173,16 @@ const char *X509_verify_cert_error_string(long n)
         return "OCSP verification failed";
     case X509_V_ERR_OCSP_CERT_UNKNOWN:
         return "OCSP unknown cert";
+    case X509_V_ERR_OCSP_RESP_INVALID:
+        return "OCSP response(s) invalid";
+    case X509_V_ERR_OCSP_SIGNATURE_FAILURE:
+        return "OCSP response signature verification failure";
+    case X509_V_ERR_OCSP_NOT_YET_VALID:
+        return "OCSP response not yet valid (contains a date in the future)";
+    case X509_V_ERR_OCSP_HAS_EXPIRED:
+        return "OCSP response has expired";
+    case X509_V_ERR_OCSP_NO_RESPONSE:
+        return "no OCSP response available for certificate";
     case X509_V_ERR_UNSUPPORTED_SIGNATURE_ALGORITHM:
         return "Cannot find certificate signature algorithm";
     case X509_V_ERR_SIGNATURE_ALGORITHM_MISMATCH:
@@ -214,6 +223,12 @@ const char *X509_verify_cert_error_string(long n)
         return "Certificate public key has explicit ECC parameters";
     case X509_V_ERR_RPK_UNTRUSTED:
         return "Raw public key untrusted, no trusted keys configured";
+    case X509_V_ERR_EMPTY_AUTHORITY_KEY_IDENTIFIER:
+        return "Empty Authority Key Identifier";
+    case X509_V_ERR_AKID_ISSUER_SERIAL_NOT_PAIRED:
+        return "Authority Key Identifier issuer and serial number must be paired";
+    case X509_V_ERR_DUPLICATE_EXTENSION:
+        return "Certificate includes more than one instance of a particular extension";
 
         /*
          * Entries must be kept consistent with include/openssl/x509_vfy.h.in

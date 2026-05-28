@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -69,6 +69,8 @@
 #include "prov/provider_util.h"
 #include "prov/securitycheck.h"
 #include "internal/e_os.h"
+#include "internal/fips.h"
+#include "internal/params.h"
 #include "internal/safe_math.h"
 
 OSSL_SAFE_MATH_UNSIGNED(size_t, size_t)
@@ -84,12 +86,16 @@ static OSSL_FUNC_kdf_gettable_ctx_params_fn kdf_tls1_prf_gettable_ctx_params;
 static OSSL_FUNC_kdf_get_ctx_params_fn kdf_tls1_prf_get_ctx_params;
 
 static int tls1_prf_alg(EVP_MAC_CTX *mdctx, EVP_MAC_CTX *sha1ctx,
-                        const unsigned char *sec, size_t slen,
-                        const unsigned char *seed, size_t seed_len,
-                        unsigned char *out, size_t olen);
+    const unsigned char *sec, size_t slen,
+    const unsigned char *seed, size_t seed_len,
+    unsigned char *out, size_t olen);
 
-#define TLS_MD_MASTER_SECRET_CONST        "\x6d\x61\x73\x74\x65\x72\x20\x73\x65\x63\x72\x65\x74"
-#define TLS_MD_MASTER_SECRET_CONST_SIZE   13
+#define TLS_MD_MASTER_SECRET_CONST "\x6d\x61\x73\x74\x65\x72\x20\x73\x65\x63\x72\x65\x74"
+#define TLS_MD_MASTER_SECRET_CONST_SIZE 13
+
+#define TLSPRF_MAX_SEEDS 6
+
+#include "providers/implementations/kdfs/tls1_prf.inc"
 
 /* TLS KDF kdf context structure */
 typedef struct {
@@ -116,6 +122,12 @@ static void *kdf_tls1_prf_new(void *provctx)
 
     if (!ossl_prov_is_running())
         return NULL;
+
+#ifdef FIPS_MODULE
+    if (!ossl_deferred_self_test(PROV_LIBCTX_OF(provctx),
+            ST_ID_KDF_TLS12_PRF))
+        return NULL;
+#endif
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) != NULL) {
         ctx->provctx = provctx;
@@ -155,21 +167,21 @@ static void *kdf_tls1_prf_dup(void *vctx)
     dest = kdf_tls1_prf_new(src->provctx);
     if (dest != NULL) {
         if (src->P_hash != NULL
-                    && (dest->P_hash = EVP_MAC_CTX_dup(src->P_hash)) == NULL)
+            && (dest->P_hash = EVP_MAC_CTX_dup(src->P_hash)) == NULL)
             goto err;
         if (src->P_sha1 != NULL
-                    && (dest->P_sha1 = EVP_MAC_CTX_dup(src->P_sha1)) == NULL)
+            && (dest->P_sha1 = EVP_MAC_CTX_dup(src->P_sha1)) == NULL)
             goto err;
         if (!ossl_prov_memdup(src->sec, src->seclen, &dest->sec, &dest->seclen))
             goto err;
         if (!ossl_prov_memdup(src->seed, src->seedlen, &dest->seed,
-                              &dest->seedlen))
+                &dest->seedlen))
             goto err;
         OSSL_FIPS_IND_COPY(dest, src)
     }
     return dest;
 
- err:
+err:
     kdf_tls1_prf_free(dest);
     return NULL;
 }
@@ -188,13 +200,14 @@ static int fips_ems_check_passed(TLS1_PRF *ctx)
      * as "extended master secret".
      */
     int ems_approved = (ctx->seedlen < TLS_MD_MASTER_SECRET_CONST_SIZE
-                       || memcmp(ctx->seed, TLS_MD_MASTER_SECRET_CONST,
-                                 TLS_MD_MASTER_SECRET_CONST_SIZE) != 0);
+        || memcmp(ctx->seed, TLS_MD_MASTER_SECRET_CONST,
+               TLS_MD_MASTER_SECRET_CONST_SIZE)
+            != 0);
 
     if (!ems_approved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE0,
-                                         libctx, "TLS_PRF", "EMS",
-                                         ossl_fips_config_tls1_prf_ems_check)) {
+                libctx, "TLS_PRF", "EMS",
+                FIPS_CONFIG_TLS1_PRF_EMS_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_EMS_NOT_ENABLED);
             return 0;
         }
@@ -218,8 +231,8 @@ static int fips_digest_check_passed(TLS1_PRF *ctx, const EVP_MD *md)
 
     if (digest_unapproved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE1,
-                                         libctx, "TLS_PRF", "Digest",
-                                         ossl_fips_config_tls1_prf_digest_check)) {
+                libctx, "TLS_PRF", "Digest",
+                FIPS_CONFIG_TLS1_PRF_DIGEST_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED);
             return 0;
         }
@@ -234,8 +247,8 @@ static int fips_key_check_passed(TLS1_PRF *ctx)
 
     if (!key_approved) {
         if (!OSSL_FIPS_IND_ON_UNAPPROVED(ctx, OSSL_FIPS_IND_SETTABLE2,
-                                         libctx, "TLS_PRF", "Key size",
-                                         ossl_fips_config_tls1_prf_key_check)) {
+                libctx, "TLS_PRF", "Key size",
+                FIPS_CONFIG_TLS1_PRF_KEY_CHECK)) {
             ERR_raise(ERR_LIB_PROV, PROV_R_INVALID_KEY_LENGTH);
             return 0;
         }
@@ -245,7 +258,7 @@ static int fips_key_check_passed(TLS1_PRF *ctx)
 #endif
 
 static int kdf_tls1_prf_derive(void *vctx, unsigned char *key, size_t keylen,
-                               const OSSL_PARAM params[])
+    const OSSL_PARAM params[])
 {
     TLS1_PRF *ctx = (TLS1_PRF *)vctx;
 
@@ -275,52 +288,59 @@ static int kdf_tls1_prf_derive(void *vctx, unsigned char *key, size_t keylen,
 #endif
 
     return tls1_prf_alg(ctx->P_hash, ctx->P_sha1,
-                        ctx->sec, ctx->seclen,
-                        ctx->seed, ctx->seedlen,
-                        key, keylen);
+        ctx->sec, ctx->seclen,
+        ctx->seed, ctx->seedlen,
+        key, keylen);
 }
 
 static int kdf_tls1_prf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
 {
-    const OSSL_PARAM *p;
+    struct tls1prf_set_ctx_params_st p;
     TLS1_PRF *ctx = vctx;
-    OSSL_LIB_CTX *libctx = PROV_LIBCTX_OF(ctx->provctx);
+    OSSL_LIB_CTX *libctx;
 
-    if (ossl_param_is_empty(params))
-        return 1;
-
-    if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE0, params,
-                                     OSSL_KDF_PARAM_FIPS_EMS_CHECK))
-        return 0;
-    if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE1, params,
-                                     OSSL_KDF_PARAM_FIPS_DIGEST_CHECK))
-        return 0;
-    if (!OSSL_FIPS_IND_SET_CTX_PARAM(ctx, OSSL_FIPS_IND_SETTABLE2, params,
-                                     OSSL_KDF_PARAM_FIPS_KEY_CHECK))
+    if (ctx == NULL || !tls1prf_set_ctx_params_decoder(params, &p))
         return 0;
 
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_DIGEST)) != NULL) {
+    libctx = PROV_LIBCTX_OF(ctx->provctx);
+
+    if (!OSSL_FIPS_IND_SET_CTX_FROM_PARAM(ctx, OSSL_FIPS_IND_SETTABLE0, p.ind_e))
+        return 0;
+    if (!OSSL_FIPS_IND_SET_CTX_FROM_PARAM(ctx, OSSL_FIPS_IND_SETTABLE1, p.ind_d))
+        return 0;
+    if (!OSSL_FIPS_IND_SET_CTX_FROM_PARAM(ctx, OSSL_FIPS_IND_SETTABLE2, p.ind_k))
+        return 0;
+
+    if (p.digest != NULL) {
         PROV_DIGEST digest;
         const EVP_MD *md = NULL;
+        const char *dgst;
 
-        if (OPENSSL_strcasecmp(p->data, SN_md5_sha1) == 0) {
-            if (!ossl_prov_macctx_load_from_params(&ctx->P_hash, params,
-                                                   OSSL_MAC_NAME_HMAC,
-                                                   NULL, SN_md5, libctx)
-                || !ossl_prov_macctx_load_from_params(&ctx->P_sha1, params,
-                                                      OSSL_MAC_NAME_HMAC,
-                                                      NULL, SN_sha1, libctx))
+        if (!OSSL_PARAM_get_utf8_string_ptr(p.digest, &dgst))
+            return 0;
+
+        if (OPENSSL_strcasecmp(dgst, OSSL_DIGEST_NAME_MD5_SHA1) == 0) {
+            if (!ossl_prov_macctx_load(&ctx->P_hash, NULL, NULL, NULL,
+                    p.propq,
+                    OSSL_MAC_NAME_HMAC, NULL,
+                    OSSL_DIGEST_NAME_MD5, libctx))
+                return 0;
+            if (!ossl_prov_macctx_load(&ctx->P_sha1, NULL, NULL, NULL,
+                    p.propq,
+                    OSSL_MAC_NAME_HMAC, NULL,
+                    OSSL_DIGEST_NAME_SHA1, libctx))
                 return 0;
         } else {
             EVP_MAC_CTX_free(ctx->P_sha1);
-            if (!ossl_prov_macctx_load_from_params(&ctx->P_hash, params,
-                                                   OSSL_MAC_NAME_HMAC,
-                                                   NULL, NULL, libctx))
+            ctx->P_sha1 = NULL;
+            if (!ossl_prov_macctx_load(&ctx->P_hash, NULL, NULL, p.digest,
+                    p.propq,
+                    OSSL_MAC_NAME_HMAC, NULL, NULL, libctx))
                 return 0;
         }
 
         memset(&digest, 0, sizeof(digest));
-        if (!ossl_prov_digest_load_from_params(&digest, params, libctx))
+        if (!ossl_prov_digest_load(&digest, p.digest, p.propq, libctx))
             return 0;
 
         md = ossl_prov_digest_md(&digest);
@@ -340,10 +360,11 @@ static int kdf_tls1_prf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
         ossl_prov_digest_reset(&digest);
     }
 
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_SECRET)) != NULL) {
+    if (p.secret != NULL) {
         OPENSSL_clear_free(ctx->sec, ctx->seclen);
         ctx->sec = NULL;
-        if (!OSSL_PARAM_get_octet_string(p, (void **)&ctx->sec, 0, &ctx->seclen))
+        if (!OSSL_PARAM_get_octet_string(p.secret, (void **)&ctx->sec, 0,
+                &ctx->seclen))
             return 0;
 
 #ifdef FIPS_MODULE
@@ -351,92 +372,95 @@ static int kdf_tls1_prf_set_ctx_params(void *vctx, const OSSL_PARAM params[])
             return 0;
 #endif
     }
-    /* The seed fields concatenate, so process them all */
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_KDF_PARAM_SEED)) != NULL) {
-        for (; p != NULL; p = OSSL_PARAM_locate_const(p + 1,
-                                                      OSSL_KDF_PARAM_SEED)) {
-            if (p->data_size != 0 && p->data != NULL) {
-                const void *val = NULL;
-                size_t sz = 0;
-                unsigned char *seed;
-                size_t seedlen;
+
+    /*
+     * The seed fields concatenate across set calls, so process them all
+     * but only reallocate once.
+     */
+    if (p.num_seed > 0) {
+        const void *vals[TLSPRF_MAX_SEEDS];
+        size_t sizes[TLSPRF_MAX_SEEDS];
+        size_t seedlen = ctx->seedlen;
+        int i, n = 0;
+
+        for (i = 0; i < p.num_seed; i++) {
+            sizes[i] = 0;
+            vals[i] = NULL;
+            if (p.seed[i]->data_size != 0 && p.seed[i]->data != NULL) {
                 int err = 0;
 
-                if (!OSSL_PARAM_get_octet_string_ptr(p, &val, &sz))
+                if (!OSSL_PARAM_get_octet_string_ptr(p.seed[i],
+                        vals + n, sizes + n))
                     return 0;
 
-                seedlen = safe_add_size_t(ctx->seedlen, sz, &err);
+                seedlen = safe_add_size_t(seedlen, sizes[n], &err);
                 if (err)
                     return 0;
+                n++;
+            }
+        }
 
-                seed = OPENSSL_clear_realloc(ctx->seed, ctx->seedlen, seedlen);
-                if (!seed)
-                    return 0;
+        if (seedlen != ctx->seedlen) {
+            unsigned char *seed = OPENSSL_clear_realloc(ctx->seed,
+                ctx->seedlen, seedlen);
 
-                ctx->seed = seed;
-                if (ossl_assert(sz != 0))
-                    memcpy(ctx->seed + ctx->seedlen, val, sz);
-                ctx->seedlen = seedlen;
+            if (seed == NULL)
+                return 0;
+            ctx->seed = seed;
+
+            /* No errors are possible, so copy them across */
+            for (i = 0; i < n; i++) {
+                memcpy(ctx->seed + ctx->seedlen, vals[i], sizes[i]);
+                ctx->seedlen += sizes[i];
             }
         }
     }
+
     return 1;
 }
 
 static const OSSL_PARAM *kdf_tls1_prf_settable_ctx_params(
-        ossl_unused void *ctx, ossl_unused void *provctx)
+    ossl_unused void *ctx, ossl_unused void *provctx)
 {
-    static const OSSL_PARAM known_settable_ctx_params[] = {
-        OSSL_PARAM_utf8_string(OSSL_KDF_PARAM_PROPERTIES, NULL, 0),
-        OSSL_PARAM_utf8_string(OSSL_KDF_PARAM_DIGEST, NULL, 0),
-        OSSL_PARAM_octet_string(OSSL_KDF_PARAM_SECRET, NULL, 0),
-        OSSL_PARAM_octet_string(OSSL_KDF_PARAM_SEED, NULL, 0),
-        OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_EMS_CHECK)
-        OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_DIGEST_CHECK)
-        OSSL_FIPS_IND_SETTABLE_CTX_PARAM(OSSL_KDF_PARAM_FIPS_KEY_CHECK)
-        OSSL_PARAM_END
-    };
-    return known_settable_ctx_params;
+    return tls1prf_set_ctx_params_list;
 }
 
 static int kdf_tls1_prf_get_ctx_params(void *vctx, OSSL_PARAM params[])
 {
-    OSSL_PARAM *p;
+    struct tls1prf_get_ctx_params_st p;
+    TLS1_PRF *ctx = (TLS1_PRF *)vctx;
 
-    if ((p = OSSL_PARAM_locate(params, OSSL_KDF_PARAM_SIZE)) != NULL) {
-        if (!OSSL_PARAM_set_size_t(p, SIZE_MAX))
-            return 0;
-    }
-    if (!OSSL_FIPS_IND_GET_CTX_PARAM(((TLS1_PRF *)vctx), params))
+    if (ctx == NULL || !tls1prf_get_ctx_params_decoder(params, &p))
+        return 0;
+
+    if (p.size != NULL && !OSSL_PARAM_set_size_t(p.size, SIZE_MAX))
+        return 0;
+
+    if (!OSSL_FIPS_IND_GET_CTX_FROM_PARAM(ctx, p.ind))
         return 0;
     return 1;
 }
 
 static const OSSL_PARAM *kdf_tls1_prf_gettable_ctx_params(
-        ossl_unused void *ctx, ossl_unused void *provctx)
+    ossl_unused void *ctx, ossl_unused void *provctx)
 {
-    static const OSSL_PARAM known_gettable_ctx_params[] = {
-        OSSL_PARAM_size_t(OSSL_KDF_PARAM_SIZE, NULL),
-        OSSL_FIPS_IND_GETTABLE_CTX_PARAM()
-        OSSL_PARAM_END
-    };
-    return known_gettable_ctx_params;
+    return tls1prf_get_ctx_params_list;
 }
 
 const OSSL_DISPATCH ossl_kdf_tls1_prf_functions[] = {
-    { OSSL_FUNC_KDF_NEWCTX, (void(*)(void))kdf_tls1_prf_new },
-    { OSSL_FUNC_KDF_DUPCTX, (void(*)(void))kdf_tls1_prf_dup },
-    { OSSL_FUNC_KDF_FREECTX, (void(*)(void))kdf_tls1_prf_free },
-    { OSSL_FUNC_KDF_RESET, (void(*)(void))kdf_tls1_prf_reset },
-    { OSSL_FUNC_KDF_DERIVE, (void(*)(void))kdf_tls1_prf_derive },
+    { OSSL_FUNC_KDF_NEWCTX, (void (*)(void))kdf_tls1_prf_new },
+    { OSSL_FUNC_KDF_DUPCTX, (void (*)(void))kdf_tls1_prf_dup },
+    { OSSL_FUNC_KDF_FREECTX, (void (*)(void))kdf_tls1_prf_free },
+    { OSSL_FUNC_KDF_RESET, (void (*)(void))kdf_tls1_prf_reset },
+    { OSSL_FUNC_KDF_DERIVE, (void (*)(void))kdf_tls1_prf_derive },
     { OSSL_FUNC_KDF_SETTABLE_CTX_PARAMS,
-      (void(*)(void))kdf_tls1_prf_settable_ctx_params },
+        (void (*)(void))kdf_tls1_prf_settable_ctx_params },
     { OSSL_FUNC_KDF_SET_CTX_PARAMS,
-      (void(*)(void))kdf_tls1_prf_set_ctx_params },
+        (void (*)(void))kdf_tls1_prf_set_ctx_params },
     { OSSL_FUNC_KDF_GETTABLE_CTX_PARAMS,
-      (void(*)(void))kdf_tls1_prf_gettable_ctx_params },
+        (void (*)(void))kdf_tls1_prf_gettable_ctx_params },
     { OSSL_FUNC_KDF_GET_CTX_PARAMS,
-      (void(*)(void))kdf_tls1_prf_get_ctx_params },
+        (void (*)(void))kdf_tls1_prf_get_ctx_params },
     OSSL_DISPATCH_END
 };
 
@@ -461,9 +485,9 @@ const OSSL_DISPATCH ossl_kdf_tls1_prf_functions[] = {
  *     A(i) = HMAC_<hash>(secret, A(i-1))
  */
 static int tls1_prf_P_hash(EVP_MAC_CTX *ctx_init,
-                           const unsigned char *sec, size_t sec_len,
-                           const unsigned char *seed, size_t seed_len,
-                           unsigned char *out, size_t olen)
+    const unsigned char *sec, size_t sec_len,
+    const unsigned char *seed, size_t seed_len,
+    unsigned char *out, size_t olen)
 {
     size_t chunk;
     EVP_MAC_CTX *ctx = NULL, *ctx_Ai = NULL;
@@ -519,7 +543,7 @@ static int tls1_prf_P_hash(EVP_MAC_CTX *ctx_init,
         olen -= chunk;
     }
     ret = 1;
- err:
+err:
     EVP_MAC_CTX_free(ctx);
     EVP_MAC_CTX_free(ctx_Ai);
     OPENSSL_cleanse(Ai, sizeof(Ai));
@@ -547,9 +571,9 @@ static int tls1_prf_P_hash(EVP_MAC_CTX *ctx_init,
  *   PRF(secret, label, seed) = P_<hash>(secret, label + seed)
  */
 static int tls1_prf_alg(EVP_MAC_CTX *mdctx, EVP_MAC_CTX *sha1ctx,
-                        const unsigned char *sec, size_t slen,
-                        const unsigned char *seed, size_t seed_len,
-                        unsigned char *out, size_t olen)
+    const unsigned char *sec, size_t slen,
+    const unsigned char *seed, size_t seed_len,
+    unsigned char *out, size_t olen)
 {
     if (sha1ctx != NULL) {
         /* TLS v1.0 and TLS v1.1 */
@@ -560,14 +584,14 @@ static int tls1_prf_alg(EVP_MAC_CTX *mdctx, EVP_MAC_CTX *sha1ctx,
         size_t L_S2 = L_S1;
 
         if (!tls1_prf_P_hash(mdctx, sec, L_S1,
-                             seed, seed_len, out, olen))
+                seed, seed_len, out, olen))
             return 0;
 
         if ((tmp = OPENSSL_malloc(olen)) == NULL)
             return 0;
 
         if (!tls1_prf_P_hash(sha1ctx, sec + slen - L_S2, L_S2,
-                             seed, seed_len, tmp, olen)) {
+                seed, seed_len, tmp, olen)) {
             OPENSSL_clear_free(tmp, olen);
             return 0;
         }

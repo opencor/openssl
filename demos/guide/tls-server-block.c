@@ -1,5 +1,5 @@
 /*
- *  Copyright 2024 The OpenSSL Project Authors. All Rights Reserved.
+ *  Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  *  Licensed under the Apache License 2.0 (the "License").  You may not use
  *  this file except in compliance with the License.  You can obtain a copy
@@ -16,12 +16,12 @@
 
 /* Include the appropriate header file for SOCK_STREAM */
 #ifdef _WIN32 /* Windows */
-# include <stdarg.h>
-# include <winsock2.h>
+#include <stdarg.h>
+#include <winsock2.h>
 #else /* Linux/Unix */
-# include <err.h>
-# include <sys/socket.h>
-# include <sys/select.h>
+#include <err.h>
+#include <sys/socket.h>
+#include <sys/select.h>
 #endif
 
 #include <openssl/bio.h>
@@ -127,10 +127,10 @@ int main(int argc, char *argv[])
     opts |= SSL_OP_NO_RENEGOTIATION;
 
     /*
-     * Most servers elect to use their own cipher preference rather than that of
-     * the client.
+     * Most servers elect to use their own cipher or group preference rather
+     * than that of the client.
      */
-    opts |= SSL_OP_CIPHER_SERVER_PREFERENCE;
+    opts |= SSL_OP_SERVER_PREFERENCE;
 
     /* Apply the selection options */
     SSL_CTX_set_options(ctx, opts);
@@ -264,8 +264,7 @@ int main(int argc, char *argv[])
         }
 
         while (SSL_read_ex(ssl, buf, sizeof(buf), &nread) > 0) {
-            if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 &&
-                nwritten == nread) {
+            if (SSL_write_ex(ssl, buf, nread, &nwritten) > 0 && nwritten == nread) {
                 total += nwritten;
                 continue;
             }

@@ -1,11 +1,14 @@
 /*
- * Copyright 2024 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
  */
+
+#if !defined(OSSL_PROVIDERS_IMPLEMENTATIONS_CIPHERS_CIPHER_AES_CBC_HMAC_SHA_ETM_H)
+#define OSSL_PROVIDERS_IMPLEMENTATIONS_CIPHERS_CIPHER_AES_CBC_HMAC_SHA_ETM_H
 
 #include <openssl/proverr.h>
 #include "prov/ciphercommon.h"
@@ -25,10 +28,10 @@ const PROV_CIPHER_HW_AES_HMAC_SHA_ETM *ossl_prov_cipher_hw_aes_cbc_hmac_sha256_e
 const PROV_CIPHER_HW_AES_HMAC_SHA_ETM *ossl_prov_cipher_hw_aes_cbc_hmac_sha512_etm(void);
 
 #ifdef AES_CBC_HMAC_SHA_ETM_CAPABLE
-# include <openssl/aes.h>
-# include <openssl/sha.h>
+#include <openssl/aes.h>
+#include <openssl/sha.h>
 
-# define AES_CBC_MAX_HMAC_SIZE 64
+#define AES_CBC_MAX_HMAC_SIZE 64
 
 typedef struct prov_aes_hmac_sha_etm_ctx_st {
     PROV_CIPHER_CTX base;
@@ -69,3 +72,5 @@ typedef struct {
 } CIPH_DIGEST;
 
 #endif /* AES_CBC_HMAC_SHA_ETM_CAPABLE */
+
+#endif /* !defined(OSSL_PROVIDERS_IMPLEMENTATIONS_CIPHERS_CIPHER_AES_CBC_HMAC_SHA_ETM_H) */

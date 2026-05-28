@@ -27,7 +27,6 @@ $0 =~ m/(.*[\/\\])[^\/\\]+$/; $dir=$1;
 ( $xlate="${dir}../../perlasm/x86_64-xlate.pl" and -f $xlate) or
 die "can't locate x86_64-xlate.pl";
 
-# TODO: Find out the version of NASM that supports VEX-encoded AVX-IFMA instructions
 if (`$ENV{CC} -Wa,-v -c -o /dev/null -x assembler /dev/null 2>&1`
         =~ /GNU assembler version ([2-9]\.[0-9]+)/) {
     $avxifma = ($1>=2.40);
@@ -37,6 +36,18 @@ if (!$avxifma && `$ENV{CC} -v 2>&1`
     =~ /\s*((?:clang|LLVM) version|.*based on LLVM) ([0-9]+)\.([0-9]+)\.([0-9]+)?/) {
     my $ver = $2 + $3/100.0 + $4/10000.0; # 3.1.0->3.01, 3.10.1->3.1001
     $avxifma = ($ver>=16.0);
+}
+
+if (!$avxifma && `$ENV{CC} -x c /dev/null -dM -E|grep __clang_major__`
+    =~ /#define __clang_major__.([0-9]+)/) {
+    if ($1) {
+        $avxifma = ($1>=16);
+    }
+}
+
+if ($win64 && ($flavour =~ /nasm/ || $ENV{ASM} =~ /nasm/) &&
+       `nasm -v 2>&1` =~ /NASM version ([2-9]\.[0-9]+)(?:\.([0-9]+))?(rc[0-9]+)?/) {
+    $avxifma = ($1>2.16) + ($1==2.16 && ((!defined($2) && !defined($3)) || (defined($2))));
 }
 
 open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\""
@@ -83,8 +94,6 @@ my ($res,$a,$b,$m,$k0) = @_6_args_universal_ABI;
 my $mask52     = "%rax";
 my $acc0_0     = "%r9";
 my $acc0_0_low = "%r9d";
-my $acc0_1     = "%r15";
-my $acc0_1_low = "%r15d";
 my $b_ptr      = "%r11";
 
 my $iter = "%ebx";
@@ -355,56 +364,56 @@ $code.=<<___;
     and \$0xf, %r14
     vpsubq  .Lmask52x4(%rip), $_R0,  $T0
     shl \$5, %r14
-    vmovapd (%rdx, %r14), $T1
+    vmovapd (%rdx,%r14), $T1
     vblendvpd $T1, $T0, $_R0, $_R0
 
     shr \$4, %r10b
     and \$0xf, %r10
     vpsubq  .Lmask52x4(%rip), $_R0h,  $T0
     shl \$5, %r10
-    vmovapd (%rdx, %r10), $T1
+    vmovapd (%rdx,%r10), $T1
     vblendvpd $T1, $T0, $_R0h, $_R0h
 
     mov %r13b, %r10b
     and \$0xf, %r13
     vpsubq  .Lmask52x4(%rip), $_R1,  $T0
     shl \$5, %r13
-    vmovapd (%rdx, %r13), $T1
+    vmovapd (%rdx,%r13), $T1
     vblendvpd $T1, $T0, $_R1, $_R1
 
     shr \$4, %r10b
     and \$0xf, %r10
     vpsubq  .Lmask52x4(%rip), $_R1h,  $T0
     shl \$5, %r10
-    vmovapd (%rdx, %r10), $T1
+    vmovapd (%rdx,%r10), $T1
     vblendvpd $T1, $T0, $_R1h, $_R1h
 
     mov %r12b, %r10b
     and \$0xf, %r12
     vpsubq  .Lmask52x4(%rip), $_R2,  $T0
     shl \$5, %r12
-    vmovapd (%rdx, %r12), $T1
+    vmovapd (%rdx,%r12), $T1
     vblendvpd $T1, $T0, $_R2, $_R2
 
     shr \$4, %r10b
     and \$0xf, %r10
     vpsubq  .Lmask52x4(%rip), $_R2h,  $T0
     shl \$5, %r10
-    vmovapd (%rdx, %r10), $T1
+    vmovapd (%rdx,%r10), $T1
     vblendvpd $T1, $T0, $_R2h, $_R2h
 
     mov %r11b, %r10b
     and \$0xf, %r11
     vpsubq  .Lmask52x4(%rip), $_R3,  $T0
     shl \$5, %r11
-    vmovapd (%rdx, %r11), $T1
+    vmovapd (%rdx,%r11), $T1
     vblendvpd $T1, $T0, $_R3, $_R3
 
     shr \$4, %r10b
     and \$0xf, %r10
     vpsubq  .Lmask52x4(%rip), $_R3h,  $T0
     shl \$5, %r10
-    vmovapd (%rdx, %r10), $T1
+    vmovapd (%rdx,%r10), $T1
     vblendvpd $T1, $T0, $_R3h, $_R3h
 
     vpand  .Lmask52x4(%rip), $_R0,  $_R0
@@ -737,7 +746,7 @@ $code.=<<___;
     vmovdqu   $R3_0,  `6*32`($res)
     vmovdqu   $R3_0h, `7*32`($res)
 
-    xorl    $acc0_1_low, $acc0_1_low
+    xorl    $acc0_0_low, $acc0_0_low
 
     lea    16($b_ptr), $b_ptr
     movq    \$0xfffffffffffff, $mask52       # 52-bit mask
@@ -853,6 +862,23 @@ $code.=<<___;
 ossl_extract_multiplier_2x30_win5_avx:
 .cfi_startproc
     endbranch
+___
+$code.=<<___ if ($win64);
+    push      %rsi                          # save non-volatile registers
+    push      %rdi
+    lea       -168(%rsp), %rsp              # 16*10 + (8 bytes to get correct 16-byte SIMD alignment)
+    vmovapd   %xmm6, `16*0`(%rsp)
+    vmovapd   %xmm7, `16*1`(%rsp)
+    vmovapd   %xmm8, `16*2`(%rsp)
+    vmovapd   %xmm9, `16*3`(%rsp)
+    vmovapd   %xmm10, `16*4`(%rsp)
+    vmovapd   %xmm11, `16*5`(%rsp)
+    vmovapd   %xmm12, `16*6`(%rsp)
+    vmovapd   %xmm13, `16*7`(%rsp)
+    vmovapd   %xmm14, `16*8`(%rsp)
+    vmovapd   %xmm15, `16*9`(%rsp)
+___
+$code.=<<___;
     vmovapd   .Lones(%rip), $ones         # broadcast ones
     vmovq    $red_tbl_idx1, $tmp_xmm
     vpbroadcastq    $tmp_xmm, $idx1
@@ -926,6 +952,24 @@ foreach (8..15) {
     $code.="vmovdqu   $t[$_], `${_}*32`($out) \n";
 }
 
+$code.=<<___;
+    vzeroupper
+___
+$code.=<<___ if ($win64);
+    vmovapd `16*0`(%rsp), %xmm6
+    vmovapd `16*1`(%rsp), %xmm7
+    vmovapd `16*2`(%rsp), %xmm8
+    vmovapd `16*3`(%rsp), %xmm9
+    vmovapd `16*4`(%rsp), %xmm10
+    vmovapd `16*5`(%rsp), %xmm11
+    vmovapd `16*6`(%rsp), %xmm12
+    vmovapd `16*7`(%rsp), %xmm13
+    vmovapd `16*8`(%rsp), %xmm14
+    vmovapd `16*9`(%rsp), %xmm15
+    lea     168(%rsp), %rsp
+    pop     %rdi
+    pop     %rsi
+___
 
 $code.=<<___;
 

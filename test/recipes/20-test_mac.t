@@ -10,7 +10,7 @@
 use strict;
 use warnings;
 
-use OpenSSL::Test;
+use OpenSSL::Test qw(:DEFAULT data_file srctop_file);
 use OpenSSL::Test::Utils;
 use Storable qw(dclone);
 
@@ -52,6 +52,29 @@ my @mac_tests = (
      input => '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBFC0C1C2C3C4C5C6C7',
      expected => 'D5BE731C954ED7732846BB59DBE3A8E30F83E77A4BFF4459F2F1C2B4ECEBB8CE67BA01C62E8AB8578D2D499BD1BB276768781190020A306A97DE281DCC30305D',
      desc => 'KMAC256 with xof len of 64' },
+    { cmd => [qw{openssl mac -digest SHA256 -macopt keyenv:MACKEY}],
+      env => {'MACKEY' => 'ASCII_key_for_HMAC_tests' },
+      type => 'HMAC',
+      input => unpack("H*", "Sample message for additional key options"),
+      expected => '70B1E97C0EDDBD4CB4866E28FEBA45343BD35FD88437F17880B7ADAC058B161B',
+      desc => 'HMAC with keyenv' },
+    { cmd => [qw{openssl mac -digest SHA256 -macopt keyenvhex:MACKEY}],
+      env => {'MACKEY' => '41534349495F6B65795F666F725F484D41435F7465737473' },
+      type => 'HMAC',
+      input => unpack("H*", "Sample message for additional key options"),
+      expected => '70B1E97C0EDDBD4CB4866E28FEBA45343BD35FD88437F17880B7ADAC058B161B',
+      desc => 'HMAC with keyenvhex' },
+    { cmd => [qw{openssl mac -digest SHA256}, '-macopt', 'keyfile:' . data_file("keyfile.dat")],
+      type => 'HMAC',
+      input => unpack("H*", "Sample message for additional key options"),
+      expected => '70B1E97C0EDDBD4CB4866E28FEBA45343BD35FD88437F17880B7ADAC058B161B',
+      desc => 'HMAC with keyfile' },
+    { cmd => [qw{openssl mac -digest SHA256 -macopt keystdin}],
+      keyinput => data_file("keyfile.dat"),
+      type => 'HMAC',
+      input => unpack("H*", "Sample message for additional key options"),
+      expected => '70B1E97C0EDDBD4CB4866E28FEBA45343BD35FD88437F17880B7ADAC058B161B',
+      desc => 'HMAC with keystdin' },
 );
 
 my @siphash_tests = (
@@ -115,17 +138,36 @@ my @siphash_fail_tests = (
 
 push @mac_fail_tests, @siphash_fail_tests unless disabled("siphash");
 
-plan tests => (scalar @mac_tests * 2) + scalar @mac_fail_tests;
+plan tests => (scalar @mac_tests * 2) + (scalar @mac_fail_tests) + 2;
 
+my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
 my $test_count = 0;
 
 foreach (@mac_tests) {
     $test_count++;
-    ok(compareline($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{err}), $_->{desc});
+    if ($_->{env}) {
+        ok( do {
+                local @ENV{keys %{$_->{env}}} = values %{$_->{env}};
+                compareline($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{err})
+               }, $_->{desc});
+    } elsif ($_->{keyinput}) {
+        ok(compareline($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{err}, $_->{keyinput}), $_->{desc});
+    } else {
+        ok(compareline($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{err}), $_->{desc});
+    }
 }
 foreach (@mac_tests) {
     $test_count++;
-    ok(comparefile($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}), $_->{desc});
+    if ($_->{env}) {
+        ok( do {
+                local @ENV{keys %{$_->{env}}} = values %{$_->{env}};
+                comparefile($_->{cmd}, $_->{type}, $_->{input}, $_->{expected})
+               }, $_->{desc});
+    } elsif ($_->{keyinput}) {
+        ok(comparefile($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{keyinput}), $_->{desc});
+    } else {
+        ok(comparefile($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}), $_->{desc});
+    }
 }
 
 foreach (@mac_fail_tests) {
@@ -133,11 +175,33 @@ foreach (@mac_fail_tests) {
     ok(compareline($_->{cmd}, $_->{type}, $_->{input}, $_->{expected}, $_->{err}), $_->{desc});
 }
 
+SKIP: {
+    skip "Skipping FIPS tests", 2
+        if $no_fips;
+
+    my $fipsconf = srctop_file("test", "fips-and-base.cnf");
+
+    # This is only valid after OpenSSL 4.1
+    run(test(["fips_version_test", "-config", $fipsconf, ">=4.1.0"]),
+             capture => 1, statusvar => \my $exit);
+    skip "FIPS provider version is too old for this test", 2
+        if !$exit;
+
+    $ENV{OPENSSL_CONF} = $fipsconf;
+    ok(!run(app(['openssl', 'dgst', '-provider', 'fips', '-sha256', '-hmac',
+                 '1234', srctop_file("test", "testec-p112r1.pem")])),
+        "Checking bad key size fails in FIPS provider");
+    ok(run(app(['openssl', 'dgst', '-provider', 'fips', '-sha256', '-hmac',
+                 '123456789ABCDE', srctop_file("test", "testec-p112r1.pem")])),
+        "Checking good key size passes in FIPS provider");
+    delete $ENV{OPENSSL_CONF};
+}
+
 # Create a temp input file and save the input data into it, and
 # then compare the stdout output matches the expected value.
 sub compareline {
     my $tmpfile = "input-$test_count.bin";
-    my ($cmdarray_orig, $type, $input, $expect, $err) = @_;
+    my ($cmdarray_orig, $type, $input, $expect, $err, $keyinput) = @_;
     my $cmdarray = dclone $cmdarray_orig;
     if (defined($expect)) {
         $expect = uc $expect;
@@ -153,7 +217,7 @@ sub compareline {
     my @other = ('-in', $tmpfile, $type);
     push @$cmdarray, @other;
 
-    my @lines = run(app($cmdarray), capture => 1);
+    my @lines = run(app($cmdarray, stdin => $keyinput), capture => 1);
     # Not unlinking $tmpfile
 
     if (defined($expect)) {
@@ -189,7 +253,7 @@ sub compareline {
 sub comparefile {
     my $tmpfile = "input-$test_count.bin";
     my $outfile = "output-$test_count.bin";
-    my ($cmdarray, $type, $input, $expect) = @_;
+    my ($cmdarray, $type, $input, $expect, $keyinput) = @_;
     $expect = uc $expect;
 
     # Open a temporary input file and write $input to it
@@ -202,7 +266,7 @@ sub comparefile {
     my @other = ("-binary", "-in", $tmpfile, "-out", $outfile, $type);
     push @$cmdarray, @other;
 
-    run(app($cmdarray));
+    run(app($cmdarray, stdin => $keyinput));
     # Not unlinking $tmpfile
 
     open(my $out, '<', $outfile) or die "Could not open file";

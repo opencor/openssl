@@ -31,6 +31,10 @@ OpenSSL Releases
 
 ### Changes between 4.0 and 4.1 [xx XXX xxxx]
 
+ * Added -testmode option for `s_time` app.
+
+   *Jakub Zelenka*
+
  * Added support for Ed25519 and Ed448 certificates in DTLS 1.2. Previously,
    these certificate types were only supported in TLS 1.2 and TLS 1.3.
 
@@ -109,6 +113,12 @@ OpenSSL Releases
 
    *Bob Beck*
 
+ * The API function `ASN1_STRING_new_not_owned` has been added to the
+   libcrypto. It provides the ability to construct an ASN1_STRING with data
+   for which ownership is not taken by the created ASN1_STRING object.
+
+   *Bob Beck*
+
  * Added AVX2 optimized ML-DSA NTT operations on `x86_64`.
 
    *Marcel Cornu and Tomasz Kantecki*
@@ -149,6 +159,13 @@ OpenSSL Releases
 
    *Daniel Kubec*
 
+ * Added `OSSL_CMP_OPT_NONMATCHED_ERROR_NONCES` option for `OSSL_CMP_CTX` and
+   a corresponding `-nonmatched_error_nonces` option for the `openssl cmp` command.
+
+   This work was sponsored by Siemens AG.
+
+   *David von Oheimb*
+
  * Added support for RFC 8701 GREASE (Generate Random Extensions And Sustain
    Extensibility). When `SSL_OP_GREASE` is set, the TLS client injects
    reserved GREASE values into cipher suites, supported versions, supported
@@ -171,6 +188,11 @@ OpenSSL Releases
  * Deprecated `ASN1_BIT_STRING_set()` in favour of `ASN1_BIT_STRING_set1()`.
 
    *Norbert Pócs*
+
+ * Added optimized ML-DSA NTT operations on `s390x`
+   (or other architectures with 128 bit vector registers).
+
+   *Timo Keller*
 
 ### Changes between 3.6 and 4.0.0 [14 Apr 2026]
 
@@ -587,6 +609,13 @@ OpenSSL Releases
    <!-- https://github.com/openssl/openssl/pull/29721 -->
 
    *Bob Beck*
+
+ * Added `OSSL_CMP_OPT_PERMIT_TA_IN_EXTRACERTS_FOR_IR` option for `OSSL_CMP_CTX`
+   and a corresponding `-ta_in_ip_extracert` option for the `openssl cmp` command.
+
+   This work was sponsored by Siemens AG.
+
+   *David von Oheimb*
 
  * `X509_ALGOR_set_md()` function now returns a value indicating success
     or failure.
